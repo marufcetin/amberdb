@@ -247,11 +247,9 @@ Full comprehensive guides are available in the [`docs/`](docs/) directory:
 - 📖 **English Documentation**:
   - [AmberDB Database System & Architecture Guide](docs/en/AmberDB_User-Guide.en.md)
   - [AmberDB::Locale User Guide](docs/en/AmberDB-Locale_User-Guide.en.md)
-  - [CPAN Release & Distribution Guide](docs/en/CPAN_Release_Guide.en.md)
 - 📖 **Türkçe Dokümantasyon**:
   - [AmberDB Veritabanı Sistemi & Mimari Rehberi](docs/tr/AmberDB_Database_System.md)
   - [AmberDB::Locale Kullanım Rehberi](docs/tr/AmberDB-Locale_Kullanım_Rehberi.md)
-  - [CPAN Yayınlama ve Dağıtım Rehberi](docs/tr/CPAN_Yayinlama_Rehberi.md)
 
 ---
 
