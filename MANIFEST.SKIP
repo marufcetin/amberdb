@@ -1,0 +1,62 @@
+# Top-level filter and standard ignore rules
+\b\.[^\\]+$
+~$
+\.bak$
+\.old$
+\.tmp$
+\.swp$
+\#.*#$
+\.\#.*
+
+# Version control (Git)
+\B\.git\b
+\B\.github\b
+\B\.gitignore\b
+\B\.gitattributes\b
+
+# Build and MakeMaker artifacts
+\bMakefile$
+\bMakefile\.old$
+\bMANIFEST\.bak$
+\bMYMETA\b
+\bpm_to_blib$
+\bblib\b
+\b_build\b
+\bBuild$
+\b_eumm\b
+
+# Archives and packages
+\bAmberDB-[0-9]
+\.tar\.gz$
+\.tgz$
+\.zip$
+
+# IDE and Editor files
+\b\.vscode\b
+\b\.idea\b
+\bamber\.code-workspace\b
+
+# Database data files and test stores
+\bdbstore\b
+\.db$
+\.inx$
+\.src$
+\.fld$
+\.fac$
+\.srt$
+\.del$
+\.lnk$
+\.jnl$
+\.aut$
+\.cnt$
+\.log$
+
+# Coverage and profiling
+\bcover_db\b
+\bnytprof\b
+\.out$
+
+# OS-specific files
+\b\.DS_Store\b
+\bThumbs\.db\b
+\bDesktop\.ini\b

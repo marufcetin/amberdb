@@ -1,0 +1,202 @@
+#!/usr/bin/perl
+
+# t/amberdb/amberdb_junk_tiered.t - Tests for AmberDB Tiered Hot/Cold (Junk) Indexing System
+
+use 5.016000;
+use strict;
+use warnings;
+use Test::More;
+use File::Temp qw(tempdir);
+
+use lib 'lib';
+use AmberDB;
+use AmberDB::Tools;
+
+my $tmpdir = tempdir( CLEANUP => 1 );
+my $dbp = AmberDB->new(
+    path => { dbase_dir => $tmpdir },
+    cfg  => { simple => 0 }
+);
+
+# 1. Setup Producer schema (catalog_producer)
+$dbp->{_table}->{catalog_producer} = {
+    record_index => 1,
+    id_type      => 'num',
+    blocks       => [
+        { id => "id",    type => "auto_id" }, # 0
+        { id => "level", type => "text" },    # 1
+        { id => "name",  type => "text" },    # 2
+        # blocks 3..13
+        ( map { { id => "res_$_", type => "text" } } 3..13 ),
+        { id => "statu", type => "text" },    # 14: Satış Statüsü (1: Aktif, 0: Pasif)
+    ]
+};
+
+# 2. Setup Product schema (catalog_product) with use_junk and junk_rules
+$dbp->{_table}->{catalog_product} = {
+    record_index => 1,
+    use_junk     => 1,
+    junk_rules   => [
+        [ 20, "ne", 1 ],     # Kural 1: Ürünün kendi satış statüsü 1 değilse -> JUNK
+        [ "2->14", "ne", 1 ] # Kural 2: Ürünün üreticisinin (blok 2) 14. alanı 1 değilse -> JUNK
+    ],
+    search_block => [ 4 ],    # Block 4: name (searchable)
+    match_block  => [ 1, 2 ], # Block 1: cat, Block 2: firm
+    id_type      => 'num',
+    blocks       => [
+        { id => "id",           type => "auto_id" }, # 0
+        { id => "cat",          type => "text" },    # 1
+        { id => "firm",         type => "text", rdbm => "catalog_producer;2" }, # 2
+        { id => "auth",         type => "text" },    # 3
+        { id => "name",         type => "text" },    # 4
+        # blocks 5..19
+        ( map { { id => "res_$_", type => "text" } } 5..19 ),
+        { id => "sales_status", type => "option" },  # 20: 1: Satışta, 0: Satış Dışı
+    ]
+};
+
+# Insert test producers into catalog_producer:
+# Producer 1: Aktif (statu = 1)
+# Producer 2: Pasif (statu = 0)
+my @p1_data = ( 1, "A", "Aktif Yayinevi", (("") x 11), 1 );
+my @p2_data = ( 2, "B", "Pasif Yayinevi", (("") x 11), 0 );
+$dbp->insert_id( 'catalog_producer', @p1_data );
+$dbp->insert_id( 'catalog_producer', @p2_data );
+
+# ---------------------------------------------------------------------------
+subtest '1. Rule evaluation (junk_rules with Direct & RDBM resolution)' => sub {
+    plan tests => 4;
+
+    # Case A: Producer is active (1), Product is in sale (20 => 1) -> ACTIVE (junk = 0)
+    my @rec_a = ( 101, "Roman", 1, "Yazar A", "Kitap A", (("") x 15), 1 );
+    is( $dbp->junk_rules( $dbp->table_info('catalog_product'), @rec_a ), 0, "Active firm + in-sale product -> Active (junk=0)" );
+
+    # Case B: Producer is active (1), Product is out of sale (20 => 0) -> JUNK (junk = 1)
+    my @rec_b = ( 102, "Roman", 1, "Yazar B", "Kitap B", (("") x 15), 0 );
+    is( $dbp->junk_rules( $dbp->table_info('catalog_product'), @rec_b ), 1, "Active firm + out-of-sale product -> Junk (junk=1)" );
+
+    # Case C: Producer is inactive (2), Product is in sale (20 => 1) -> JUNK due to firm rule (2->14)
+    my @rec_c = ( 103, "Roman", 2, "Yazar C", "Kitap C", (("") x 15), 1 );
+    is( $dbp->junk_rules( $dbp->table_info('catalog_product'), @rec_c ), 1, "Inactive firm + in-sale product -> Junk (junk=1)" );
+
+    # Case D: Direct array evaluation
+    my $tinfo_arr = {
+        use_junk   => 1,
+        junk_rules => [ [ "2->1", "eq", "test" ] ],
+    };
+    my @rec_d = ( 104, "Roman", [ "zero", "test" ] );
+    is( $dbp->junk_rules( $tinfo_arr, @rec_d ), 1, "Nested array matching rule -> Junk (junk=1)" );
+};
+
+# ---------------------------------------------------------------------------
+subtest '2. CRUD partitioning into .inx / .jinx, .fld / .jfld, .src / .jsrc' => sub {
+    plan tests => 6;
+
+    my $tpath = $dbp->table_path('catalog_product');
+
+    # Insert Product 1 (Active)
+    my @p1 = ( "Roman", 1, "Yazar A", "Kitap Alfa", (("") x 15), 1 );
+    $dbp->insert_id( 'catalog_product', 1, @p1 );
+
+    # Insert Product 2 (Junk due to sales_status=0)
+    my @p2 = ( "Roman", 1, "Yazar B", "Kitap Beta", (("") x 15), 0 );
+    $dbp->insert_id( 'catalog_product', 2, @p2 );
+
+    # Check .inx vs .jinx
+    my ( undef, @inx_ids )  = $dbp->index_get( "$tpath.inx", "keys" );
+    my ( undef, @jinx_ids ) = $dbp->index_get( "$tpath.jinx", "keys" );
+
+    is_deeply( \@inx_ids, [1], "Active product 1 written to .inx" );
+    is_deeply( \@jinx_ids, [2], "Junk product 2 written to .jinx" );
+
+    # Check search words in .src vs .jsrc (block 4 is name)
+    my ( undef, @src_alfa ) = $dbp->index_get( "${tpath}_4.src", "alfa" );
+    my ( undef, @jsrc_beta ) = $dbp->index_get( "${tpath}_4.jsrc", "beta" );
+
+    is_deeply( \@src_alfa, [1], "'alfa' indexed in active .src" );
+    is_deeply( \@jsrc_beta, [2], "'beta' indexed in junk .jsrc" );
+
+    # Check fields in .fld vs .jfld (block 1 is Roman)
+    my @roman_id = $dbp->field_to_list( "Roman", 'read', $tpath, $dbp->table_info('catalog_product'), 1 );
+    my ( undef, @fld_roman )  = $dbp->index_get( "${tpath}_1.fld", $roman_id[0] );
+    my ( undef, @jfld_roman ) = $dbp->index_get( "${tpath}_1.jfld", $roman_id[0] );
+
+    is_deeply( \@fld_roman, [1], "Roman category for product 1 in .fld" );
+    is_deeply( \@jfld_roman, [2], "Roman category for product 2 in .jfld" );
+};
+
+# ---------------------------------------------------------------------------
+subtest '3. Automatic Status Transition (junk_transition on modify_id)' => sub {
+    plan tests => 4;
+
+    my $tpath = $dbp->table_path('catalog_product');
+
+    # Modify Product 1 from Active to Junk (set sales_status to 0)
+    my @p1_mod = ( "Roman", 1, "Yazar A", "Kitap Alfa", (("") x 15), 0 );
+    $dbp->modify_id( 'catalog_product', 1, @p1_mod );
+
+    my ( undef, @inx_after )  = $dbp->index_get( "$tpath.inx", "keys" );
+    my ( undef, @jinx_after ) = $dbp->index_get( "$tpath.jinx", "keys" );
+
+    ok( !grep( { $_ == 1 } @inx_after ), "Product 1 removed from active .inx" );
+    ok( grep( { $_ == 1 } @jinx_after ), "Product 1 added to junk .jinx" );
+
+    # Modify Product 1 back to Active (set sales_status to 1)
+    my @p1_act = ( "Roman", 1, "Yazar A", "Kitap Alfa", (("") x 15), 1 );
+    $dbp->modify_id( 'catalog_product', 1, @p1_act );
+
+    my ( undef, @inx_back )  = $dbp->index_get( "$tpath.inx", "keys" );
+    my ( undef, @jinx_back ) = $dbp->index_get( "$tpath.jinx", "keys" );
+
+    ok( grep( { $_ == 1 } @inx_back ), "Product 1 restored back to active .inx" );
+    ok( !grep( { $_ == 1 } @jinx_back ), "Product 1 removed from junk .jinx" );
+};
+
+# ---------------------------------------------------------------------------
+subtest '4. Query modes: jnktype A, AB, B, BA in read_all and search_table' => sub {
+    plan tests => 6;
+
+    # Current state: Product 1 is Active, Product 2 is Junk
+
+    # 4.1 read_all with jnktype
+    my @res_a  = $dbp->read_all( 'catalog_product', jnktype => 'A', keys_only => 1 );
+    my @res_b  = $dbp->read_all( 'catalog_product', jnktype => 'B', keys_only => 1 );
+    my @res_ab = $dbp->read_all( 'catalog_product', jnktype => 'AB', keys_only => 1 );
+    my @res_ba = $dbp->read_all( 'catalog_product', jnktype => 'BA', keys_only => 1 );
+
+    is_deeply( \@res_a, [1], "read_all jnktype 'A' returns only active [1]" );
+    is_deeply( \@res_b, [2], "read_all jnktype 'B' returns only junk [2]" );
+    is_deeply( \@res_ab, [ 1, 2 ], "read_all jnktype 'AB' returns active first, then junk [1, 2]" );
+    is_deeply( \@res_ba, [ 2, 1 ], "read_all jnktype 'BA' returns junk first, then active [2, 1]" );
+
+    # 4.2 search_table with jnktype
+    my ( $cnt_a, @search_a )   = $dbp->search_table( 'catalog_product', 'kitap', start => 0, limit => 10, jnktype => 'A' );
+    my ( $cnt_ab, @search_ab ) = $dbp->search_table( 'catalog_product', 'kitap', start => 0, limit => 10, jnktype => 'AB' );
+
+    is( $cnt_a, 1, "search_table jnktype 'A' found 1 active record" );
+    is( $cnt_ab, 2, "search_table jnktype 'AB' found 2 records across active + junk" );
+};
+
+# ---------------------------------------------------------------------------
+subtest '5. Rebuilding indexes with AmberDB::Tools' => sub {
+    plan tests => 3;
+
+    my $tools = AmberDB::Tools->new( _dbp => $dbp );
+    my $tpath = $dbp->table_path('catalog_product');
+
+    # Rebuild indexes
+    $tools->set_readall('catalog_product');
+    $tools->set_search('catalog_product');
+    $tools->set_fields('catalog_product');
+
+    my ( undef, @rebuilt_inx )  = $dbp->index_get( "$tpath.inx", "keys" );
+    my ( undef, @rebuilt_jinx ) = $dbp->index_get( "$tpath.jinx", "keys" );
+
+    is_deeply( \@rebuilt_inx, [1], "Tools rebuild preserved active .inx" );
+    is_deeply( \@rebuilt_jinx, [2], "Tools rebuild preserved junk .jinx" );
+
+    my ( undef, @rebuilt_jsrc ) = $dbp->index_get( "${tpath}_4.jsrc", "beta" );
+    is_deeply( \@rebuilt_jsrc, [2], "Tools rebuild created .jsrc successfully" );
+};
+
+done_testing();

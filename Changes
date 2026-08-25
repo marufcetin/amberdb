@@ -1,0 +1,14 @@
+Revision history for AmberDB
+
+5.01    2026-08-25
+        - Initial public release prepared for CPAN and GitHub.
+        - High-performance Berkeley DB (DB_File) flat-file database engine.
+        - Packed 8-byte binary indexing pipeline for O(1) substr slicing.
+        - High-speed index-assisted full-text search with phonetic and language normalization.
+        - Tiered indexing (Active, Junk/Archived, and Hybrid AB/BA query modes).
+        - Multi-dimensional Columnar Facet indexing (.fac) with high-efficiency bitsets.
+        - ACID-like undo-journal transaction engine (transact_start, transact_end, transact_rollback) with automatic LIFO rollback.
+        - Multi-granularity concurrency control (table-level and record-level flock).
+        - Multilingual locale engine supporting 10 languages (en, tr, de, fr, es, ja, ru, ar, az) with Turkish dotless/dotted 'i' rules, case folding, and number/currency formatting.
+        - Cross-platform RAM-Disk helper and binary index converter CLI tools.
+        - Comprehensive test suite covering 37 test suites.
