@@ -6,7 +6,7 @@ use Carp qw(croak cluck);
 use Fcntl qw(:flock);
 use IO::Handle;
 
-our $VERSION = '5.0';
+our $VERSION = '5.02';
 
 # Journal field separator — ASCII Record Separator (0x1E).
 # Tab cannot be used because raw DB values contain literal tabs.

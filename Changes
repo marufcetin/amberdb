@@ -1,6 +1,6 @@
 Revision history for AmberDB
 
-5.01    2026-08-25
+5.02    2026-08-25
         - Initial public release prepared for CPAN and GitHub.
         - High-performance Berkeley DB (DB_File) flat-file database engine.
         - Packed 8-byte binary indexing pipeline for O(1) substr slicing.

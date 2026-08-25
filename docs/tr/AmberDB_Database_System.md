@@ -1,6 +1,6 @@
 # AmberDB — Geliştirici Kılavuzu ve Dokümantasyon
 
-> **Sürüm:** 5.01 · **İlk Tasarım:** 2005 · **Son Güncelleme:** 2026  
+> **Sürüm:** 5.02 · **İlk Tasarım:** 2005 · **Son Güncelleme:** 2026  
 > **Namespace:** `AmberDB`  
 > **Dahili Modüller:** `Base`, `Index`, `Transact`, `Cache`, `Array`, `String`, `Date`, `Locale`, `Tools`
 
@@ -1441,4 +1441,4 @@ if ($mevcut[8] >= 1) { # Stok kontrolü
 
 ---
 
-*Bu doküman `AmberDB` v5.01 motorunun güncel kod mimarisi ve geliştirici pratikleri doğrultusunda hazırlanmıştır.*
+*Bu doküman `AmberDB` v5.02 motorunun güncel kod mimarisi ve geliştirici pratikleri doğrultusunda hazırlanmıştır.*

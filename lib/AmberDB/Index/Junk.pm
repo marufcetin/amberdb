@@ -4,7 +4,7 @@ use 5.016;
 use warnings;
 use Carp qw(croak cluck);
 
-our $VERSION = '5.0';
+our $VERSION = '5.02';
 
 # $is_junk = $dbp->junk_rules($table_info, @record);
 # Returns 1 if record satisfies any junk condition, 0 otherwise.

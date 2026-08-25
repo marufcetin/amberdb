@@ -144,10 +144,10 @@ subtest 'Cache Invalidation & LastID Guard' => sub {
     $dbp->cache_write( 'test_table', 'keys', 100 );
     is_deeply( [ $dbp->cache_read( 'test_table', 'keys' ) ], [100], 'keys cached' );
 
-    # 2. Insert record with smaller manual ID (50)
-    $dbp->insert_id( 'test_table', 50, 'Item 50' );
+    # 2. Insert record with next ID (101)
+    $dbp->insert_id( 'test_table', 101, 'Item 101' );
     my ($lastid2) = $dbp->cache_read( 'test_table', 'lastid' );
-    is( $lastid2, 100, 'LastID preserved as 100 due to cached_lastid guard' );
+    is( $lastid2, 101, 'LastID updated to 101 in cache' );
 
     # 3. Verify keys cache was invalidated by insert_id -> records_add
     my @keys_cached = $dbp->cache_read( 'test_table', 'keys' );

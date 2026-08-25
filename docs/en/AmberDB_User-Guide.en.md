@@ -1,6 +1,6 @@
 # AmberDB — Developer Guide and Comprehensive Documentation
 
-> **Version:** 5.01 · **Initial Design:** 2005 · **Last Updated:** 2026  
+> **Version:** 5.02 · **Initial Design:** 2005 · **Last Updated:** 2026  
 > **Namespace:** `AmberDB`  
 > **Built-in Modules:** `Base`, `Index`, `Transact`, `Cache`, `Array`, `String`, `Date`, `Locale`, `Tools`
 
@@ -1429,4 +1429,4 @@ if ($current[8] >= 1) { # Check available inventory
 
 ---
 
-*This documentation is maintained for `AmberDB` v5.01 and aligns with active codebase architecture and developer practices.*
+*This documentation is maintained for `AmberDB` v5.02 and aligns with active codebase architecture and developer practices.*

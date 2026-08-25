@@ -6,7 +6,7 @@ use Carp qw(croak cluck);
 use Encode;         # Encoding management if needed
 use Time::Local;    # Core module for time operations
 
-our $VERSION = '1.1.0';
+our $VERSION = '5.02';
 my $CREATED = '2008-02-07';
 
 # Default English Month Names

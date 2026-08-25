@@ -2,9 +2,11 @@
 use strict;
 use warnings;
 use utf8;
+use open ':std', ':utf8';
 use Test::More;
-binmode STDOUT, ':utf8';
-binmode STDERR, ':utf8';
+binmode Test::More->builder->output,         ':utf8';
+binmode Test::More->builder->failure_output, ':utf8';
+binmode Test::More->builder->todo_output,    ':utf8';
 use FindBin qw($Bin);
 use lib "$Bin/../lib", 'lib';
 

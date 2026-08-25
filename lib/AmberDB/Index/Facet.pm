@@ -4,7 +4,7 @@ use 5.016;
 use warnings;
 use Carp qw(croak cluck);
 
-our $VERSION = '5.2';
+our $VERSION = '5.02';
 
 # $dbp->facet_rules($table_info, @record);
 # ------------------------------------------------

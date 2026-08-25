@@ -6,7 +6,7 @@ use Encode qw(is_utf8 encode decode);
 use Carp qw(croak cluck);
 use parent qw(AmberDB::Locale AmberDB::Array);
 
-our $VERSION = '5.0';
+our $VERSION = '5.02';
 my $CREATED = '2014-12-20';
 
 # ------------------------------------------------

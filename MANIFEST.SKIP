@@ -1,5 +1,10 @@
-# Top-level filter and standard ignore rules
-\b\.[^\\]+$
+# Version control
+\B\.git\b
+\B\.github\b
+\B\.gitignore\b
+\B\.gitattributes\b
+
+# Temp, backup and editor files
 ~$
 \.bak$
 \.old$
@@ -7,12 +12,12 @@
 \.swp$
 \#.*#$
 \.\#.*
-
-# Version control (Git)
-\B\.git\b
-\B\.github\b
-\B\.gitignore\b
-\B\.gitattributes\b
+\b\.vscode\b
+\b\.idea\b
+\bamber\.code-workspace\b
+\b\.DS_Store\b
+\bThumbs\.db\b
+\bDesktop\.ini\b
 
 # Build and MakeMaker artifacts
 \bMakefile$
@@ -24,20 +29,14 @@
 \b_build\b
 \bBuild$
 \b_eumm\b
-
-# Archives and packages
-\bAmberDB-[0-9]
+^AmberDB-[0-9]
 \.tar\.gz$
 \.tgz$
 \.zip$
 
-# IDE and Editor files
-\b\.vscode\b
-\b\.idea\b
-\bamber\.code-workspace\b
-
-# Database data files and test stores
+# Database runtime stores and temp files
 \bdbstore\b
+\bdata/
 \.db$
 \.inx$
 \.src$
@@ -55,8 +54,3 @@
 \bcover_db\b
 \bnytprof\b
 \.out$
-
-# OS-specific files
-\b\.DS_Store\b
-\bThumbs\.db\b
-\bDesktop\.ini\b

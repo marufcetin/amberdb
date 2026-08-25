@@ -40,13 +40,13 @@ subtest '1. SEO URL generation (.rwt) & collision handling' => sub {
     my $rid_map = $dbp->get_seourl( 'catalog_product', 1, 'apple-iphone-15-pro' );
     is( $rid_map->{'apple-iphone-15-pro'}, 1, "Reverse slug lookup returns correct ID 1" );
 
-    # Duplicate title insert (record 99) - should trigger collision resolution in write mode
-    $dbp->insert_id( 'catalog_product', 99, 'Apple iPhone 15 Pro', 'Smartphones', 'Apple' );
-    my $seo_map2 = $dbp->get_seourl( 'catalog_product', 0, 99 );
-    is( $seo_map2->{99}, 'apple-iphone-15-pro-99', "Slug collision resolved with ID suffix for record 99" );
+    # Duplicate title insert (record 2) - should trigger collision resolution in write mode
+    $dbp->insert_id( 'catalog_product', 2, 'Apple iPhone 15 Pro', 'Smartphones', 'Apple' );
+    my $seo_map2 = $dbp->get_seourl( 'catalog_product', 0, 2 );
+    is( $seo_map2->{2}, 'apple-iphone-15-pro-2', "Slug collision resolved with ID suffix for record 2" );
 
-    my $rid_map2 = $dbp->get_seourl( 'catalog_product', 1, 'apple-iphone-15-pro-99' );
-    is( $rid_map2->{'apple-iphone-15-pro-99'}, 99, "Reverse lookup for resolved duplicate slug returns ID 99" );
+    my $rid_map2 = $dbp->get_seourl( 'catalog_product', 1, 'apple-iphone-15-pro-2' );
+    is( $rid_map2->{'apple-iphone-15-pro-2'}, 2, "Reverse lookup for resolved duplicate slug returns ID 2" );
 
     # Modify title
     $dbp->modify_id( 'catalog_product', 1, 'Apple iPhone 15 Pro Max', 'Smartphones', 'Apple' );
@@ -60,18 +60,18 @@ subtest '1. SEO URL generation (.rwt) & collision handling' => sub {
     my $slug_dry = $dbp->set_seourl( 'catalog_product', [ 3, 'Apple iPhone 15 Pro Max', 'Smartphones', 'Apple' ] );
     ok( defined $slug_dry, "Dry-run slug generated without write" );
 
-    $dbp->delete_id( 'catalog_product', 99 );
+    $dbp->delete_id( 'catalog_product', 2 );
 };
 
 # ---------------------------------------------------------------------------
-subtest '2. Facet counting (field_fltkeys & field_allfltkeys=> sub {
+subtest '2. Facet counting (field_fltkeys & field_allfltkeys)' => sub {
     plan tests => 3;
 
     # Insert more products
-    $dbp->insert_id( 'catalog_product', 2, 'Samsung Galaxy S24', 'Smartphones', 'Samsung' );
-    $dbp->insert_id( 'catalog_product', 3, 'Apple MacBook Air', 'Laptops', 'Apple' );
-    $dbp->insert_id( 'catalog_product', 4, 'Dell XPS 15', 'Laptops', 'Dell' );
-    $dbp->insert_id( 'catalog_product', 5, 'Apple iPad Pro', 'Tablets', 'Apple' );
+    $dbp->insert_id( 'catalog_product', 3, 'Samsung Galaxy S24', 'Smartphones', 'Samsung' );
+    $dbp->insert_id( 'catalog_product', 4, 'Apple MacBook Air', 'Laptops', 'Apple' );
+    $dbp->insert_id( 'catalog_product', 5, 'Dell XPS 15', 'Laptops', 'Dell' );
+    $dbp->insert_id( 'catalog_product', 6, 'Apple iPad Pro', 'Tablets', 'Apple' );
 
     # Count brands (block 3) when filtering by category 'Smartphones' (block 2)
     my $brand_counts = $dbp->field_fltkeys(
@@ -96,19 +96,19 @@ subtest '3. Bulk Operations in Active Transaction (Non-logging design)' => sub {
 
     # Bulk insert records (by design, bulk operations bypass single-record txn logging)
     my $bulk_data = [
-        [ 10, 'Sony Headphones', 'Audio', 'Sony' ],
-        [ 11, 'Bose Speaker', 'Audio', 'Bose' ],
+        [ 7, 'Sony Headphones', 'Audio', 'Sony' ],
+        [ 8, 'Bose Speaker', 'Audio', 'Bose' ],
     ];
     my $status = $dbp->insert_list( 'catalog_product', @$bulk_data );
-    ok( $status->{10} && $status->{11}, "Bulk insert executed inside transaction" );
+    ok( $status->{7} && $status->{8}, "Bulk insert executed inside transaction" );
 
     # Roll back transaction
     my $res = $dbp->transact_rollback();
     is( $res->{status}, 'rollback', "Transaction rolled back" );
 
     # Bulk inserted records persist because bulk CRUD deliberately bypasses txn journal
-    my @rec10 = $dbp->read_id( 'catalog_product', 10 );
-    is( $rec10[1], 'Sony Headphones', "Bulk insert persisted despite rollback (documented behavior)" );
+    my @rec7 = $dbp->read_id( 'catalog_product', 7 );
+    is( $rec7[1], 'Sony Headphones', "Bulk insert persisted despite rollback (documented behavior)" );
 };
 
 done_testing();

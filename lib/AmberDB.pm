@@ -21,7 +21,7 @@ use parent qw(
 our $DB_HASH;
 our $hash_info;
 
-our $VERSION = '5.01';
+our $VERSION = '5.02';
 my $CREATED = '2005-01-28';
 
 
@@ -125,8 +125,17 @@ sub insert_id {
     my $file_path  = "$table_path.$self->{db_ext}";
 
     # open table with exclusive lock
-    $self->table_write($file_path)
-      or do { $self->transact_error( $tableid, "Could not open file to write" ); return; };
+    my $db_handle;
+    for ( 1 .. 5 ) {
+        $db_handle = $self->table_write($file_path);
+        last if $db_handle;
+        require Time::HiRes;
+        Time::HiRes::usleep(5000);
+    }
+    unless ($db_handle) {
+        $self->transact_error( $tableid, "Could not open file to write" );
+        return;
+    }
 
     # check record id.
     my $has_manual_id = ( defined $rid && $rid ne '' );
@@ -2210,15 +2219,11 @@ sub table_lastid {
 
     $tableid or return;
     my $table_info = $self->table_info($tableid);
-
-    my ($cached_lastid) = $self->cache_read($tableid, "lastid");
-    return $cached_lastid if $cached_lastid;
     $last_id ||= 0;
 
     my $table_path = $self->table_path($tableid);
     my $file_path  = "$table_path.$self->{db_ext}";
     my $index_path = "$table_path.inx";
-    return $last_id unless -e $file_path;
 
     if ( -e $index_path ) {
         if ( $self->table_read($index_path) ) {
@@ -2230,6 +2235,10 @@ sub table_lastid {
             }
         }
     }
+
+    my ($cached_lastid) = $self->cache_read($tableid, "lastid");
+    return $cached_lastid if $cached_lastid;
+    return $last_id unless -e $file_path;
 
     my @all_keys = $self->table_keys($tableid);
     my @nums = sort { $b <=> $a } grep /^[0-9]+$/, @all_keys;
@@ -2324,7 +2333,8 @@ sub id_check {
     }
 }
 
-# Generates new record ID. Sanitizes and validates if $aid passed, otherwise uses cache/lastid+1.
+# Sets or gets table auto id.
+# my $id = $dbp->table_autoid($tableid, [$id]);
 # ------------------------------------------------
 sub table_autoid {
 
@@ -2333,8 +2343,6 @@ sub table_autoid {
     $tableid or return;
     my $table_info = $self->table_info($tableid);
     my $id_type    = $table_info->{id_type} // 'num';
-
-    $self->{cfg}->{id_check} //= 1;
 
     if ( defined $aid && $aid ne '' ) {
         if ( $self->{cfg}->{id_check} ) {
@@ -2356,13 +2364,6 @@ sub table_autoid {
             $self->{_last_autoid}->{$tableid} = $aid;
             $self->cache_write( $tableid, "lastid", $aid );
         }
-    }
-    elsif ( my ($lastid) = $self->cache_read($tableid, "lastid") ) {
-        $lastid = $self->{_last_autoid}->{$tableid}
-          if ( $self->{_last_autoid}->{$tableid} && $self->{_last_autoid}->{$tableid} > $lastid );
-        $aid = ++$lastid;
-        $self->{_last_autoid}->{$tableid} = $aid;
-        $self->cache_write($tableid, "lastid", $aid);
     }
     else {
         my $last = $self->table_lastid($tableid) || 0;
@@ -2405,10 +2406,21 @@ sub table_read {
     my ( $self, $file_path ) = @_;
 
     return $self->{_db}->{$file_path} if $self->{_db}->{$file_path};
+    return unless -e $file_path;
 
-    $self->{_db}->{$file_path} = tie( my %db, "DB_File", $file_path, O_RDONLY ) or
-      do { cluck "[DB_TIE] $file_path DB table cannot be opened.\n"; return; };
+    my $db_obj;
+    my %db;
+    for my $attempt ( 1 .. 30 ) {
+        $db_obj = tie( %db, "DB_File", $file_path, O_RDONLY, 0644, $hash_info );
+        last if $db_obj;
+        require Time::HiRes;
+        Time::HiRes::usleep(10000);
+    }
+    unless ($db_obj) {
+        return;
+    }
 
+    $self->{_db}->{$file_path}  = $db_obj;
     $self->{_tie}->{$file_path} = \%db;
     return $self->{_db}->{$file_path};
 }
@@ -2432,16 +2444,24 @@ sub table_write {
         }
     }
 
-    # Open table
-    $self->{_db}->{$file_path} =
-      tie( my %db, "DB_File", $file_path, O_RDWR | O_CREAT, 0644, $hash_info )
-      or do { cluck "[DB_TIE] $file_path DB table cannot be opened.\n"; return; };
+    # Open table with retry
+    my $db_obj;
+    my %db;
+    for my $attempt ( 1 .. 30 ) {
+        $db_obj = tie( %db, "DB_File", $file_path, O_RDWR | O_CREAT, 0644, $hash_info );
+        last if $db_obj;
+        require Time::HiRes;
+        Time::HiRes::usleep(10000);
+    }
+    unless ($db_obj) {
+        cluck "[DB_TIE] $file_path DB table cannot be opened.\n";
+        return;
+    }
 
-    # Ensure DB object created
-    return unless $self->{_db}->{$file_path};
+    $self->{_db}->{$file_path} = $db_obj;
 
     # Lock table
-    $self->{_fd}->{$file_path} = $self->{_db}->{$file_path}->fd;
+    $self->{_fd}->{$file_path} = $db_obj->fd;
 
     # SECURITY CHECK: If fd invalid, do not execute open()!
     if ( !defined $self->{_fd}->{$file_path}
@@ -2996,7 +3016,7 @@ sub recs_back {
         my $bac_key = "$tableid--$record->[0]"
           ;    # used as user identifier rather than file name
         my $bac_val = $self->db_encode( @{$record}[ 1 .. $#$record ] );
-        open my $YAZ, ">>",
+        open my $YAZ, ">>:encoding(UTF-8)",
           "$backup_dir/$self->{cfg}->{user}.csv"
           or (
             warn( "[DB_TIE] $backup_dir/$self->{cfg}->{user}.csv can't open.\n" )

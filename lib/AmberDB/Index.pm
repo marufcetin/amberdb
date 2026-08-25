@@ -4,7 +4,7 @@ use 5.016;
 use warnings;
 use Carp qw(croak cluck);
 
-our $VERSION = '5.0';
+our $VERSION = '5.02';
 
 # =====================================================================
 # OPERATOR AND FIELD RESOLUTION HELPERS (Shared across Index modules)
@@ -590,7 +590,14 @@ sub records_add {
     my $id_type    = $table_info->{id_type} // 'num';
     my $index_path = "$table_path.inx";
     my @all_recs;
-    if ( $self->table_write($index_path) ) {
+    my $idx_handle;
+    for ( 1 .. 5 ) {
+        $idx_handle = $self->table_write($index_path);
+        last if $idx_handle;
+        require Time::HiRes;
+        Time::HiRes::usleep(5000);
+    }
+    if ($idx_handle) {
         my ( undef, @recs_ref ) = $self->index_get( $index_path, "keys" );
         my ($lastid) = $self->index_get( $index_path, "lastid", "raw" );
         $lastid //= 0;
