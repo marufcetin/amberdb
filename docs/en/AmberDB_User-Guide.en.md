@@ -98,15 +98,17 @@ In SQL, answering *"Which orders contain Product 101?"* requires scanning the `o
 The order record contains the array of product items in Block 3. When `match_block => [3]` is defined in the schema, the engine automatically extracts each product ID using `field_to_list` and indexes it into `orders_3.fld`.
 
 ```perl
-# Fetch all order IDs containing Product 101:
-my @order_ids = $adb->field_fetch("orders", 3, 101);
+# Fetch all order records containing Product 101:
+my @orders = $adb->field_fetch("orders", 3, 101);
 ```
 
-This operation executes a **single direct key lookup** from `orders_3.fld`, returning the binary array of matching Order IDs via direct key lookup (with O(1) average-time lookup per indexed key):
+This operation executes a **single direct key lookup** from `orders_3.fld`, retrieving all Order IDs matching the key `101` directly (with O(1) average-time lookup per indexed key):
 ```text
 # Inside orders_3.fld:
 # 101 => [ 1001, 1005, 1023 ] (Packed binary RID array)
 ```
+
+After retrieving the keys, the engine reads their record values in a single pass and returns all detailed information belonging to the matching orders.
 
 While SQL engines traverse multiple tables, B-Trees, and relational joins; AmberDB resolves the query directly via precomputed inverted indexes, **eliminating redundant disk I/O and query-planning overhead**.
 

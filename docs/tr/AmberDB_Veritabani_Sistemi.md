@@ -98,8 +98,8 @@ SQL'de "101 numaralı ürünü içeren tüm siparişler hangileridir?" sorusunun
 Sipariş kaydında ürün listesi Blok 3'te bir ARRAY olarak tutulur. Şemada `match_block => [3]` tanımlandığında motor, `field_to_list` ile dizideki her ürün ID'sini ayrıştırarak `orders_3.fld` eşleştirme indeksine kaydeder.
 
 ```perl
-# 101 nolu ürünü içeren tüm sipariş ID'lerini getirme:
-my @siparis_idleri = $adb->field_fetch("orders", 3, 101);
+# 101 nolu ürünü içeren tüm sipariş bilgilerini getirme:
+my @siparisler = $adb->field_fetch("orders", 3, 101);
 ```
 
 Bu işlemde motor, `orders_3.fld` dosyasından **tek bir doğrudan anahtar erişimi (direct key lookup)** yaparak `101` anahtarının karşılığındaki tüm sipariş ID'lerini doğrudan (indeksli anahtar başına ortalama O(1) arama maliyetiyle) alır:
@@ -107,6 +107,8 @@ Bu işlemde motor, `orders_3.fld` dosyasından **tek bir doğrudan anahtar eriş
 # orders_3.fld dosyası içinde:
 # 101 => [ 1001, 1005, 1023 ] (Binary RID dizisi)
 ```
+
+Anahtarları aldıktan sonra anahtarların değerlerini tek seferde okuyarak ilgili siparişlere ait tüm bilgileri getirir.
 
 SQL motorları birden fazla tablo, B-Tree indeksi ve satır tararken; AmberDB **önceden türetilmiş tersine indeksleri** sayesinde gereksiz disk I/O ve sorgu planlama maliyetlerini (zero query planning overhead) ortadan kaldırarak aynı ilişkiyi doğrudan çözer.
 
