@@ -1,6 +1,7 @@
 Revision history for AmberDB
 
 5.21.0  2026-08-28
+        - Fixed schema cache poisoning in restore() and hardened dbase_info()/table_info() against caching empty parse results.
         - Standardized instance variable naming across codebase, test suites, and documentation to $adb (AmberDB Handle):
           * Introduced $adb->config() method supporting scalar get, defensive copy bulk get, and side-effect hook execution (locale reloading, path cache invalidation).
           * Introduced $adb->path() method for standardized path retrieval and modification across core modules and scripts.

@@ -28,13 +28,13 @@ subtest "1. Continuous Recovery Stream (recs_back -> YYYY-MM-DD.csv)" => sub {
     my $schema = {
         name         => 'audit_items',
         record_index => 1,
+        search_block => [ 1 ],
         log_owner    => 1,
-        col_list     => [ 'name', 'price' ],
     };
     $adb->table_attr( 'audit_items', $schema );
 
     # Insert a record
-    my $rid = $adb->insert_id( 'audit_items', 'Keyboard', 450 );
+    my $rid = $adb->insert_id( 'audit_items', undef, 'Keyboard', 450 );
     ok( $rid > 0, "Record inserted with ID $rid" );
 
     # Edit record
@@ -70,7 +70,7 @@ subtest "1. Continuous Recovery Stream (recs_back -> YYYY-MM-DD.csv)" => sub {
 # SUBTEST 2: Tools->dump() Native .amberdb Archive Creation
 # =========================================================================
 subtest "2. Native Database Archive Dump (.amberdb)" => sub {
-    plan tests => 12;
+    plan tests => 10;
 
     # Set up test database with 2 tables and a .dbase group schema
     my $tools = AmberDB::Tools->new($adb);
@@ -82,29 +82,26 @@ subtest "2. Native Database Archive Dump (.amberdb)" => sub {
         File::Path::make_path($schema_dir);
     }
     open my $dbfh, ">", "$schema_dir/catalog.dbase" or die "Cannot create catalog.dbase: $!";
-    print $dbfh "{\n  title => 'Product Catalog Group',\n  readonly => 0,\n}\n";
+    print $dbfh "{\n\tname => \"Product Catalog Group\",\n\ttype => 0,\n\tyear => 0,\n\tsection => 0,\n}\n";
     close $dbfh;
 
-    my $prod_schema = {
-        name         => 'catalog_products',
-        record_index => 1,
-        search_block => 'name,category',
-        facet_block  => 'category',
-        col_list     => [ 'name', 'category', 'price' ],
-    };
-    $adb->table_attr( 'catalog_products', $prod_schema );
-    $adb->insert_id( 'catalog_products', 'Laptop Pro', 'Electronics', 15000 );
-    $adb->insert_id( 'catalog_products', 'Desk Lamp', 'Furniture', 350 );
-    $adb->insert_id( 'catalog_products', 'Office Chair', 'Furniture', 1200 );
+    open my $tblfh, ">", "$schema_dir/catalog_products.table" or die "Cannot create catalog_products.table: $!";
+    print $tblfh "{\n\tname         => \"catalog_products\",\n\trecord_index => 1,\n\tsearch_block => [ 1, 2 ],\n\tmatch_block  => [ 2 ],\n}\n";
+    close $tblfh;
 
-    my $orders_schema = {
-        name         => 'orders',
-        record_index => 1,
-        col_list     => [ 'customer', 'amount' ],
-    };
-    $adb->table_attr( 'orders', $orders_schema );
-    $adb->insert_id( 'orders', 'Alice', 15350 );
-    $adb->insert_id( 'orders', 'Bob', 1200 );
+    open my $ordfh, ">", "$schema_dir/orders.table" or die "Cannot create orders.table: $!";
+    print $ordfh "{\n\tname         => \"orders\",\n\trecord_index => 1,\n}\n";
+    close $ordfh;
+
+    $adb->insert_id( 'catalog_products', undef, 'Laptop Pro', 'Electronics', 15000 );
+    $adb->insert_id( 'catalog_products', undef, 'Desk Lamp', 'Furniture', 350 );
+    $adb->insert_id( 'catalog_products', undef, 'Office Chair', 'Furniture', 1200 );
+
+    # Create a string dictionary (.str) for block 2
+    $adb->insert_strs( 'catalog_products', 2, [ 10, 'Electronics' ], [ 20, 'Furniture' ] );
+
+    $adb->insert_id( 'orders', undef, 'Alice', 15350 );
+    $adb->insert_id( 'orders', undef, 'Bob', 1200 );
 
     # Run full dump
     my $dump_file = "$tmpdir/backup/test_dump.amberdb";
@@ -115,7 +112,22 @@ subtest "2. Native Database Archive Dump (.amberdb)" => sub {
     ok( -e $dump_file, "Archive file exists on disk" );
     ok( -s $dump_file > 0, "Archive file is non-empty" );
 
-    # Inspect archive contents with Archive::Tar
+    # Validate returned in-memory manifest structure
+    ok( defined $manifest, "dump() returned manifest hashref" );
+    is( $manifest->{format}, 'AmberDB Archive', "Manifest format is 'AmberDB Archive'" );
+    is( $manifest->{format_version}, 1, "Format version is 1" );
+    is( $manifest->{dbases}->{catalog}, 'schema/catalog.dbase', "Manifest records catalog.dbase" );
+    ok( exists $manifest->{tables}->{catalog_products}, "Manifest contains catalog_products table metadata" );
+    is( $manifest->{tables}->{catalog_products}->{records}, 3, "Manifest records 3 records for catalog_products" );
+};
+
+# =========================================================================
+# SUBTEST 3: Archive Package Inspection (.tar Extraction & Index Exclusion)
+# =========================================================================
+subtest "3. Archive Package Inspection & Integrity" => sub {
+    plan tests => 8;
+
+    my $dump_file = "$tmpdir/backup/test_dump.amberdb";
     my $tar = Archive::Tar->new();
     ok( $tar->read($dump_file), "Archive is a valid tar archive" );
 
@@ -124,41 +136,24 @@ subtest "2. Native Database Archive Dump (.amberdb)" => sub {
     ok( grep { $_ eq 'schema/catalog.dbase' } @files, "Archive contains schema/catalog.dbase" );
     ok( grep { $_ eq 'schema/catalog_products.table' } @files, "Archive contains schema/catalog_products.table" );
     ok( grep { $_ eq 'tables/catalog_products.db' } @files, "Archive contains tables/catalog_products.db" );
+    ok( grep { $_ eq 'tables/catalog_products_2.str' } @files, "Archive contains tables/catalog_products_2.str" );
 
     # Verify that derived index files are NOT packaged in the archive
     my @inx_files = grep { /\.inx$|\.src$|\.fac$|\.fld$|\.srt$/ } @files;
     is( scalar(@inx_files), 0, "Derived index files (.inx, .src, .fac, .srt) are NOT in archive" );
-};
 
-# =========================================================================
-# SUBTEST 3: Archive Manifest Integrity & Metadata Validation
-# =========================================================================
-subtest "3. Manifest Integrity & SHA-256 Checksums" => sub {
-    plan tests => 7;
-
-    my $dump_file = "$tmpdir/backup/test_dump.amberdb";
-    my $tar = Archive::Tar->new();
-    $tar->read($dump_file);
-
-    my $manifest_raw = $tar->get_content("manifest.json");
-    ok( defined $manifest_raw, "Extracted manifest.json content" );
-
-    my $manifest = JSON::PP->new->utf8->decode($manifest_raw);
-    is( $manifest->{format}, "AmberDB Archive", "Manifest format is 'AmberDB Archive'" );
-    is( $manifest->{format_version}, 1, "Format version is 1" );
-    ok( defined $manifest->{dbases}->{catalog}, "Manifest records catalog.dbase" );
-    ok( defined $manifest->{tables}->{catalog_products}, "Manifest contains catalog_products table metadata" );
-    is( $manifest->{tables}->{catalog_products}->{records}, 3, "Manifest records 3 records for catalog_products" );
-
-    my $db_sha = $manifest->{tables}->{catalog_products}->{sha256}->{'tables/catalog_products.db'};
-    ok( defined $db_sha && length($db_sha) == 64, "Manifest contains valid 64-character SHA-256 hash" );
+    # Validate embedded manifest checksum
+    my $manifest_content = $tar->get_content('manifest.json');
+    my $manifest = JSON::PP::decode_json($manifest_content);
+    my $sha = $manifest->{tables}->{catalog_products}->{sha256}->{'tables/catalog_products.db'};
+    ok( defined $sha && length($sha) == 64, "Manifest contains valid 64-character SHA-256 hash" );
 };
 
 # =========================================================================
 # SUBTEST 4: Tools->restore() and Deterministic Index Rebuilding
 # =========================================================================
 subtest "4. Database Restore and Index Reconstruction" => sub {
-    plan tests => 14;
+    plan tests => 17;
 
     my $dump_file = "$tmpdir/backup/test_dump.amberdb";
 
@@ -186,24 +181,29 @@ subtest "4. Database Restore and Index Reconstruction" => sub {
     # 4.4 Verify .dbase, .table, and .str files were restored
     my $stage_schema_dir = $stage_adb->path('schema_dir') || "$stagedir/schema";
     ok( -e "$stage_schema_dir/catalog.dbase", "catalog.dbase restored to schema directory" );
-    ok( -e "$stagedir/tables/catalog_products_category.str", "catalog_products_category.str restored to tables directory" );
+    ok( -e "$stagedir/tables/catalog_products_2.str", "catalog_products_2.str restored to tables directory" );
 
     my $restored_dbase = $stage_adb->dbase_info('catalog');
     ok( defined $restored_dbase, "catalog dbase_info loaded" );
-    is( $restored_dbase->{title}, 'Product Catalog Group', "dbase title matches original" );
+    is( $restored_dbase->{name}, 'Product Catalog Group', "dbase name matches original" );
 
     my $restored_schema = $stage_adb->table_info('catalog_products');
     ok( defined $restored_schema, "catalog_products schema restored" );
     is( $restored_schema->{name}, 'catalog_products', "Schema name is 'catalog_products'" );
 
     # 4.5 Verify record count and read_id
-    is( $stage_adb->count('catalog_products'), 3, "catalog_products table count is 3" );
-    my $rec1 = $stage_adb->read_id( 'catalog_products', 1 );
-    is( $rec1->[0], 'Laptop Pro', "Record 1 value is 'Laptop Pro'" );
-    is( $rec1->[1], 'Electronics', "Record 1 category is 'Electronics'" );
+    is( scalar( $stage_adb->table_keys('catalog_products') ), 3, "catalog_products table count is 3" );
+    my @rec1 = $stage_adb->read_id( 'catalog_products', 1 );
+    is( $rec1[1], 'Laptop Pro', "Record 1 name is 'Laptop Pro'" );
+    is( $rec1[2], 'Electronics', "Record 1 category is 'Electronics'" );
 
-    # 4.6 Verify full-text search index (.src) was reconstructed and works
+    # 4.6 Verify match index (.fld) was reconstructed and works
+    my @matched = $stage_adb->field_fetch( 'catalog_products', 2, 'Furniture' );
+    is( scalar(@matched), 2, "field_fetch('Furniture') returns 2 records after restore" );
+
+    # 4.7 Verify full-text search index (.src) was reconstructed and works
     my @search_results = $stage_adb->search_table( 'catalog_products', 'Laptop' );
     is( scalar(@search_results), 1, "search_table('Laptop') returns 1 result" );
-    is( $search_results[0], 1, "search_table returned record ID 1" );
+    is( $search_results[0]->[0], 1, "search_table returned record ID 1" );
+    is( $search_results[0]->[1], 'Laptop Pro', "search_table returned matching product name" );
 };

@@ -10,11 +10,17 @@ requires 'File::Path';
 requires 'List::Util';
 requires 'Getopt::Long';
 requires 'parent';
+requires 'Archive::Tar';
+requires 'Digest::SHA';
+requires 'JSON::PP';
+requires 'Hash::Util';
 
 on 'test' => sub {
     requires 'Test::More', '0.98';
     requires 'File::Temp';
     requires 'FindBin';
+    requires 'Archive::Tar';
+    requires 'JSON::PP';
 };
 
 on 'develop' => sub {

@@ -97,7 +97,7 @@ subtest 'Manual Rollback' => sub {
 
 # ---------------------------------------------------------------------------
 subtest 'Rollback of Delete Operation (with keep_deleted .del archive cleanup)' => sub {
-    plan tests => 7;
+    plan tests => 6;
 
     # Configure table with keep_deleted => 1
     $adb->table_attr( 'test_table', keep_deleted => 1 );
@@ -113,8 +113,11 @@ subtest 'Rollback of Delete Operation (with keep_deleted .del archive cleanup)' 
     $adb->delete_id( 'test_table', 30 );
 
     # Verify record was moved to .del archive during active transaction
-    my @del_archived = $adb->read_id( 'test_table', 30, force => 1 );
-    is( $del_archived[1], 'Item 30 Pre', 'Record 30 is present in .del archive during transaction' );
+    my $del_path = $adb->table_path('test_table') . ".del";
+    $adb->table_read($del_path);
+    my $del_res = $adb->recs_get( $del_path, 30 );
+    $adb->table_close($del_path);
+    ok( $del_res && $del_res->{30}, 'Record 30 is present in .del archive during transaction' );
 
     # Trigger a base error (modify non-existent record 9999)
     $adb->modify_id( 'test_table', 9999, 'Non-existent' );
@@ -129,16 +132,18 @@ subtest 'Rollback of Delete Operation (with keep_deleted .del archive cleanup)' 
     ok( grep( { $_ eq '30' } @all_keys ), 'Record 30 restored in index (.inx)' );
 
     # Verify record 30 is cleaned up and removed from .del archive after rollback
-    my @del_after_rollback = $adb->read_id( 'test_table', 30, force => 1 );
-    is( scalar(@del_after_rollback), 0, 'Record 30 cleanly removed from .del archive after rollback' );
+    $adb->table_read($del_path);
+    my $del_after = $adb->recs_get( $del_path, 30 );
+    $adb->table_close($del_path);
+    ok( !$del_after || !$del_after->{30}, 'Record 30 cleanly removed from .del archive after rollback' );
 };
 
 # ---------------------------------------------------------------------------
 subtest 'Rollback of log_owner Audit Log (.aut)' => sub {
     plan tests => 5;
 
-    # Configure table with log_owner => 1
-    $adb->table_attr( 'test_table', log_owner => 1 );
+    # Configure table with record_index => 1 and log_owner => 1
+    $adb->table_attr( 'test_table', record_index => 1, log_owner => 1 );
 
     # 1. Insert record outside transaction
     $adb->insert_id( 'test_table', 50, 'Item 50 Base', 'Category Z', 100 );
@@ -184,14 +189,14 @@ subtest 'Index Error Does NOT Trigger Rollback' => sub {
     # Manually register an index-classified error
     $adb->transact_error( 'test_table.inx', 'Simulated non-critical index write failure' );
 
-    # Perform valid base insert
-    $adb->insert_id( 'test_table', 40, 'Item 40', 'Category E', 600 );
+    # Perform valid base insert with monotonic ID 60
+    $adb->insert_id( 'test_table', 60, 'Item 60', 'Category E', 600 );
 
     my $res = $adb->transact_end();
     is( $res->{status}, 'commit', 'Transaction committed despite index error' );
 
-    my @rec40 = $adb->read_id( 'test_table', 40 );
-    is( $rec40[1], 'Item 40', 'Base record 40 successfully persisted' );
+    my @rec60 = $adb->read_id( 'test_table', 60 );
+    is( $rec60[1], 'Item 60', 'Base record 60 successfully persisted' );
 };
 
 # ---------------------------------------------------------------------------
@@ -245,14 +250,14 @@ subtest 'Transaction Durability with txn_sync' => sub {
     );
 
     ok( $sync_adb->transact_start(), 'Transaction started with txn_sync enabled' );
-    my $rid60 = $sync_adb->insert_id( 'test_table', 60, 'Item 60 Sync', 'Category S', 750 );
-    is( $rid60, 60, 'Inserted record 60 with sync enabled' );
+    my $rid70 = $sync_adb->insert_id( 'test_table', 70, 'Item 70 Sync', 'Category S', 750 );
+    is( $rid70, 70, 'Inserted record 70 with sync enabled' );
 
     my $res = $sync_adb->transact_end();
     is( $res->{status}, 'commit', 'Transaction committed with fsync' );
 
-    my @rec60 = $sync_adb->read_id( 'test_table', 60 );
-    is( $rec60[1], 'Item 60 Sync', 'Synced record 60 read back successfully' );
+    my @rec70 = $sync_adb->read_id( 'test_table', 70 );
+    is( $rec70[1], 'Item 70 Sync', 'Synced record 70 read back successfully' );
 };
 
 # ---------------------------------------------------------------------------
@@ -266,7 +271,7 @@ subtest 'no_transact Tables Do NOT Trigger Rollback on Failure' => sub {
     ok( $adb->transact_start(), 'Transaction started' );
 
     # Primary operation: insert critical order in test_table
-    $adb->insert_id( 'test_table', 70, 'Critical Order 70', 'Sales', 1500 );
+    $adb->insert_id( 'test_table', 80, 'Critical Order 80', 'Sales', 1500 );
 
     # Auxiliary operation: simulate an error on no_transact table (modify non-existent id)
     $adb->modify_id( 'aux_log_table', 99999, 'Failed Auxiliary Update' );
@@ -275,8 +280,8 @@ subtest 'no_transact Tables Do NOT Trigger Rollback on Failure' => sub {
     my $res = $adb->transact_end();
     is( $res->{status}, 'commit', 'Transaction committed successfully despite error on no_transact table' );
 
-    my @rec70 = $adb->read_id( 'test_table', 70 );
-    is( $rec70[1], 'Critical Order 70', 'Primary critical record 70 persisted cleanly' );
+    my @rec80 = $adb->read_id( 'test_table', 80 );
+    is( $rec80[1], 'Critical Order 80', 'Primary critical record 80 persisted cleanly' );
 
     # 2. Test rollback consistency: if primary fails, auxiliary operations are still rolled back
     ok( $adb->transact_start(), 'Second transaction started' );

@@ -72,7 +72,7 @@ sub transact_start {
     # Recover orphaned transactions from previous crashes
     $self->transact_recover();
 
-    my $txn_dir = ( $self->path('dbase_dir') || "." ) . "/txn";
+    my $txn_dir = $self->path('txn_dir') || ( ( $self->path('dbase_dir') || "." ) . "/txn" );
 
     our $TXN_SEQ;
     $TXN_SEQ = 0 unless defined $TXN_SEQ;

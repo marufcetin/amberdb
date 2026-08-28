@@ -292,7 +292,8 @@ sub dbase_info {
     return unless $arg;
     my ( $dbase, $dbase_path ) = $self->schema_arg( $arg, "dbase" );
 
-    return $self->{_dbase}->{$dbase} if $self->{_dbase}->{$dbase};
+    return $self->{_dbase}->{$dbase}
+        if $self->{_dbase}->{$dbase} && %{ $self->{_dbase}->{$dbase} };
 
     my $cache_schema = ( $self->can('cache_schema_dir') ) ? $self->cache_schema_dir() : undef;
     my $target_path  = $dbase_path;
@@ -314,7 +315,6 @@ sub dbase_info {
             if ($@) {
                 cluck "[AMBERDB_SCHEMA] Syntax error in dbase schema file '$target_path': $@\n";
             }
-            $self->{_dbase}->{$dbase} = {};
         }
     }
 
@@ -337,8 +337,6 @@ sub table_info {
         if $self->{_table}->{$table} && %{ $self->{_table}->{$table} };
 
     return {} if $self->config('simple');
-
-    $self->{_table}->{$table} = {};
 
     my $cache_schema = ( $self->can('cache_schema_dir') ) ? $self->cache_schema_dir() : undef;
     my $target_path  = $table_path;
@@ -691,13 +689,14 @@ sub set_datadir {
     # declarations
     my @dirs = qw(
       dbase_dir table_dir schema_dir backup_dir
-      cache_dir lock_dir buffer_dir
+      cache_dir lock_dir buffer_dir txn_dir
     );
     foreach my $dir (@dirs) {
         $self->{_path}->{$dir} //= "";
     }
 
     $self->{_path}->{dbase_dir}  = $dbase_dir;
+    $self->{_path}->{txn_dir}    ||= "$dbase_dir/txn";
 
     # db_ext tanımlı ve "db" değil ise simple moduna al
     if ( defined $self->config('db_ext') && $self->config('db_ext') ne "db" ) {
@@ -705,7 +704,13 @@ sub set_datadir {
     }
 
     # do not proceed if DATADIR directory does not exist
-    return 1 if ( $self->config('simple') );
+    if ( $self->config('simple') ) {
+        if ( $self->dir_exist($dbase_dir) && !$self->dir_exist($self->{_path}->{txn_dir}) ) {
+            require File::Path;
+            eval { File::Path::make_path($self->{_path}->{txn_dir}) };
+        }
+        return 1;
+    }
 
     # return table if simple
     $self->{_path}->{backup_dir} ||= "$dbase_dir/backup";
@@ -727,7 +732,7 @@ sub set_datadir {
         $self->{_path}->{lock_dir},
         "$self->{_path}->{cache_dir}/tables",
         "$self->{_path}->{cache_dir}/schema",
-        "$self->{_path}->{dbase_dir}/txn",
+        $self->{_path}->{txn_dir},
     ) {
         if ( defined $dir && length($dir) && !$self->dir_exist($dir) ) {
             eval { File::Path::make_path($dir) };

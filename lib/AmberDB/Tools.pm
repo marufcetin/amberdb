@@ -899,7 +899,7 @@ sub all_tables {
 
         # Auto-discover any 4-digit year directories under $dbase_dir (e.g. 2024, 2025, 2026)
         if ( -d $dbase_dir ) {
-            opendir my $dh, $dbase_dir;
+            opendir( my $dh, $dbase_dir );
             my @year_candidates = grep { /^\d{4}$/ && -d "$dbase_dir/$_" && !$seen_dirs{$_} } readdir($dh);
             closedir $dh;
 
@@ -1300,7 +1300,7 @@ sub dump {
 
     # Collect .dbase database group schemas
     if ( -d $schema_dir ) {
-        opendir my $sdh, $schema_dir;
+        opendir( my $sdh, $schema_dir );
         my @dbase_files = grep { /\.dbase$/i } readdir($sdh);
         closedir $sdh;
 
@@ -1355,7 +1355,7 @@ sub dump {
         }
 
         # B. Count records from .db table safely
-        my $count = $adb->count($tid) // 0;
+        my $count = scalar( $adb->table_keys($tid) ) || 0;
         $table_manifest->{records} = $count;
 
         # C. Collect data files (.db, .del, .aut, .cnt)
@@ -1482,12 +1482,15 @@ sub restore {
 
     my $force = $opts{force} || $opts{overwrite};
     unless ($force) {
-        # Check if existing schema or data files exist
+        # Check if existing schema or data files exist.
+        # NOTE: Avoid calling table_path() here because it triggers
+        # table_info() -> dbase_info() which caches empty hashes for
+        # schemas that don't exist yet on the target, poisoning the
+        # cache for the rest of the restore operation.
         my $has_existing = 0;
+        my $db_ext = $adb->{db_ext} || "db";
         foreach my $tid ( keys %{ $manifest->{tables} || {} } ) {
-            my $tpath = $adb->table_path($tid);
-            my $db_file = "$tpath." . ( $adb->{db_ext} || "db" );
-            if ( -e $db_file || -e "$schema_dir/$tid.table" ) {
+            if ( -e "$table_dir/$tid.$db_ext" || -e "$schema_dir/$tid.table" ) {
                 $has_existing = 1;
                 last;
             }

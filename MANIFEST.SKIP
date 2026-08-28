@@ -14,7 +14,10 @@
 \.\#.*
 \b\.vscode\b
 \b\.idea\b
-\bamber\.code-workspace\b
+\.code-workspace$
+\blogs\b
+\.log$
+^bin/run_tests\.pl$
 \b\.DS_Store\b
 \bThumbs\.db\b
 \bDesktop\.ini\b
