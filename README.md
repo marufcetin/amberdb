@@ -24,7 +24,7 @@
   - **Pillar 1 (Continuous Recovery Stream):** Automatic append-only audit stream in `backup/YYYY/YYYY-MM-DD.csv` capturing every `insert`, `modify`, and `delete`.
   - **Pillar 2 (Native Portable Archive):** Compressed, portable `.amberdb` archives containing schemas (`schema/*.table`, `schema/*.dbase`) and authoritative data files (`tables/*.db`, `tables/*.del`, `tables/*.aut`, `tables/*.cnt`, `tables/*_*.str`) with SHA-256 integrity verification. Derived indexes are excluded to save space and reconstructed deterministically on restore.
 - 🔒 **Multi-Granularity Concurrency Control**: Non-blocking shared reads and exclusive writes at both table-level and individual record-level using OS-native `flock`.
-- 🌐 **Multilingual Locale Engine**: Out-of-the-box support for 10 languages (`en`, `tr`, `de`, `fr`, `es`, `ja`, `ru`, `ar`, `az`) with language-specific case folding (e.g. Turkish `ı/I` and `i/İ`), collation, currency, and date formatting.
+- 🌐 **Multilingual Locale Engine**: Out-of-the-box support for 9 languages (`en`, `tr`, `de`, `fr`, `es`, `ja`, `ru`, `ar`, `az`) with language-specific case folding (e.g. Turkish `ı/I` and `i/İ`), collation, currency, and date formatting.
 - 🚀 **High-Throughput 2-Phase Batch Operations**: High-performance batch ingestion pipeline (`insert_list`, `modify_list`, `delete_list`) opens master `.db` once for batch writing and executes single-pass index merging (`.inx`, `.src`, `.fld`, `.fac`, `.srt`), delivering 50x-100x faster ETL data imports without per-record locking overhead.
 - ⚡ **RAM-Disk Acceleration**: Integrated CLI tools and automation for mounting `tmpfs` (Linux) or `ImDisk` (Windows) for sub-microsecond in-memory table access.
 

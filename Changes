@@ -41,6 +41,6 @@ Revision history for AmberDB
         - Multi-dimensional Columnar Facet indexing (.fac) with high-efficiency bitsets.
         - Undo-journal transaction engine (transact_start, transact_end, transact_rollback) with automatic LIFO rollback.
         - Multi-granularity concurrency control (table-level and record-level flock).
-        - Multilingual locale engine supporting 10 languages (en, tr, de, fr, es, ja, ru, ar, az) with Turkish dotless/dotted 'i' rules, case folding, and number/currency formatting.
+        - Multilingual locale engine supporting 9 languages (en, tr, de, fr, es, ja, ru, ar, az) with Turkish dotless/dotted 'i' rules, case folding, and number/currency formatting.
         - Cross-platform RAM-Disk helper and binary index converter CLI tools.
         - Comprehensive test suite covering 37 test suites.
