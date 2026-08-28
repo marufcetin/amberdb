@@ -12,7 +12,7 @@
 2. [AmberDB Neden Kullanılmalıdır? (SQL ve SQLite ile Karşılaştırma)](#2-amberdb-neden-kullanılmalıdır-sql-ve-sqlite-ile-karşılaştırma)
 3. [Sınırlar ve Çekişmeli Konular (Fiziksel Kısıtlar vs. Bilinçli Mimari Tercihler)](#3-sınırlar-ve-çekişmeli-konular-fiziksel-kısıtlar-vs-bilinçli-mimari-tercihler)
 4. [Hızlı Başlangıç](#4-hızlı-başlangıç)
-5. [CRUD İşlemleri (Temel Veri Yönetimi)](#5-crud-işlemleri-temel-veri-yönetimi)
+5. [CRUD ve Yüksek Başarımlı Toplu (Batch) İşlemler](#5-crud-işlemleri-temel-veri-yönetimi)
 6. [Okuma, Filtreleme ve Sıralama](#6-okuma-filtreleme-ve-sıralama)
 7. [İndeksleme ve Arama Mekanizması](#7-indeksleme-ve-arama-mekanizması)
 8. [İşlem Güvenliği ve Kurtarma (Transactions)](#8-işlem-güvenliği-ve-kurtarma-transactions)
@@ -37,7 +37,7 @@
 
 ## 1. AmberDB Nedir?
 
-`AmberDB`, Perl için geliştirilmiş; **şema güdümlü (schema-driven), döküman merkezli (document-oriented), deterministik ikincil indekslemeye (deterministic secondary indexing), ACID uyumlu işlem (transaction) motoruna ve Strict 2PL kilit desteğine sahip** gömülü (embedded) bir veritabanı motorudur.
+`AmberDB`, Perl için geliştirilmiş; **Berkeley DB (`DB_File`) üzerinde çalışan, şema güdümlü (schema-driven), önceden hesaplanmış ters indekslemeye (precomputed inverted indexing), ACID uyumlu işlem (transaction) motoruna ve Strict 2PL kilit desteğine sahip** yüksek başarımlı bir NoSQL veritabanı motorudur.
 
 Geliştirici açısından AmberDB, harici bir veritabanı sunucusu kurulumu ve bakımı gerektirmeyen; tek bir satır CRUD çağrısıyla tüm ilişkili arama, eşleştirme, facet filtreleme, sıralama ve SEO bağlantılarını senkronize eden bütünleşik bir veri katmanıdır.
 
@@ -355,11 +355,89 @@ if (@kayit) {
 }
 ```
 
+### 5.5 Yüksek Başarımlı Toplu (Batch) İşlemler (Batch ETL & Ingestion)
+
+AmberDB, harici veri kaynaklarından (CSV, JSON, XML, REST API) binlerce veya yüzbinlerce kaydın içeri aktarımı (ETL) ve toplu güncellenmesi için özel **2-Fazlı Batch İşlem Boru Hattı (2-Phase Batch Pipeline)** sunar.
+
+#### Neden Döngü İçinde `insert_id` Yerine `insert_list` Kullanılmalıdır?
+
+Tekil `insert_id`, her çağrıda işletim sistemi seviyesinde dosya açma (`open/tie`), kilit edinme (`flock`), sekans artırma ve ikincil indeksleri (`.inx`, `.src`, `.fld`, `.fac`, `.srt`) tek tek güncelleme adımlarını yürütür. $N$ adet kayıt için bu işlem $O(N \times K)$ dosya I/O ve sistem çağrısına neden olur.
+
+`insert_list` ise süreci 2 faza ayırarak I/O maliyetini $O(K)$ seviyesine indirir:
+1. **Faz 1 (Tek I/O ile Toplu DB Yazımı):** `.db` veri tablosu yalnızca **1 kez** açılır (`table_write`). Tüm kayıtların otomatik ID'leri topluca atanır (`table_autoid`), alan tekrarları ve şema doğrulamaları yapılır ve tüm batch tek bir disk yazma penceresinde Berkeley DB'ye eklenir (`recs_put`).
+2. **Faz 2 (Tek Seferde Toplu İndeks Derleme):** Her bir ikincil indeks dosyası (`.inx`, `.src`, `.fld`, `.fac`, `.srt` ve junk tier) yalnızca **1 kez** açılarak tüm batch'e ait ikili indeks blokları tek geçişte (`batch merge`) işlenir (`records_add`, `search_add`, `match_add`, `facet_add`, `sort_add`).
+
+> [!TIP]
+> 10.000 kayıtlık bir veri setinde `insert_list`, tekil `insert_id` döngüsüne kıyasla **50 ila 100 kat daha hızlı** tamamlanır.
+
+#### 1. Toplu Kayıt Ekleme (`insert_list`)
+
+```perl
+# Kayıt dizisi: Her eleman bir kayıt sütun dizisidir. 
+# Otomatik ID için 0 veya undef verilir.
+my @yeni_urunler = (
+    [ 0, "5",    "3", "Kablosuz Kulaklık", "149.90", "2026-08-28", "1" ],
+    [ 0, "5,12", "8", "Mekanik Klavye",    "299.00", "2026-08-28", "1" ],
+    [ 0, "12",   "3", "Oyuncu Faresi",     "89.50",  "2026-08-28", "1" ],
+    # ... yüzlerce kayıt ...
+);
+
+my $statu = $adb->insert_list("catalog_product", @yeni_urunler);
+# $statu hashref döner: { 101 => 1, 102 => 1, 103 => 1, ... }
+```
+
+#### 2. Toplu Kayıt Güncelleme (`modify_list`)
+
+```perl
+my @guncellemeler = (
+    [ 101, "5",    "3", "Kablosuz Kulaklık Pro", "179.90", "2026-08-28", "1" ],
+    [ 102, "5,12", "8", "Mekanik Klavye RGB",    "329.00", "2026-08-28", "1" ],
+);
+
+my $statu = $adb->modify_list("catalog_product", @guncellemeler);
+```
+
+#### 3. Toplu Kayıt Silme (`delete_list`)
+
+```perl
+# Silinecek ID'ler doğrudan liste veya dizi referansı olarak verilebilir
+my $statu = $adb->delete_list("catalog_product", 101, 102, 103);
+# veya:
+# $adb->delete_list("catalog_product", [101, 102, 103]);
+```
+
+#### 4. Büyük Veri Yüklemelerinde (ETL) Chunk (Dilimleme) Stratejisi
+
+Çok büyük veri setlerinde (örn. 50.000+ kayıt), RAM tüketimini optimize etmek ve disk buffer'ını rahatlatmak için verileri 500-1000'lik parçalara bölerek aktarmak en iyi pratiktir:
+
+```perl
+my $chunk_size = 1000;
+for (my $i = 0; $i < @buyuk_veri; $i += $chunk_size) {
+    my $end = $i + $chunk_size - 1;
+    $end = $#buyuk_veri if $end > $#buyuk_veri;
+    my @chunk = @buyuk_veri[$i .. $end];
+    $adb->insert_list("catalog_product", @chunk);
+}
+```
+
 ---
 
 ## 6. Okuma, Filtreleme ve Sıralama
 
 AmberDB, kayıtları hızlıca listelemek, belirli bloklara göre filtrelemek ve sıralamak için zengin fonksiyonlar sunar.
+
+> [!CRITICAL]
+> **DÖNEN SONUÇ İMZASI (RETURN SIGNATURE) VE SAYFALAMA KURALI:**
+> `read_all`, `field_fetch` ve `search_table` metotlarında `$limit` parametresinin kullanımı dönen listenin biçimini kökten değiştirir:
+> 1. **Limitsiz Çağrılar (`$limit == 0` veya belirtilmemiş):** Doğrudan kayıt referansları dizisini döner:  
+>    `my @kayitlar = $adb->read_all("catalog_product");`  
+>    *(Burada `@kayitlar` dizisinin her elemanı doğrudan bir kayıt dizi referansıdır: `$kayitlar[0]->[1]`)*
+> 2. **Sayfalı Çağrılar (`$limit > 0` örn. `0, 20` veya `start => 0, limit => 20`):** Listenin **ilk elemanı toplam eşleşen kayıt sayısı tamsayısıdır (`$toplam_kayit`)**, sonraki elemanlar sayfalanmış kayıtlardır:  
+>    `my ($toplam_kayit, @sayfalanmis_kayitlar) = $adb->read_all("catalog_product", 0, 20);`
+>
+> ⚠️ **ÖLÜMCÜL HATA (FATAL CRASH) UYARISI:**  
+> Eğer limit verdiğiniz halde sonucu tekil bir diziye atarsanız (`my @kayitlar = $adb->read_all("catalog_product", 0, 20);`), dizinin ilk elemanı `$kayitlar[0]` kayıt referansı değil **toplam sayı tamsayısı** (örn. `45`) olur. Bu durumda `$kayitlar[0]->[1]` veya `$kayitlar[0][1]` erişimi yapıldığında Perl **`Can't use string ("45") as an ARRAY ref while "strict refs" in use`** şeklinde **fatal hata** vererek programı sonlandırır!  
+> **Kural:** `$limit` değeri `> 0` olan tüm sorgularda dönen değeri mutlaka `my ($toplam, @kayitlar)` şeklinde karşılayınız.
 
 ### 6.1 `read_all` — Tablodaki Tüm Kayıtları Okuma ve Sayfalama
 
@@ -367,21 +445,37 @@ AmberDB, kayıtları hızlıca listelemek, belirli bloklara göre filtrelemek ve
 # 1. Tüm kayıtları varsayılan sırada (en son eklenen ilk - Azalan ID) getirme
 my @tum_kayitlar = $adb->read_all("catalog_product");
 
-# 2. Sayfalama ile okuma (İlk 20 kayıt)
-my ($toplam, @sayfa1) = $adb->read_all("catalog_product", 0, 20);
+# 2. Limitsiz Ek Seçenekler (start: 0, limit: 0 verilir, doğrudan @kayitlar / @idlar döner)
+# 2.1 Yalnızca Kayıt ID'lerini alma (Bellek tasarruflu hızlı ID listesi — keys_only)
+my @tum_idlar        = $adb->read_all("catalog_product", 0, 0, keys_only => 1);
+
+# 2.2 Sadece Aktif veya Katmanlı (Junk) kayıtları getirme (jnktype => 'A' | 'B' | 'AB')
+my @sadece_aktifler  = $adb->read_all("catalog_product", 0, 0, jnktype => 'A');
+my @aktif_ve_arsiv   = $adb->read_all("catalog_product", 0, 0, jnktype => 'AB');
+
+# 2.3 İndeks atlayarak doğrudan disk taraması (no_index)
+my @ham_kayitlar     = $adb->read_all("catalog_product", 0, 0, no_index => 1);
+
+# 2.4 Limitsiz sıralı getirme (sort => 10 [azalan] veya sort => -10 [artan])
+my @tum_artan_fiyat  = $adb->read_all("catalog_product", 0, 0, sort => -10); # Ucuzdan pahalıya
+my @tum_azalan_fiyat = $adb->read_all("catalog_product", 0, 0, sort => 10);  # Pahalıdan ucuza
+my @tum_alfabetik    = $adb->read_all("catalog_product", 0, 0, sort => { blk => 4, reverse => 1 });
+
+# 3. Sayfalama ile Okuma (Limit > 0 olduğu için daima ($toplam, @sayfa) döner)
+# 3.1 İlk 20 kayıt
+my ($toplam, @sayfa1)     = $adb->read_all("catalog_product", 0, 20);
 print "Toplam kayıt: $toplam, Bu sayfadaki kayıt: " . scalar(@sayfa1) . "\n";
 
-# 3. Blok 4'e (Ürün Adı) göre alfabetik artan sırada okuma
-my ($toplam, @alfabetik) = $adb->read_all("catalog_product", 0, 20, sort => { blk => 4, reverse => 1 });
+# 3.2 Sayfalı ID listesi (keys_only)
+my ($toplam, @sayfa_idlar)= $adb->read_all("catalog_product", 0, 50, keys_only => 1);
 
-# 4. Blok 10'a (Fiyat) göre azalan (pahalıdan ucuza) sıralama (Kısa Sözdizimi)
+# 3.3 Sayfalı ve sıralı okuma
+my ($toplam, @alfabetik)  = $adb->read_all("catalog_product", 0, 20, sort => { blk => 4, reverse => 1 });
 my ($toplam, @pahali_ilk) = $adb->read_all("catalog_product", 0, 10, sort => 10);
+my ($toplam, @ucuz_ilk)   = $adb->read_all("catalog_product", 0, 10, sort => -10);
 
-# 5. Blok 10'a (Fiyat) göre artan (ucuzdan pahalıya) sıralama (Negatif Kısa Sözdizimi)
-my ($toplam, @ucuz_ilk) = $adb->read_all("catalog_product", 0, 10, sort => -10);
-
-# 6. Sadece Kayıt ID'lerini alma (Bellek tasarrufu için)
-my ($toplam, @id_listesi) = $adb->read_all("catalog_product", 0, 50, keys_only => 1);
+# 3.4 Sayfalı ve katmanlı (Aktif + Arşiv) okuma
+my ($toplam, @katmanli)   = $adb->read_all("catalog_product", 0, 20, jnktype => 'AB');
 ```
 
 ### 6.2 `field_fetch` — Blok Eşleştirme İndeksi (.fld) ve Çoklu Değer Araması
@@ -1728,7 +1822,7 @@ dbstore/
 1. **Toplu Veri Girişinde `insert_list` Kullanın:** Yüzlerce kaydı tek tek döngüde `insert_id` ile eklemek yerine tek seferde `insert_list` ile ekleyin; disk I/O ve indeksleme süresi 10 kat hızlanacaktır.
 2. **Kritik İş Mantıklarında `transact_start` Kullanın:** Stok düşme, bakiye güncelleme ve sipariş onaylama gibi adımları mutlaka transaction bloğu içine alın.
 3. **Şemalarda Gereksiz Blokları İndekslemeyin:** Yalnızca filtrelenecek alanları `match_block`, aranacak alanları `search_block` olarak tanımlayın.
-4. **Büyük Tablolarda Sayfalama Kullanın:** Arayüz listelemelerinde `read_all` veya `field_fetch` çağrılarına mutlaka `$start` ve `$limit` parametrelerini verin.
+4. **Sayfalama Dönen Değer İmzasını Doğru Karşılayın:** `read_all`, `field_fetch` ve `search_table` metotlarında `$limit > 0` verildiğinde dönen listenin ilk elemanının `$toplam` tamsayısı olduğunu unutmayın. Asla `my @kayitlar = $adb->read_all(..., 0, 20)` şeklinde tek diziye almayın (fatal crash verir); mutlaka `my ($toplam, @kayitlar)` şeklinde ilk elemanı toplam sayı olarak karşılayın.
 5. **Kayıt ID Tipi Seçimi:** Standart tablolar için `id_type => "num"` (sayısal) tercih edin; hem daha az yer kaplar hem de ikili sabit boyutlu ofsetler üzerinde en yüksek dilimleme hızını sunar.
 
 ---

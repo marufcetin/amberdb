@@ -1,3 +1,4 @@
+bin/amberdb_backup.pl
 bin/convert_dbstore.pl
 bin/setup_ramdisk.bat
 bin/setup_ramdisk.pl
@@ -51,6 +52,7 @@ t/amberdb-locale_08_word_normalization.t
 t/amberdb.t
 t/amberdb_array.t
 t/amberdb_array_sort.t
+t/amberdb_backup.t
 t/amberdb_cache.t
 t/amberdb_date.t
 t/amberdb_ecommerce_facet.t

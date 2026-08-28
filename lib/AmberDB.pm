@@ -3246,7 +3246,7 @@ __END__
 
 =head1 NAME
 
-AmberDB - High-performance Berkeley DB (DB_File) based pure Perl database engine
+AmberDB - High-performance, schema-driven NoSQL engine with ACID transactions and precomputed inverted indexing for Perl
 
 =head1 SYNOPSIS
 
@@ -3512,31 +3512,33 @@ Reads single record by primary key ID.
 
 =head2 read_all($table_id, [$start], [$limit], [%options])
 
-Reads active records from table. Supports pagination, binary index optimization (C<.inx>, C<.srt>), sorting, and C<keys_only>:
+Reads active records from table. Supports pagination, binary index optimization (C<.inx>, C<.srt>), sorting, and C<keys_only>.
 
-    # Default sort (newest ID first)
+B<IMPORTANT (Return Signature Convention):>
+When C<$limit> is passed and C<E<gt> 0> (paginated), C<read_all> returns C<($total_count, @records)> where the first scalar is the total matching count integer. When C<$limit> is omitted or C<0> (unpaginated), it returns C<@records> directly. Unpacking a paginated query into C<my @records> causes C<$records[0]> to be an integer scalar, which will crash if dereferenced as an array reference.
+
+    # 1. Unpaginated (returns array of record arrayrefs directly)
     my @records = $adb->read_all("catalog_product");
 
-    # Sort by block 2 (default: descending / highest first)
-    my @records = $adb->read_all("catalog_product", sort => { blk => 2 });
-    my @records = $adb->read_all("catalog_product", sort => 2);
+    # 1.1 Unpaginated with sorting / options (pass 0, 0 for start and limit)
+    my @sorted_desc = $adb->read_all("catalog_product", 0, 0, sort => 2);
+    my @sorted_asc  = $adb->read_all("catalog_product", 0, 0, sort => -2);
+    my @sorted_full = $adb->read_all("catalog_product", 0, 0, sort => { blk => 2, reverse => 1 });
 
-    # Sort by block 2 reversed (ascending / lowest first)
-    my @records = $adb->read_all("catalog_product", sort => { blk => 2, reverse => 1 });
-    my @records = $adb->read_all("catalog_product", sort => -2);
+    # 2. Paginated (limit > 0: first element is total matching count integer)
+    my ($total_count, @page_records) = $adb->read_all("catalog_product", 0, 20);
+    my ($total_count, @page_records) = $adb->read_all("catalog_product", start => 0, limit => 20);
 
-    # Natural primary key reverse (oldest first: 1..N)
-    my @records = $adb->read_all("catalog_product", sort => { reverse => 1 });
+    # 2.1 Paginated with sorting
+    my ($total_count, @records) = $adb->read_all("catalog_product", 0, 20, sort => 2);
+    my ($total_count, @records) = $adb->read_all("catalog_product", 0, 20, sort => -2);
+    my ($total_count, @records) = $adb->read_all("catalog_product", 0, 20, sort => { blk => 2, reverse => 1 });
+    my ($total_count, @records) = $adb->read_all("catalog_product", 0, 20, sort => { reverse => 1 });
 
 Tiered query mode: 'A' (Active only), 'B' (Junk only), 'AB' (Active first, then Junk)
 
     my @active_only = $adb->read_all("catalog_product", jnktype => 'A');
-    my @all_tiered  = $adb->read_all("catalog_product", jnktype => 'AB');
-
-Paginated with sorting
-
-    my ($count, @records) = $adb->read_all("catalog_product", 0, 20);
-    my ($count, @records) = $adb->read_all("catalog_product", 0, 20, sort => -2);
+    my ($total_count, @all_tiered) = $adb->read_all("catalog_product", 0, 20, jnktype => 'AB');
 
 Return only scalar record IDs (memory-efficient pipeline)
 
@@ -3562,50 +3564,49 @@ Reads multiple records matching provided ID list while preserving exact list ord
 
 =head2 field_fetch($table_id, $block, $value, [$start], [$limit], [%options])
 
-Fetches records matching one or more block values using the C<.fld> match index (or sequential table scan fallback if unindexed). Supports multi-value queries, automatic deduplication, sorting, pagination, and C<keys_only>:
+Fetches records matching one or more block values using the C<.fld> match index (or sequential table scan fallback if unindexed). Supports multi-value queries, automatic deduplication, sorting, pagination, and C<keys_only>.
 
-Let's say the first block in the products table is categories. Category ID 5 is "General Literature". We are retrieving products from the General Literature category.
+B<IMPORTANT (Return Signature Convention):>
+When C<$limit> is passed and C<E<gt> 0> (paginated), C<field_fetch> returns C<($total_count, @records)> where the first scalar is the total matching count integer. When C<$limit> is omitted or C<0> (unpaginated), it returns C<@records> directly. Unpacking a paginated query into C<my @records> causes C<$records[0]> to be an integer scalar, which will crash if dereferenced as an array reference.
 
+    # 1. Unpaginated (returns array of record arrayrefs directly)
     my @records = $adb->field_fetch("products", 1, "5");
+    my @sorted_asc = $adb->field_fetch("products", 1, "5", 0, 0, sort => -10);
 
-Multi-value matching (comma string, semicolon, or ARRAY ref)
-Category 5 is "General Literature" or Category 8 is "World Classics"
-
-    my @records = $adb->field_fetch("products", 1, ["5", "8"]);
-    my @records = $adb->field_fetch("products", 1, "5, 8");
-
-Paginated with sorting
-Attention: If the $limit parameter is given, it will return the $total_count value at the beginning.
-
+    # 2. Paginated (first element is total matching count integer)
     my ($total_count, @records) = $adb->field_fetch(
         "products", 1, "5",
         0, 20,
         sort => { blk => 10, reverse => 1 }  # Or shorthand: sort => -10 (ascending)
     );
 
-Return only record IDs: keys_only flag
+    # Multi-value matching (comma string, semicolon, or ARRAY ref)
+    my @records = $adb->field_fetch("products", 1, ["5", "8"]);
+    my @records = $adb->field_fetch("products", 1, "5, 8");
 
+    # Return only record IDs: keys_only flag
     my @all_ids             = $adb->field_fetch("products", 1, "5", keys_only => 1);
     my ($total_count, @ids) = $adb->field_fetch("products", 1, "5", 0, 20, keys_only => 1);
 
-If the `use_junk` flag is enabled in the table schema and the `junk_rules` rules are active, records that violate these rules will be indexed as junk by the search engine. If you send the `jnkmode => A|AB|B|BA` parameter to `field_fetch`, the matching order will be created accordingly: A: Active records, B: Junk records.
-
+    # Tiered Junk query mode
     my @active = $adb->field_fetch("products", 1, "5", jnkmode => 'A'); # Only Active records
 
 C<field_fetch> uses the C<match_block> definition in the schema and accesses inverted match index files (C<.fld>), providing $O(1)$ average-time lookup per indexed key (total retrieval cost scales with the number of requested values and matching record IDs). If C<match_block> is not defined or if running in simple mode, C<field_fetch> falls back to a sequential table scan.
 
 =head2 search_table($table_id, $query, [$start], [$limit], [$mode], [%options])
 
-It performs searches matching query terms using the full-text C<.src> index (or a sorted table scan backup method if unindexed). C<search_table> uses the C<AmberDB::Locale> module. It features advanced language normalization according to the selected language (apostrophe stop words, accent normalization, phonetic silencing as in Turkish C<b/d/g -E<gt> p/t/k>, circumflex vowels C<â/î/û>), block filtering, for example, filtering the search by a fixed category such as General Literature, layer mode selection (C<jnktype =E<gt> 'A' | 'AB' | 'B' | 'BA'>), sorting, pagination, and C<keys_only> features.
+It performs searches matching query terms using the full-text C<.src> index (or a sorted table scan backup method if unindexed). C<search_table> uses the C<AmberDB::Locale> module. It features advanced language normalization according to the selected language (apostrophe stop words, accent normalization, phonetic silencing as in Turkish C<b/d/g -E<gt> p/t/k>, circumflex vowels C<â/î/û>), block filtering, tier mode selection (C<jnktype =E<gt> 'A' | 'AB' | 'B' | 'BA'>), sorting, pagination, and C<keys_only> features.
 
-C<search_table> is applied to blocks defined by C<search_block> in the schema. Each block is indexed separately, and a file with the extension `C<{tableid}_{blokid}.src` is created for each block. During the search, the blocks are combined. By redefining `search_block` at search time, some blocks can be excluded from the search. For example, the product name, author, company, and barcode are indexed. In the invoice generation panel, the author and company blocks can be excluded, leaving only the product name and barcode. It performs full keyword searches; it does not search for partial or incomplete keywords.
+B<IMPORTANT (Return Signature Convention):>
+When C<$limit> is passed and C<E<gt> 0> (paginated), C<search_table> returns C<($total_count, @records)> where the first scalar is the total matching count integer. When C<$limit> is omitted or C<0> (unpaginated), it returns C<@records> directly. Unpacking a paginated query into C<my @records> causes C<$records[0]> to be an integer scalar, which will crash if dereferenced as an array reference.
 
-    # Basic AND full-text search (Active only)
+    # 1. Unpaginated (returns array of record arrayrefs directly)
     my @records = $adb->search_table("catalog_product", "kablosuz kulaklık");
+    my @sorted_records = $adb->search_table("catalog_product", "kulaklık", 0, 0, sort => -5);
 
-    # Filtered search with index-level sort and pagination across both tiers
-    my ($total, @search) = $adb->search_table( "catalog_product", "kulaklık", 0, 20 );
-    my ($total, @search) = $adb->search_table(
+    # 2. Paginated (first element is total matching count integer)
+    my ($total_count, @search) = $adb->search_table( "catalog_product", "kulaklık", 0, 20 );
+    my ($total_count, @search) = $adb->search_table(
         "catalog_product", "kulaklık",
         start   => 0,
         limit   => 20,
@@ -3615,8 +3616,8 @@ C<search_table> is applied to blocks defined by C<search_block> in the schema. E
     );
 
     # Return only scalar record IDs
-    my @all_ids       = $adb->search_table("catalog_product", "kulaklık", keys_only => 1);
-    my ($total, @ids) = $adb->search_table("catalog_product", "kulaklık", 0, 50, keys_only => 1);
+    my @all_ids             = $adb->search_table("catalog_product", "kulaklık", keys_only => 1);
+    my ($total_count, @ids) = $adb->search_table("catalog_product", "kulaklık", 0, 50, keys_only => 1);
 
 =head2 field_filter($table_id, \%filter_options)
 

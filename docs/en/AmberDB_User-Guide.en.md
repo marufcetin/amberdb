@@ -12,7 +12,7 @@
 2. [Why Use AmberDB? (Comparison with SQL and SQLite)](#2-why-use-amberdb-comparison-with-sql-and-sqlite)
 3. [Boundaries and Debated Topics (Physical Constraints vs. Conscious Architectural Choices)](#3-boundaries-and-debated-topics-physical-constraints-vs-conscious-architectural-choices)
 4. [Quick Start](#4-quick-start)
-5. [CRUD Operations (Core Data Management)](#5-crud-operations-core-data-management)
+5. [CRUD and High-Throughput Batch Operations (Batch ETL)](#5-crud-operations-core-data-management)
 6. [Reading, Filtering, and Sorting](#6-reading-filtering-and-sorting)
 7. [Indexing and Search Engine](#7-indexing-and-search-engine)
 8. [Transaction Safety and Crash Recovery](#8-transaction-safety-and-crash-recovery)
@@ -37,7 +37,7 @@
 
 ## 1. What is AmberDB?
 
-`AmberDB` is a **schema-driven, document-oriented, embedded database engine for Perl** featuring **deterministic secondary indexing (inverted, match, facet, and binary sort indexes), ACID-compliant transactions with Strict Two-Phase Locking (Strict 2PL), and automatic crash recovery**.
+`AmberDB` is a **high-performance, schema-driven NoSQL database engine for Perl**, featuring **precomputed inverted indexing, ACID-compliant transactions with Strict Two-Phase Locking (Strict 2PL), and automatic crash recovery on top of Berkeley DB (`DB_File`)**.
 
 From a developer's perspective, AmberDB eliminates the overhead of provisioning and maintaining external database servers. A single CRUD call automatically updates and synchronizes all associated full-text search, field-match, facet filter, binary sort, and bidirectional SEO URL indexes in one integrated layer.
 
@@ -349,11 +349,89 @@ if (@record) {
 }
 ```
 
+### 5.5 High-Throughput Batch Operations (Batch ETL & Ingestion)
+
+AmberDB provides a dedicated **2-Phase Batch Pipeline** for ingesting and updating large volumes of records (ETL from CSV, JSON, XML, or REST APIs) at maximum throughput.
+
+#### Why Use `insert_list` Instead of `insert_id` in a Loop?
+
+Executing `insert_id` in a loop forces the operating system to perform $N$ independent file opens (`open/tie`), lock acquisitions (`flock`), auto-increment sequence mutations, and secondary index writes (`.inx`, `.src`, `.fld`, `.fac`, `.srt`). For $N$ records, this incurs $O(N \times K)$ file I/O operations and process context switches.
+
+`insert_list` splits the ingestion workflow into 2 unified phases, reducing I/O complexity to $O(K)$:
+1. **Phase 1 (Single I/O Master Table Write):** The `.db` Berkeley DB file is opened exactly **once** (`table_write`). Auto-increment IDs are allocated contiguously (`table_autoid`), field formatters and schema rules are evaluated, and all records are flushed into the hash table in one single stream (`recs_put`).
+2. **Phase 2 (Batched Secondary Index Merge):** Each secondary index file (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, and junk tier) is opened exactly **once** and the entire batch is compiled into binary bitsets and B-tree branches via unified merges (`records_add`, `search_add`, `match_add`, `facet_add`, `sort_add`).
+
+> [!TIP]
+> On a batch of 10,000 records, `insert_list` finishes **50x to 100x faster** than a standard `insert_id` loop.
+
+#### 1. Batch Insert (`insert_list`)
+
+```perl
+# Array of record column tuples. 
+# Pass 0 or undef for ID to automatically allocate 64-bit auto-increment IDs.
+my @new_products = (
+    [ 0, "5",    "3", "Wireless Headphones", "149.90", "2026-08-28", "1" ],
+    [ 0, "5,12", "8", "Mechanical Keyboard", "299.00", "2026-08-28", "1" ],
+    [ 0, "12",   "3", "Gaming Mouse",        "89.50",  "2026-08-28", "1" ],
+    # ... hundreds or thousands of records ...
+);
+
+my $status = $adb->insert_list("catalog_product", @new_products);
+# Returns hashref of created IDs: { 101 => 1, 102 => 1, 103 => 1, ... }
+```
+
+#### 2. Bulk Modify (`modify_list`)
+
+```perl
+my @updates = (
+    [ 101, "5",    "3", "Wireless Headphones Pro", "179.90", "2026-08-28", "1" ],
+    [ 102, "5,12", "8", "Mechanical Keyboard RGB",  "329.00", "2026-08-28", "1" ],
+);
+
+my $status = $adb->modify_list("catalog_product", @updates);
+```
+
+#### 3. Bulk Delete (`delete_list`)
+
+```perl
+# Target IDs can be passed as a flat list or array reference
+my $status = $adb->delete_list("catalog_product", 101, 102, 103);
+# or:
+# $adb->delete_list("catalog_product", [101, 102, 103]);
+```
+
+#### 4. Chunking Strategy for Large Datasets (ETL Ingestion)
+
+For massive imports (e.g. 50,000+ records), chunking records into batches of 500 to 1,000 optimizes memory allocation and balances disk cache flushing:
+
+```perl
+my $chunk_size = 1000;
+for (my $i = 0; $i < @huge_dataset; $i += $chunk_size) {
+    my $end = $i + $chunk_size - 1;
+    $end = $#huge_dataset if $end > $#huge_dataset;
+    my @chunk = @huge_dataset[$i .. $end];
+    $adb->insert_list("catalog_product", @chunk);
+}
+```
+
 ---
 
 ## 6. Reading, Filtering, and Sorting
 
 AmberDB offers versatile methods for paginated retrieval, structured filtering, and index-accelerated sorting.
+
+> [!CRITICAL]
+> **RETURN SIGNATURE & PAGINATION CONTRACT:**
+> In `read_all`, `field_fetch`, and `search_table`, the presence of `$limit` fundamentally changes the structure of the returned list:
+> 1. **Unpaginated Queries (`$limit == 0` or omitted):** Returns a flat list of record array references:  
+>    `my @records = $adb->read_all("catalog_product");`  
+>    *(Each element in `@records` is a record arrayref: `$records[0]->[1]`)*
+> 2. **Paginated Queries (`$limit > 0` e.g. `0, 20` or `start => 0, limit => 20`):** The **first element is the total matched count integer (`$total_count`)**, followed by the sliced records:  
+>    `my ($total_count, @records) = $adb->read_all("catalog_product", 0, 20);`
+>
+> ⚠️ **FATAL ERROR WARNING:**  
+> If you specify a limit but unpack into a single array (`my @records = $adb->read_all("catalog_product", 0, 20);`), `$records[0]` will NOT be a record reference—it will be the **integer count** (e.g. `45`). Accessing `$records[0]->[1]` or `$records[0][1]` will trigger a fatal Perl runtime crash: **`Can't use string ("45") as an ARRAY ref while "strict refs" in use`**!  
+> **Rule:** Whenever `$limit > 0`, always unpack as `my ($total_count, @records)`.
 
 ### 6.1 `read_all` — Reading and Paginating All Active Records
 
@@ -361,22 +439,37 @@ AmberDB offers versatile methods for paginated retrieval, structured filtering, 
 # 1. Read all records in default order (newest first - descending ID)
 my @all_records = $adb->read_all("catalog_product");
 
-# 2. Paginated reading (First 20 records)
-# $start => 10, $limit => 20
-my ($total, @page1) = $adb->read_all("catalog_product", 0, 20);
+# 2. Unpaginated with Extra Options (start: 0, limit: 0 returns @records / @ids directly)
+# 2.1 Retrieve record IDs only (Zero deserialization, ultra memory-efficient — keys_only)
+my @all_ids       = $adb->read_all("catalog_product", 0, 0, keys_only => 1);
+
+# 2.2 Tiered Query Mode (jnktype => 'A' [Active only] | 'B' [Junk only] | 'AB' [Active + Junk])
+my @active_only   = $adb->read_all("catalog_product", 0, 0, jnktype => 'A');
+my @active_and_jnk= $adb->read_all("catalog_product", 0, 0, jnktype => 'AB');
+
+# 2.3 Bypass index for direct table scan (no_index)
+my @raw_records   = $adb->read_all("catalog_product", 0, 0, no_index => 1);
+
+# 2.4 Unpaginated sorting (sort => 10 [descending] or sort => -10 [ascending])
+my @all_price_asc = $adb->read_all("catalog_product", 0, 0, sort => -10); # Cheapest first
+my @all_price_desc= $adb->read_all("catalog_product", 0, 0, sort => 10);  # Highest first
+my @all_alpha     = $adb->read_all("catalog_product", 0, 0, sort => { blk => 4, reverse => 1 });
+
+# 3. Paginated Queries (limit > 0 always returns ($total_count, @page))
+# 3.1 First 20 records
+my ($total, @page1)      = $adb->read_all("catalog_product", 0, 20);
 print "Total records: $total, Retrieved on this page: " . scalar(@page1) . "\n";
 
-# 3. Read sorted alphabetically by Title (Block 4) ascending
+# 3.2 Paginated ID list (keys_only)
+my ($total, @page_ids)   = $adb->read_all("catalog_product", 0, 50, keys_only => 1);
+
+# 3.3 Paginated and sorted
 my ($total, @sorted_alpha) = $adb->read_all("catalog_product", 0, 20, sort => { blk => 4, reverse => 1 });
-
-# 4. Read sorted by Price (Block 10) descending (Short syntax)
-my ($total, @highest_price) = $adb->read_all("catalog_product", 0, 10, sort => 10);
-
-# 5. Read sorted by Price (Block 10) ascending (Negative short syntax)
+my ($total, @highest_price)= $adb->read_all("catalog_product", 0, 10, sort => 10);
 my ($total, @lowest_price) = $adb->read_all("catalog_product", 0, 10, sort => -10);
 
-# 6. Read keys only (Zero data deserialization for maximum memory efficiency)
-my ($total, @id_list) = $adb->read_all("catalog_product", 0, 50, keys_only => 1);
+# 3.4 Paginated and tiered (Active + Junk)
+my ($total, @tiered_page)  = $adb->read_all("catalog_product", 0, 20, jnktype => 'AB');
 ```
 
 ### 6.2 `field_fetch` — Fast Lookups via Match Index (.fld) & Multi-Value Queries
@@ -1727,7 +1820,7 @@ dbstore/
 1. **Use `insert_list` for Bulk Ingestion:** When adding hundreds of records, use `insert_list` instead of looping over `insert_id`. Batch mode writes all records in a single file session and rebuilds indexes in one pass.
 2. **Wrap Multi-Step Writes in `transact_start`:** Always wrap inventory deductions, checkout sequences, or multi-table balance updates inside transactions.
 3. **Index Only Required Fields:** Only assign fields to `match_block` or `search_block` if they are actively queried to minimize disk write overhead.
-4. **Always Paginate Large Result Sets:** Provide `$start` and `$limit` parameters to `read_all` and `field_fetch` to keep memory consumption low.
+4. **Always Handle Pagination Return Signatures Correctly:** When passing `$limit > 0` to `read_all`, `field_fetch`, or `search_table`, remember that the first returned value is `$total_count` integer. Never unpack into a single array (`my @records = $adb->read_all(..., 0, 20)`) as `$records[0]` will be an integer scalar causing fatal crashes upon dereferencing. Always unpack paginated queries as `my ($total_count, @records)`.
 5. **Choose Numeric IDs Where Possible:** Standardize on `id_type => "num"` for optimal 64-bit binary packing performance.
 
 ---
