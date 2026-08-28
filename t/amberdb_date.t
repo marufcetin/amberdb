@@ -54,27 +54,27 @@ subtest 'Custom epoch calculations on accessors' => sub {
     ok( defined $date->short(1767225600), 'short(custom_epoch) returns formatted short date' );
 };
 
-# 3. AmberDB instance mixin accessors & $dbp->get_date()
+# 3. AmberDB instance mixin accessors & $adb->get_date()
 subtest 'AmberDB instance mixin date accessors' => sub {
     plan tests => 8;
 
     my $temp_dir = tempdir( CLEANUP => 1 );
-    my $dbp = AmberDB->new( path => { dbase_dir => $temp_dir } );
-    isa_ok( $dbp, 'AmberDB' );
+    my $adb = AmberDB->new( path => { dbase_dir => $temp_dir } );
+    isa_ok( $adb, 'AmberDB' );
 
-    # Method calls directly on $dbp
-    ok( defined $dbp->day_id && length($dbp->day_id) == 8, '$dbp->day_id returns 8-digit day_id' );
-    ok( defined $dbp->second_id && length($dbp->second_id) == 14, '$dbp->second_id returns 14-digit second_id' );
-    ok( defined $dbp->year && length($dbp->year) == 4, '$dbp->year returns 4-digit year' );
-    ok( defined $dbp->str && length($dbp->str), '$dbp->str returns formatted string' );
+    # Method calls directly on $adb
+    ok( defined $adb->day_id && length($adb->day_id) == 8, '$adb->day_id returns 8-digit day_id' );
+    ok( defined $adb->second_id && length($adb->second_id) == 14, '$adb->second_id returns 14-digit second_id' );
+    ok( defined $adb->year && length($adb->year) == 4, '$adb->year returns 4-digit year' );
+    ok( defined $adb->str && length($adb->str), '$adb->str returns formatted string' );
 
-    # $dbp->get_date() returns blessed AmberDB::Date object
-    my $date_obj = $dbp->get_date();
+    # $adb->get_date() returns blessed AmberDB::Date object
+    my $date_obj = $adb->get_date();
     isa_ok( $date_obj, 'AmberDB::Date' );
-    is( $date_obj->day_id, $dbp->day_id, '$date_obj->day_id matches $dbp->day_id' );
+    is( $date_obj->day_id, $adb->day_id, '$date_obj->day_id matches $adb->day_id' );
 
-    # Backward compatibility with $dbp->{date}
-    is( $dbp->{date}->{day_id}, $dbp->day_id, '$dbp->{date}->{day_id} matches $dbp->day_id' );
+    # Backward compatibility with $adb->{date}
+    is( $adb->{date}->{day_id}, $adb->day_id, '$adb->{date}->{day_id} matches $adb->day_id' );
 };
 
 # 4. Helper method suite

@@ -4,9 +4,9 @@ use 5.016;
 use warnings;
 use Carp qw(croak cluck);
 
-our $VERSION = '5.02';
+our $VERSION = '5.21.0';
 
-# $is_junk = $dbp->junk_rules($table_info, @record);
+# $is_junk = $adb->junk_rules($table_info, @record);
 # Returns 1 if record satisfies any junk condition, 0 otherwise.
 # ------------------------------------------------
 sub junk_rules {
@@ -29,7 +29,7 @@ sub junk_rules {
     return 0; # Aktif
 }
 
-# $mode = $dbp->get_jnktype($table_info, \%opts);
+# $mode = $adb->get_jnktype($table_info, \%opts);
 # Resolves jnktype mode: 'A', 'AB', 'B', 'BA'
 # ------------------------------------------------
 sub get_jnktype {
@@ -38,7 +38,7 @@ sub get_jnktype {
 
     my $mode = ( ref($opts) eq 'HASH' ? ( $opts->{jnktype} // $opts->{jnktyp} ) : undef )
             // ( ref($table_info) eq 'HASH' ? $table_info->{jnktype} : undef )
-            // ( ref($self->{cfg}) eq 'HASH' ? $self->{cfg}->{jnktype} : undef )
+            // $self->config('jnktype')
             // 'AB';
 
     $mode = uc($mode);
@@ -49,7 +49,7 @@ sub get_jnktype {
 # JUNK İNDEKS YÖNETİMİ (.jinx, .jfld, .jsrc CRUD)
 # =====================================================================
 
-# $dbp->junk_records_add($table_path, $table_info, $tableid, \@rids);
+# $adb->junk_records_add($table_path, $table_info, $tableid, \@rids);
 # ------------------------------------------------
 sub junk_records_add {
 
@@ -76,7 +76,7 @@ sub junk_records_add {
     }
 }
 
-# $dbp->junk_records_del($table_path, $table_info, \@rids, $tableid);
+# $adb->junk_records_del($table_path, $table_info, \@rids, $tableid);
 # ------------------------------------------------
 sub junk_records_del {
 
@@ -102,7 +102,7 @@ sub junk_records_del {
     }
 }
 
-# $dbp->junk_match_add($table_path, $table_info, \@records);
+# $adb->junk_match_add($table_path, $table_info, \@records);
 # ------------------------------------------------
 sub junk_match_add {
 
@@ -146,7 +146,7 @@ sub junk_match_add {
     }
 }
 
-# $dbp->junk_match_del($table_path, $table_info, \@records);
+# $adb->junk_match_del($table_path, $table_info, \@records);
 # ------------------------------------------------
 sub junk_match_del {
 
@@ -196,7 +196,7 @@ sub junk_match_del {
     }
 }
 
-# $dbp->junk_match_modify($table_path, $table_info, \@pairs);
+# $adb->junk_match_modify($table_path, $table_info, \@pairs);
 # ------------------------------------------------
 sub junk_match_modify {
 
@@ -263,7 +263,7 @@ sub junk_match_modify {
     }
 }
 
-# $dbp->junk_search_add($table_path, $table_info, $tableid, \@records);
+# $adb->junk_search_add($table_path, $table_info, $tableid, \@records);
 # ------------------------------------------------
 sub junk_search_add {
 
@@ -305,7 +305,7 @@ sub junk_search_add {
     }
 }
 
-# $dbp->junk_search_del($table_path, $table_info, $tableid, \@records);
+# $adb->junk_search_del($table_path, $table_info, $tableid, \@records);
 # ------------------------------------------------
 sub junk_search_del {
 
@@ -353,7 +353,7 @@ sub junk_search_del {
     }
 }
 
-# $dbp->junk_search_modify($table_path, $table_info, $tableid, \@pairs);
+# $adb->junk_search_modify($table_path, $table_info, $tableid, \@pairs);
 # ------------------------------------------------
 sub junk_search_modify {
 
@@ -411,7 +411,7 @@ sub junk_search_modify {
 # OTOMATİK AKTİF <-> JUNK GEÇİŞİ (State Transitions)
 # =====================================================================
 
-# $dbp->junk_transition($table_path, $table_info, $tableid, \@pairs);
+# $adb->junk_transition($table_path, $table_info, $tableid, \@pairs);
 # ------------------------------------------------
 sub junk_transition {
 
@@ -527,18 +527,18 @@ AmberDB::Index::Junk - Schema-driven Tiered (Hot/Cold) Indexing and Lifecycle Ma
       match_block  => [ 1, 2, 3 ],
   }
 
-  # Querying from AmberDB ($dbp inherits AmberDB::Index::Junk):
+  # Querying from AmberDB ($adb inherits AmberDB::Index::Junk):
 
   # 1. Search with explicit tier mode:
-  my ($cnt, @recs) = $dbp->search_table("catalog_product", "roman", start => 0, limit => 20, jnktype => 'A');
+  my ($cnt, @recs) = $adb->search_table("catalog_product", "roman", start => 0, limit => 20, jnktype => 'A');
 
   # 2. Field filter with tier mode:
-  my $filter_res   = $dbp->field_filter("catalog_product", { filter => { 1 => 45 }, jnktype => 'AB' });
+  my $filter_res   = $adb->field_filter("catalog_product", { filter => { 1 => 45 }, jnktype => 'AB' });
 
   # 3. Read all records with tier mode:
-  my @active_ids   = $dbp->read_all("catalog_product", jnktype => 'A', keys_only => 1);
-  my @junk_ids     = $dbp->read_all("catalog_product", jnktype => 'B', keys_only => 1);
-  my @combined_ids = $dbp->read_all("catalog_product", jnktype => 'AB', keys_only => 1);
+  my @active_ids   = $adb->read_all("catalog_product", jnktype => 'A', keys_only => 1);
+  my @junk_ids     = $adb->read_all("catalog_product", jnktype => 'B', keys_only => 1);
+  my @combined_ids = $adb->read_all("catalog_product", jnktype => 'AB', keys_only => 1);
 
 =head1 DESCRIPTION
 
@@ -592,7 +592,7 @@ The query tier mode is resolved with the following priority hierarchy:
 
   1. Query Parameter: $opts->{jnktype} (e.g. in search_table, field_filter, read_all)
   2. Table Schema:    $table_info->{jnktype}
-  3. Instance Config: $self->{cfg}->{jnktype}
+  3. Instance Config: $adb->config('jnktype')
   4. Global Default:  'AB'
 
 =head2 Available Modes:
@@ -641,27 +641,31 @@ Record is modified in-place within its existing tier.
 
 =head2 junk_rules($table_info, @record)
 
-Evaluates schema rules against a record. Returns 1 if Junk, 0 if Active.
+Evaluates schema rules (C<junk_rules>) against a given record. Resolves direct fields, nested arrays, and relational foreign keys (RDBM) dynamically. Returns C<1> if the record satisfies any junk condition (Tier B), C<0> if active (Tier A).
+
+  my $is_junk = $adb->junk_rules($table_schema, @record_fields);
 
 =head2 get_jnktype($table_info, \%opts)
 
-Resolves effective query mode ('A', 'AB', 'B', 'BA') according to the priority hierarchy.
+Resolves the effective query mode (C<'A'>, C<'AB'>, C<'B'>, C<'BA'>) using the 4-level priority hierarchy (query options -E<gt> table schema -E<gt> instance config -E<gt> default C<'AB'>).
 
-=head2 junk_transition($table_path, $table_info, $tableid, \@pairs)
+  my $mode = $adb->get_jnktype($table_schema, { jnktype => 'A' }); # "A"
 
-Manages automated index migration between active and junk tiers during record modifications.
+=head2 Low-Level Cold Index Maintenance Methods
 
-=head2 junk_records_add / junk_records_del
+These methods manage cold index files during CRUD mutations and are called automatically:
 
-CRUD operations for primary cold record index (C<.jinx>).
+=over 4
 
-=head2 junk_match_add / junk_match_del / junk_match_modify
+=item * C<junk_transition($table_path, $table_info, $tableid, \@pairs)> — Migrates modified records between active and junk tiers if their state changed.
 
-CRUD operations for cold inverted field index files (C<_${blk}.jfld>).
+=item * C<junk_records_add / junk_records_del> — Primary cold key index operations (C<.jinx>).
 
-=head2 junk_search_add / junk_search_del / junk_search_modify
+=item * C<junk_match_add / junk_match_del / junk_match_modify> — Cold inverted field match index operations (C<_${blk}.jfld>).
 
-CRUD operations for cold full-text search index files (C<_${blk}.jsrc>).
+=item * C<junk_search_add / junk_search_del / junk_search_modify> — Cold full-text search index operations (C<_${blk}.jsrc>).
+
+=back
 
 =head1 AUTHOR
 

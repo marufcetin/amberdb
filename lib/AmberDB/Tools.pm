@@ -5,11 +5,11 @@ use warnings;
 use Carp qw(croak cluck);
 use File::Spec;
 
-our $VERSION = '5.02';
+our $VERSION = '5.21.0';
 my $CREATED = '2018-10-08';
 
 # Constructor
-# my $tools = AmberDB::Tools->new($dbp, %options);
+# my $tools = AmberDB::Tools->new($adb, %options);
 # my $tools = AmberDB::Tools->new(%options); # creates a new AmberDB instance
 # ------------------------------------------------
 sub new {
@@ -19,18 +19,18 @@ sub new {
 
     require AmberDB;
 
-    my ( $dbp, %inputs );
+    my ( $adb, %inputs );
 
     if ( ref( $_[0] ) ) {
-        $dbp    = shift;
+        $adb    = shift;
         %inputs = @_;
     }
     else {
         %inputs = @_;
-        $dbp    = AmberDB->new(%inputs);
+        $adb    = AmberDB->new(%inputs);
     }
 
-    $self->{_dbp} = $dbp;
+    $self->{_adb} = $adb;
 
     foreach my $in ( keys %inputs ) {
         $self->{ uc($in) } = $inputs{$in};
@@ -46,17 +46,17 @@ sub new {
 sub set_index {
 
     my ( $self, $tableid, @records ) = @_;
-    my $dbp = $self->{_dbp} or return;
+    my $adb = $self->{_adb} or return;
 
     # 1. Table path must be created first to load schema.
     defined $tableid or return;
-    my $table_info = $dbp->table_info($tableid) or return;
-    my $table_path = $dbp->table_path($tableid);
-    return unless ( -e "$table_path.$dbp->{db_ext}" );
+    my $table_info = $adb->table_info($tableid) or return;
+    my $table_path = $adb->table_path($tableid);
+    return unless ( -e "$table_path.$adb->{db_ext}" );
 
     # 2. Read records if list empty.
     if ( !@records ) {
-        @records = $dbp->read_all($tableid, 0, 0, no_index => 1);
+        @records = $adb->read_all($tableid, 0, 0, no_index => 1);
     }
 
     # 3. Create readall index
@@ -96,23 +96,23 @@ sub set_index {
 sub set_readall {
 
     my ( $self, $tableid, @records ) = @_;
-    my $dbp = $self->{_dbp} or return;
+    my $adb = $self->{_adb} or return;
 
     $tableid or return;
-    my $table_path = $dbp->table_path($tableid);
+    my $table_path = $adb->table_path($tableid);
 
-    my $file_path  = "$table_path.$dbp->{db_ext}";
+    my $file_path  = "$table_path.$adb->{db_ext}";
     my $index_path = "$table_path.inx";
     my $tmp_path   = "$index_path.tmp";
     return unless -e $file_path;
 
-    my $table_info = $dbp->table_info($tableid);
+    my $table_info = $adb->table_info($tableid);
     return unless $table_info;
     $table_info->{id_type} //= "num";
 
     # Read records from table if absent
     if ( !scalar @records ) {
-        @records = $dbp->read_all($tableid, 0, 0, no_index => 1, keys_only => 1);
+        @records = $adb->read_all($tableid, 0, 0, no_index => 1, keys_only => 1);
     }
     if ( $records[0] && ref $records[0] eq "ARRAY" ) {
         $self->{say} .= "    - Invalid parameter for Records entries: ";
@@ -128,14 +128,14 @@ sub set_readall {
         @records = grep /^\w+$/, @records;
     }
     scalar @records or return;
-    @records = $dbp->array_nodup(@records);
-    @records = $dbp->db_sortid( $tableid, @records );
+    @records = $adb->array_nodup(@records);
+    @records = $adb->db_sortid( $tableid, @records );
 
     my ( @active_records, @junk_records );
     if ( $table_info->{use_junk} ) {
         for my $rid (@records) {
-            my @rec = $dbp->read_id($tableid, $rid);
-            if ( $dbp->junk_rules($table_info, $rid, @rec) ) {
+            my @rec = $adb->read_id($tableid, $rid);
+            if ( $adb->junk_rules($table_info, @rec) ) {
                 push @junk_records, $rid;
             }
             else {
@@ -158,15 +158,15 @@ sub set_readall {
         my $last_id;
         if ( $table_info->{id_type} eq "num" ) {
             my $cur_max = (sort { $b <=> $a } @list)[0] // 0;
-            my $old_lastid = $dbp->table_lastid($tableid) // 0;
+            my $old_lastid = $adb->table_lastid($tableid) // 0;
             $last_id = $cur_max > $old_lastid ? $cur_max : $old_lastid;
         }
 
-        if ( $dbp->table_write($t_path) ) {
-            $dbp->index_put( $t_path, "keys",   \@list, "ids" );
-            $dbp->index_put( $t_path, "count",  $cnt,   "raw" );
-            $dbp->index_put( $t_path, "lastid", $last_id, "raw" ) if defined $last_id;
-            $dbp->table_close($t_path);
+        if ( $adb->table_write($t_path) ) {
+            $adb->index_put( $t_path, "keys",   \@list, "ids" );
+            $adb->index_put( $t_path, "count",  $cnt,   "raw" );
+            $adb->index_put( $t_path, "lastid", $last_id, "raw" ) if defined $last_id;
+            $adb->table_close($t_path);
             unlink($i_path);
             rename( $t_path, $i_path );
             $self->{say} .= "          * $table_path.$ext created ($cnt records)\n";
@@ -181,23 +181,23 @@ sub set_readall {
 }
 
 # Rebuilds search word index.
-# $_dbp->{_table}->{table}->{id_type} (num, ascii)
+# $adb->table_attr('table', 'id_type') (num, ascii)
 # my $ok = $tools->set_search($tableid, @records);
 # ------------------------------------------------
 sub set_search {
 
     my ( $self, $tableid, @records ) = @_;
-    my $dbp = $self->{_dbp} or return;
+    my $adb = $self->{_adb} or return;
 
     return unless $tableid;
-    my $table_path = $dbp->table_path($tableid);
-    my $table_info = $dbp->table_info($tableid);
+    my $table_path = $adb->table_path($tableid);
+    my $table_info = $adb->table_info($tableid);
     return unless exists( $table_info->{search_block} );
     $table_info->{id_type} //= "num";
 
     # Read records from table if absent
     if ( !scalar @records ) {
-        @records = $dbp->read_all($tableid, 0, 0, no_index => 1);
+        @records = $adb->read_all($tableid, 0, 0, no_index => 1);
     }
     return unless scalar @records;
 
@@ -205,13 +205,13 @@ sub set_search {
     $self->{say} .= "    - Search word kayitlari olusturuluyor: \n";
     foreach my $line (@records) {
         my @fields = @$line;
-        my $is_junk = $table_info->{use_junk} ? $dbp->junk_rules( $table_info, @fields ) : 0;
+        my $is_junk = $table_info->{use_junk} ? $adb->junk_rules( $table_info, @fields ) : 0;
         foreach my $blk ( @{ $table_info->{search_block} } ) {
             my $b_idx = ref($blk) eq "ARRAY" ? $blk->[0] : $blk;
             if ( $table_info->{id_type} eq "num" ) {
                 $b_idx =~ /^\d+$/ or next;
             }
-            my %recsearch = $dbp->get_words( $fields[$b_idx], "write", $tableid );
+            my %recsearch = $adb->get_words( $fields[$b_idx], "write", $tableid );
 
             foreach my $key ( keys %recsearch ) {
                 if ($is_junk) {
@@ -243,16 +243,16 @@ sub set_search {
             }
 
             if ( $src_map->{$b_idx} ) {
-                $dbp->table_write($tmp_path)
+                $adb->table_write($tmp_path)
                   or do {
                     cluck "[DB_TOOL] $tmp_path can't open.\n";
                     next;
                   };
                 foreach my $key ( keys %{ $src_map->{$b_idx} } ) {
-                    my @search_keys = $dbp->array_nodup( @{ $src_map->{$b_idx}{$key} } );
-                    $dbp->index_put( $tmp_path, $key, \@search_keys, "ids" );
+                    my @search_keys = $adb->array_nodup( @{ $src_map->{$b_idx}{$key} } );
+                    $adb->index_put( $tmp_path, $key, \@search_keys, "ids" );
                 }
-                $dbp->table_close($tmp_path);
+                $adb->table_close($tmp_path);
 
                 unlink($file_path);
                 rename( $tmp_path, $file_path );
@@ -273,13 +273,13 @@ sub set_search {
 sub set_fields {
 
     my ( $self, $tableid, @records ) = @_;
-    my $dbp = $self->{_dbp} or return;
+    my $adb = $self->{_adb} or return;
 
     # table path must be built first to load schema.
-    my $table_path = $dbp->table_path($tableid);
-    my $table_info = $dbp->table_info($tableid);
+    my $table_path = $adb->table_path($tableid);
+    my $table_info = $adb->table_info($tableid);
     return unless exists( $table_info->{match_block} );
-    return unless -e "$table_path.$dbp->{db_ext}";
+    return unless -e "$table_path.$adb->{db_ext}";
     $table_info->{id_type} //= "num";
 
     my ( %fields, %junk_fields );
@@ -287,11 +287,11 @@ sub set_fields {
 
     foreach my $line ( @{ $table_info->{match_block} } ) {
         my $str_path = "${table_path}_$line.str";
-        my $is_rdbm = $dbp->is_rdbm_block( $table_info, $line );
+        my $is_rdbm = $adb->is_rdbm_block( $table_info, $line );
 
         my $str_opened = 0;
         if ( !$is_rdbm ) {
-            $dbp->table_write($str_path);
+            $adb->table_write($str_path);
             $str_opened = 1;
         }
 
@@ -299,9 +299,9 @@ sub set_fields {
             my @fields_arr = @$record;
             $fields_arr[0] or next;
             next unless defined $fields_arr[$line] && $fields_arr[$line] ne '';
-            my $is_junk = $table_info->{use_junk} ? $dbp->junk_rules( $table_info, @fields_arr ) : 0;
+            my $is_junk = $table_info->{use_junk} ? $adb->junk_rules( $table_info, @fields_arr ) : 0;
 
-            my @num_ids = $dbp->field_to_list( $fields_arr[$line], 'write', $table_path, $table_info, $line );
+            my @num_ids = $adb->field_to_list( $fields_arr[$line], 'write', $table_path, $table_info, $line );
             foreach my $nid (@num_ids) {
                 if ($is_junk) {
                     push @{ $junk_fields{$line}{$nid} }, $fields_arr[0];
@@ -313,7 +313,7 @@ sub set_fields {
         }
 
         if ($str_opened) {
-            $dbp->table_close($str_path);
+            $adb->table_close($str_path);
         }
     }
 
@@ -337,17 +337,17 @@ sub set_fields {
             }
 
             if ( $fld_map->{$line} ) {
-                $dbp->table_write($tmp_path)
+                $adb->table_write($tmp_path)
                   or do {
                     cluck "[DB_TOOL] $tmp_path can't open for write.\n";
                     next;
                   };
                 foreach my $key ( keys %{ $fld_map->{$line} } ) {
                     my @fields_keys =
-                      $dbp->array_nodup( @{ $fld_map->{$line}{$key} } );
-                    $dbp->index_put( $tmp_path, $key, \@fields_keys, "ids" );
+                      $adb->array_nodup( @{ $fld_map->{$line}{$key} } );
+                    $adb->index_put( $tmp_path, $key, \@fields_keys, "ids" );
                 }
-                $dbp->table_close($tmp_path);
+                $adb->table_close($tmp_path);
                 unlink($file_path);
                 rename( $tmp_path, $file_path );
 
@@ -371,14 +371,14 @@ sub set_fields {
 sub set_filters {
 
     my ( $self, $tableid, @records ) = @_;
-    my $dbp = $self->{_dbp} or return;
+    my $adb = $self->{_adb} or return;
 
     # table path must be built first to load schema.
     return unless $tableid;
-    my $table_path = $dbp->table_path($tableid);
-    return unless -e "$table_path.$dbp->{db_ext}";
+    my $table_path = $adb->table_path($tableid);
+    return unless -e "$table_path.$adb->{db_ext}";
 
-    my $table_info = $dbp->table_info($tableid);
+    my $table_info = $adb->table_info($tableid);
     $table_info->{id_type} //= "num";
 
     # Both match_block and use_facet must be defined to create facet index
@@ -392,13 +392,13 @@ sub set_filters {
 
     # Read records from table if absent
     if ( !scalar @records ) {
-        @records = $dbp->read_all($tableid, 0, 0, no_index => 1);
+        @records = $adb->read_all($tableid, 0, 0, no_index => 1);
     }
     scalar @records or return;
 
     unlink($tmp_path);
 
-    $dbp->table_write($tmp_path)
+    $adb->table_write($tmp_path)
       or do {
         cluck "[DB_TOOL] $tmp_path can't open for write.\n";
         return;
@@ -424,17 +424,17 @@ sub set_filters {
             push @pairs, "$blk:$_" for @vals;
         }
         next unless @pairs;
-        my $is_active = $dbp->facet_rules( $table_info, @fields );
+        my $is_active = $adb->facet_rules( $table_info, @fields );
         push @active_ids, $fields[0] if $is_active && $has_active_rule;
-        $dbp->index_put( $tmp_path, $fields[0], join( "\t", $is_active, @pairs ), "raw" );
+        $adb->index_put( $tmp_path, $fields[0], join( "\t", $is_active, @pairs ), "raw" );
     }
 
     # "active" key: write all active IDs if facet_rules defined
     if ( $has_active_rule && @active_ids ) {
-        $dbp->index_put( $tmp_path, "active", \@active_ids, "ids" );
+        $adb->index_put( $tmp_path, "active", \@active_ids, "ids" );
     }
 
-    $dbp->table_close($tmp_path);
+    $adb->table_close($tmp_path);
 
     unlink($fac_path);
     rename( $tmp_path, $fac_path );
@@ -451,17 +451,17 @@ sub set_filters {
 sub set_rwlnkall {
 
     my ( $self, $tableid, @records ) = @_;
-    my $dbp = $self->{_dbp} or return;
+    my $adb = $self->{_adb} or return;
 
-    my $table_path = $dbp->table_path($tableid);
-    return unless -e "$table_path.$dbp->{db_ext}";
+    my $table_path = $adb->table_path($tableid);
+    return unless -e "$table_path.$adb->{db_ext}";
 
-    my $table_info = $dbp->table_info($tableid);
+    my $table_info = $adb->table_info($tableid);
     return unless $table_info && $table_info->{seo_block};
 
     # Read records from table if input is empty
     if ( !scalar @records ) {
-        (@records) = $dbp->read_all($tableid, 0, 0, no_index => 1);
+        (@records) = $adb->read_all($tableid, 0, 0, no_index => 1);
         @records = grep { ref($_) eq 'ARRAY' } @records;
         if ( !scalar @records ) {
             cluck "[DB_TOOL] No records found for ReWrite in $tableid.\n";
@@ -484,9 +484,9 @@ sub set_rwlnkall {
     my ( @rwt0_records, @rwt1_records );
     my %seen_links;
 
-    @records = $dbp->db_sortid( $tableid, @records );
+    @records = $adb->db_sortid( $tableid, @records );
     foreach my $record (@records) {
-        my $rw_link = $dbp->set_seourl( $tableid, $record );
+        my $rw_link = $adb->set_seourl( $tableid, $record );
         next unless defined $rw_link && length $rw_link;
         if ( exists $seen_links{$rw_link} ) {
             $rw_link .= "-$record->[0]";
@@ -496,21 +496,21 @@ sub set_rwlnkall {
         push @rwt1_records, [ $rw_link, $record->[0] ];
     }
 
-    $dbp->table_write($tmp0_path)
+    $adb->table_write($tmp0_path)
       or do {
         cluck "[DB_TOOL] $tmp0_path can't be written.\n";
         return 0;
       };
-    $dbp->recs_put( $tmp0_path, @rwt0_records );
-    $dbp->table_close($tmp0_path);
+    $adb->recs_put( $tmp0_path, @rwt0_records );
+    $adb->table_close($tmp0_path);
 
-    $dbp->table_write($tmp1_path)
+    $adb->table_write($tmp1_path)
       or do {
         cluck "[DB_TOOL] $tmp1_path can't be written.\n";
         return 0;
       };
-    $dbp->recs_put( $tmp1_path, @rwt1_records );
-    $dbp->table_close($tmp1_path);
+    $adb->recs_put( $tmp1_path, @rwt1_records );
+    $adb->table_close($tmp1_path);
 
     unlink($rwfh0_path);
     unlink($rwfh1_path);
@@ -532,7 +532,7 @@ sub set_rwlnkall {
 sub index_alltables {
 
     my ($self) = @_;
-    my $dbp = $self->{_dbp} or return;
+    my $adb = $self->{_adb} or return;
 
     my @tables;
 
@@ -542,15 +542,15 @@ sub index_alltables {
         $dbase =~ /^[a-z0-9]+$/ or next;
         foreach my $tableid ( keys %{ $tables_hash->{$dbase} } ) {
             $tableid =~ /^[a-z0-9_]+$/ or next;
-            my $table_path = $dbp->table_path($tableid);
-            push @tables, [ $tableid, "$table_path.$dbp->{db_ext}" ];
+            my $table_path = $adb->table_path($tableid);
+            push @tables, [ $tableid, "$table_path.$adb->{db_ext}" ];
         }
     }
 
     # 2. Read table records and enter indexing loop
     foreach my $table_entry (@tables) {
         my $tbl = $table_entry->[0];
-        my @records = $dbp->read_all($tbl, 0, 0, no_index => 1);
+        my @records = $adb->read_all($tbl, 0, 0, no_index => 1);
 
         my $count = scalar @records;
         $self->set_index( $tbl, @records );
@@ -566,11 +566,11 @@ sub index_alltables {
 sub check_readall {
 
     my ( $self, $tableid, @records ) = @_;
-    my $dbp = $self->{_dbp} or return;
+    my $adb = $self->{_adb} or return;
 
     return unless $tableid;
-    my $table_path = $dbp->table_path($tableid);
-    my $table_info = $dbp->table_info($tableid);
+    my $table_path = $adb->table_path($tableid);
+    my $table_info = $adb->table_info($tableid);
     $table_info->{id_type} //= "num";
 
     my ( %diff, %recs );
@@ -586,8 +586,8 @@ sub check_readall {
 
     my (%inds);
     my $inx_path = "$table_path.inx";
-    my ( $total_keys, @keys ) = $dbp->index_get( $inx_path, "keys", "ids" );
-    $dbp->table_close($inx_path);
+    my ( $total_keys, @keys ) = $adb->index_get( $inx_path, "keys", "ids" );
+    $adb->table_close($inx_path);
     foreach my $rec (@keys) {
         $inds{keys}->{$rec} = 1;
         if ( $table_info->{id_type} eq "num" ) {
@@ -623,13 +623,13 @@ sub check_readall {
 sub check_search {
 
     my ( $self, $tableid, @records ) = @_;
-    my $dbp = $self->{_dbp} or return;
+    my $adb = $self->{_adb} or return;
 
     my %diff = ();
     return unless $tableid;
     scalar @records or return \%diff;
-    my $table_path = $dbp->table_path($tableid);
-    my $table_info = $dbp->table_info($tableid);
+    my $table_path = $adb->table_path($tableid);
+    my $table_info = $adb->table_info($tableid);
     exists( $table_info->{search_block} ) or return \%diff;
 
     foreach my $line (@records) {
@@ -638,7 +638,7 @@ sub check_search {
             if ( $table_info->{id_type} ne "ascii" ) {
                 $src =~ /^[0-9]+$/ or next;
             }
-            my %words = $dbp->get_words( $fields[$src], "write" );
+            my %words = $adb->get_words( $fields[$src], "write" );
 
             foreach my $word ( keys %words ) {
                 $diff{recs}->{$src}->{$word}->{ $fields[0] } = 1;
@@ -653,12 +653,12 @@ sub check_search {
 
         my $src_path = "${table_path}_$src.src";
         next unless -e $src_path;
-        $dbp->table_read($src_path) or next;
-        $dbp->recs_scan(
+        $adb->table_read($src_path) or next;
+        $adb->recs_scan(
             $src_path,
             sub {
                 my ( $word, $records ) = @_;
-                foreach my $rid ( $dbp->db_decode($records) ) {
+                foreach my $rid ( $adb->db_decode($records) ) {
                     if ( exists( $diff{recs}->{$src}->{$word}->{$rid} ) ) {
                         delete( $diff{recs}->{$src}->{$word}->{$rid} );
                     }
@@ -668,7 +668,7 @@ sub check_search {
                 }
             }
         );
-        $dbp->table_close($src_path);
+        $adb->table_close($src_path);
     }
 
     return \%diff;
@@ -680,46 +680,46 @@ sub check_search {
 sub tie2csv {
 
     my ( $self, $tableid ) = @_;
-    my $dbp = $self->{_dbp} or return;
+    my $adb = $self->{_adb} or return;
 
     $tableid or return;
-    my $table_path = $dbp->table_path($tableid);
+    my $table_path = $adb->table_path($tableid);
 
     my $i = 1;
     if ( -e "$table_path.csv" ) {
-        my $day_id = $dbp->{date}->{day_id} || 'backup';
+        my $day_id = $adb->{date}->{day_id} || 'backup';
         rename( "$table_path.csv", "$table_path-$day_id.csv" );
     }
 
     # cevirme islemlerini yap
-    my $tie_path = "${table_path}.$dbp->{db_ext}";
+    my $tie_path = "${table_path}.$adb->{db_ext}";
     return 1 unless -e $tie_path;
-    $dbp->table_read($tie_path) or return 1;
+    $adb->table_read($tie_path) or return 1;
 
     my %data;
-    $dbp->recs_scan(
+    $adb->recs_scan(
         $tie_path,
         sub {
             my ( $k, $v ) = @_;
             $data{$k} = $v;
         }
     );
-    $dbp->table_close($tie_path);
+    $adb->table_close($tie_path);
 
-    my @uids = $dbp->db_sortid( $tableid, keys %data );
+    my @uids = $adb->db_sortid( $tableid, keys %data );
     open my $fh, ">", "$table_path.csv" or do {
         cluck "[DB_TOOL] Could not open $table_path.csv: $!\n";
         return;
     };
     foreach my $uid (@uids) {
-        my @fields = $dbp->db_decode( $data{$uid} );
-        my $record = $dbp->db_encode( $uid, @fields );
+        my @fields = $adb->db_decode( $data{$uid} );
+        my $record = $adb->db_encode( $uid, @fields );
         print $fh "$record\n";
         $self->{say} .= "$i. $uid ID record converted.\n\n";
         $i++;
     }
     close $fh;
-    $dbp->table_close($tie_path);
+    $adb->table_close($tie_path);
 
     return 1;
 }
@@ -730,22 +730,22 @@ sub tie2csv {
 sub csv2tie {
 
     my ( $self, $tableid ) = @_;
-    my $dbp = $self->{_dbp} or return;
+    my $adb = $self->{_adb} or return;
 
     $tableid or return;
 
     # file paths
-    my $table_path = $dbp->table_path($tableid);
-    my $file_path  = "${table_path}.$dbp->{db_ext}";
+    my $table_path = $adb->table_path($tableid);
+    my $file_path  = "${table_path}.$adb->{db_ext}";
     my $csv_path   = "$table_path.csv";
     return unless -e $csv_path;
 
     # backup with timestamp if exists
-    if ( -e "${table_path}.$dbp->{db_ext}" ) {
-        my $sec_id = $dbp->{date}->{second_id} || time();
-        rename( "${table_path}.$dbp->{db_ext}",
-            "${table_path}-$sec_id.$dbp->{db_ext}" );
-        unlink("${table_path}.$dbp->{db_ext}");
+    if ( -e "${table_path}.$adb->{db_ext}" ) {
+        my $sec_id = $adb->{date}->{second_id} || time();
+        rename( "${table_path}.$adb->{db_ext}",
+            "${table_path}-$sec_id.$adb->{db_ext}" );
+        unlink("${table_path}.$adb->{db_ext}");
     }
 
     # perform conversion operations
@@ -756,7 +756,7 @@ sub csv2tie {
         cluck "[DB_TOOL] Could not open $csv_path: $!\n";
         return;
     };
-    $dbp->table_write($file_path) or do {
+    $adb->table_write($file_path) or do {
         close $FH;
         cluck "[DB_TOOL] Could not open $file_path for writing.\n";
         return;
@@ -764,8 +764,8 @@ sub csv2tie {
     while ( my $record = <$FH> ) {
         chomp($record);
         $record =~ s/\r$//;
-        my (@fields) = $dbp->db_decode($record);
-        $dbp->recs_put( $file_path, [@fields] );
+        my (@fields) = $adb->db_decode($record);
+        $adb->recs_put( $file_path, [@fields] );
 
         # collect into list for indexing
         push @records, [@fields];
@@ -773,7 +773,7 @@ sub csv2tie {
         $i++;
     }
     close $FH;
-    $dbp->table_close($file_path);
+    $adb->table_close($file_path);
 
     $self->set_index( $tableid, @records );
 
@@ -785,15 +785,15 @@ sub csv2tie {
 sub dir_tables {
 
     my ( $self, $dir ) = @_;
-    my $dbp = $self->{_dbp} or return;
+    my $adb = $self->{_adb} or return;
 
     $dir or return;
-    my $dbase_dir = $self->{path}->{dbase_dir} || $dbp->{path}->{dbase_dir} || ".";
+    my $dbase_dir = $adb->path('dbase_dir') || ".";
     my @all_tables =
-      ( glob "$dbase_dir/$dir/*.$dbp->{db_ext}" );
+      ( glob "$dbase_dir/$dir/*.$adb->{db_ext}" );
 
     my %all_tables =
-      map { /([^\/]+)\.$dbp->{db_ext}$/; $1 => 1 } @all_tables;
+      map { /([^\/]+)\.$adb->{db_ext}$/; $1 => 1 } @all_tables;
 
     return sort { $a cmp $b } keys %all_tables;
 }
@@ -803,25 +803,25 @@ sub dir_tables {
 sub vacuum {
 
     my ( $self, $tableid, $reindex ) = @_;
-    my $dbp = $self->{_dbp} or return;
+    my $adb = $self->{_adb} or return;
 
-    my $table_path = $dbp->table_path($tableid);
-    my $tie_path   = "$table_path.$dbp->{db_ext}";
+    my $table_path = $adb->table_path($tableid);
+    my $tie_path   = "$table_path.$adb->{db_ext}";
     return unless -e $tie_path;
 
-    my $sec_id = $dbp->{date}->{second_id} || time();
+    my $sec_id = $adb->{date}->{second_id} || time();
     my $pid_name = "$sec_id-$$";
-    my $tie_back = "$table_path-$pid_name.$dbp->{db_ext}";
+    my $tie_back = "$table_path-$pid_name.$adb->{db_ext}";
     my $csv_path = "$table_path.csv";
     my $csv_back = "$table_path-$pid_name.csv";
 
     # Backup and reset index structure
-    my $table_info = $dbp->table_info($tableid);
-    $dbp->{_table}->{$tableid} = {};
+    my $table_info = $adb->table_info($tableid);
+    $adb->table_attr( $tableid, {} );
 
     # Fetch records
     my $count   = {};
-    my @records = $dbp->read_all($tableid);
+    my @records = $adb->read_all($tableid);
     $count->{tie1} = scalar @records;
     if ( !$count->{tie1} ) {
         cluck "[DB_TOOL] Cannot vacuum table $tableid as no records were found.\n";
@@ -835,7 +835,7 @@ sub vacuum {
         return;
     };
     foreach my $record (@records) {
-        my $new_record = $dbp->db_encode(@$record);
+        my $new_record = $adb->db_encode(@$record);
         print $FH "$new_record\n";
         $count->{csv1}++;
     }
@@ -848,63 +848,98 @@ sub vacuum {
         cluck "[DB_TOOL] Could not open $csv_path for reading: $!\n";
         return;
     };
-    $dbp->table_write($tie_path);
+    $adb->table_write($tie_path);
     while ( my $record = <$FH> ) {
         chomp($record);
         $record =~ s/\r$//;
-        my @fields = $dbp->db_decode($record);
-        my $ok     = $dbp->recs_put( $tie_path, [@fields] );
+        my @fields = $adb->db_decode($record);
+        my $ok     = $adb->recs_put( $tie_path, [@fields] );
         $ok and $count->{tie2}++;
     }
     close $FH;
-    $dbp->table_close($tie_path);
+    $adb->table_close($tie_path);
 
-    $dbp->{_table}->{$tableid} = $table_info;
+    $adb->table_attr( $tableid, $table_info );
     $self->set_index( $tableid, @records ) if $reindex;
     $self->{say} .= "Vacuum completed. Record counts: Tie old: $count->{tie1}, CSV: $count->{csv1}, Tie new: $count->{tie2}\n";
 
     return 1;
 }
 
-# my $tables_hash = $tools->all_tables();
+# my $tables_hash = $tools->all_tables(); # scalar context -> grouped hashref
+# my @table_list  = $tools->all_tables(); # list context   -> flat array of table IDs
 # ------------------------------------------------
 sub all_tables {
 
     my ($self) = @_;
-    my $dbp = $self->{_dbp} or return;
+    my $adb = $self->{_adb} or return;
 
     my @all_tables;
     my %all_tables;
 
-    my $dbase_dir  = $dbp->{path}->{dbase_dir} || ".";
-    my $year_dir   = $dbp->{path}->{year_dir} || "";
-    my $scheme_dir = $dbp->{path}->{scheme_dir} || "";
+    my $dbase_dir  = $adb->path('dbase_dir')  || ".";
+    my $year_dir   = $adb->path('year_dir')   || "";
+    my $schema_dir = $adb->path('schema_dir') || "";
 
-    if ( $dbp->{cfg}->{simple} ) {
-        push @all_tables, ( glob "$dbase_dir/*.db" );
+    # 1. Simple Mode: Single flat directory scan for files matching configured db_ext
+    if ( $adb->config('simple') ) {
+        my $ext = $adb->{db_ext} || "db";
+        push @all_tables, ( glob "$dbase_dir/*.$ext" );
+        @all_tables = map { /([a-z0-9_]+)\.\Q$ext\E$/i; $1 } @all_tables;
     }
+    # 2. Standard Structured Mode: Multi-directory scan (tables/ and year directories) for .db files
     else {
         push @all_tables, ( glob "$dbase_dir/tables/*.db" );
+
+        my %seen_dirs = ( "tables" => 1, "schema" => 1, "backup" => 1 );
         if ($year_dir) {
             push @all_tables, ( glob "$dbase_dir/$year_dir/*.db" );
-            my @sections = glob "$dbase_dir/$year_dir/section_*";
-            foreach my $sec_file (@sections) {
-                push @all_tables, ( glob "$sec_file/*.db" );
+            $seen_dirs{$year_dir} = 1;
+        }
+
+        # Auto-discover any 4-digit year directories under $dbase_dir (e.g. 2024, 2025, 2026)
+        if ( -d $dbase_dir ) {
+            opendir my $dh, $dbase_dir;
+            my @year_candidates = grep { /^\d{4}$/ && -d "$dbase_dir/$_" && !$seen_dirs{$_} } readdir($dh);
+            closedir $dh;
+
+            foreach my $yd (@year_candidates) {
+                push @all_tables, ( glob "$dbase_dir/$yd/*.db" );
+            }
+        }
+
+        @all_tables = map { /([a-z0-9_]+)\.db$/i; $1 } @all_tables;
+    }
+
+    foreach my $record (@all_tables) {
+        next unless $record;
+        next if $record =~ /^_/; # skip internal / temp files
+
+        if ( my ( $dbs, $tbl ) = ( $record =~ /^([a-z0-9]+)_(.+)$/i ) ) {
+            $all_tables{$dbs}->{$record} = 1;
+            if ( $schema_dir && !-e "$schema_dir/$dbs.dbase" ) {
+                $all_tables{__NO_DBASE__}->{$dbs} = 1;
+            }
+            if ( $schema_dir && !-e "$schema_dir/$record.table" ) {
+                $all_tables{__NO_TABLE__}->{$record} = 1;
+            }
+        }
+        else {
+            # Single-token table name without underscore
+            $all_tables{_main}->{$record} = 1;
+            if ( $schema_dir && !-e "$schema_dir/$record.table" ) {
+                $all_tables{__NO_TABLE__}->{$record} = 1;
             }
         }
     }
-    @all_tables = map { /([a-z0-9_]+)\.db$/; $1 } @all_tables;
-    foreach my $record (@all_tables) {
-        next unless $record;
-        my ( $dbs, $tbl ) = ( $record =~ /([a-z0-9]+)_([a-z0-9]+)$/ );
-        $dbs and $tbl or next;
-        $all_tables{$dbs}->{"${dbs}_$tbl"} = 1;
-        if ( $scheme_dir && !-e "$scheme_dir/$dbs.dbase" ) {
-            $all_tables{__NO_DBASE__}->{$dbs} = 1;
+
+    if (wantarray) {
+        my @flat_list;
+        foreach my $dbs ( sort keys %all_tables ) {
+            next if $dbs =~ /^__/;
+            push @flat_list, sort keys %{ $all_tables{$dbs} };
         }
-        if ( $scheme_dir && !-e "$scheme_dir/${dbs}_$tbl.table" ) {
-            $all_tables{__NO_TABLE__}->{"${dbs}_$tbl"} = 1;
-        }
+        return @flat_list;
     }
 
     return \%all_tables;
@@ -915,10 +950,10 @@ sub all_tables {
 sub table_exist {
 
     my ( $self, $table ) = @_;
-    my $dbp = $self->{_dbp} or return 0;
+    my $adb = $self->{_adb} or return 0;
 
-    my $table_path = $dbp->table_path($table);
-    my $ok         = -e "$table_path.$dbp->{db_ext}" ? 1 : 0;
+    my $table_path = $adb->table_path($table);
+    my $ok         = -e "$table_path.$adb->{db_ext}" ? 1 : 0;
 
     return $ok;
 }
@@ -928,20 +963,20 @@ sub table_exist {
 sub replace_tablename {
 
     my ( $self, $find, $replace ) = @_;
-    my $dbp = $self->{_dbp} or return;
+    my $adb = $self->{_adb} or return;
 
     my @tables;
-    my $dbase_dir = $dbp->{path}->{dbase_dir} || ".";
-    my $year_dir  = $dbp->{path}->{year_dir} || "";
+    my $dbase_dir = $adb->path('dbase_dir') || ".";
+    my $year_dir  = $adb->path('year_dir') || "";
 
-    if ( $dbp->{cfg}->{simple} ) {
+    if ( $adb->config('simple') ) {
         @tables = glob "$dbase_dir/$find.*";
         push @tables, ( glob "$dbase_dir/${find}_*" );
     }
     else {
         @tables = glob "$dbase_dir/tables/$find.*";
         push @tables, ( glob "$dbase_dir/tables/${find}_*" );
-        if ( $dbp->{cfg}->{use_section} ) {
+        if ( $adb->config('use_section') ) {
             my @sections = glob "$dbase_dir/section_*";
             foreach my $sec_file (@sections) {
                 push @tables, ( glob "$sec_file/$find.*" );
@@ -949,10 +984,10 @@ sub replace_tablename {
             }
         }
 
-        if ( $dbp->{cfg}->{use_year} && $year_dir ) {
+        if ( $adb->config('use_year') && $year_dir ) {
             @tables = glob "$dbase_dir/$year_dir/$find.*";
             push @tables, ( glob "$dbase_dir/$year_dir/${find}_*" );
-            if ( $dbp->{cfg}->{use_section} ) {
+            if ( $adb->config('use_section') ) {
                 my @sections = glob "$dbase_dir/$year_dir/section_*";
                 foreach my $sec_file (@sections) {
                     push @tables, ( glob "$sec_file/${find}.*" );
@@ -986,14 +1021,14 @@ sub replace_tablename {
 sub replace_blockdata {
 
     my ( $self, $files, $replace ) = @_;
-    my $dbp = $self->{_dbp} or return {};
+    my $adb = $self->{_adb} or return {};
 
     my $status = {};
     ref($files) eq "HASH"   or return $status;
     ref($replace) eq "HASH" or return $status;
 
     while ( my ( $file, $block ) = each %{$files} ) {
-        my @datas = $dbp->read_all($file);
+        my @datas = $adb->read_all($file);
         foreach my $record (@datas) {
             my $change = 0;
             if ( $block =~ /^[0-9]+$/ ) {
@@ -1023,7 +1058,7 @@ sub replace_blockdata {
                 }
             }
             if ($change) {
-                $dbp->modify_id( $file, @$record );
+                $adb->modify_id( $file, @$record );
                 $status->{$file}->{ $record->[0] } = 1;
                 $self->{say} .= "          * $file: $record->[0] ID updated.\n";
             }
@@ -1038,14 +1073,14 @@ sub replace_blockdata {
 sub del_table {
 
     my ( $self, $tableid ) = @_;
-    my $dbp = $self->{_dbp} or return;
+    my $adb = $self->{_adb} or return;
 
     $tableid or return;
 
-    $dbp->{cfg}->{no_write} and return;
+    $adb->config('no_write') and return;
 
-    my $table_path = $dbp->table_path($tableid);
-    return unless $table_path && -e "$table_path.$dbp->{db_ext}";
+    my $table_path = $adb->table_path($tableid);
+    return unless $table_path && -e "$table_path.$adb->{db_ext}";
 
     my @files  = glob "$table_path*";
     my @files1 = grep { /^\Q$table_path\E(?:\.[a-z0-9]+|_[0-9]+\.[a-z0-9]+)$/i } @files;
@@ -1106,17 +1141,17 @@ sub _hash_diff {
 sub set_sort {
 
     my ( $self, $tableid, @records ) = @_;
-    my $dbp = $self->{_dbp} or return;
+    my $adb = $self->{_adb} or return;
 
     return unless $tableid;
-    my $table_path = $dbp->table_path($tableid);
-    my $table_info = $dbp->table_info($tableid);
+    my $table_path = $adb->table_path($tableid);
+    my $table_info = $adb->table_info($tableid);
     return unless exists $table_info->{sort_block};
 
     my $id_type = $table_info->{id_type} // 'num';
 
     if ( !@records ) {
-        @records = $dbp->read_all( $tableid, 0, 0, no_index => 1 );
+        @records = $adb->read_all( $tableid, 0, 0, no_index => 1 );
     }
 
     foreach my $cfg ( @{ $table_info->{sort_block} } ) {
@@ -1130,7 +1165,7 @@ sub set_sort {
         my %map;
         foreach my $rec (@records) {
             next unless ref($rec) eq 'ARRAY' && defined $rec->[0];
-            $map{ $rec->[0] } = $dbp->normalize_sort_key( $rec->[$blk], $type, $len );
+            $map{ $rec->[0] } = $adb->normalize_sort_key( $rec->[$blk], $type, $len );
         }
 
         # Sort all keys in-memory with deterministic tie-breaker
@@ -1140,13 +1175,13 @@ sub set_sort {
         } keys %map;
 
         # Map file write (.srt) with bin_encode keys
-        $dbp->table_write($tmp_srt);
-        $dbp->index_put( $tmp_srt, "count", scalar(@sorted_ids), "raw" );
-        $dbp->index_put( $tmp_srt, "keys",  \@sorted_ids, "ids", $id_type );
+        $adb->table_write($tmp_srt);
+        $adb->index_put( $tmp_srt, "count", scalar(@sorted_ids), "raw" );
+        $adb->index_put( $tmp_srt, "keys",  \@sorted_ids, "ids", $id_type );
         foreach my $k ( keys %map ) {
-            $dbp->index_put( $tmp_srt, $k, $map{$k}, "raw" );
+            $adb->index_put( $tmp_srt, $k, $map{$k}, "raw" );
         }
-        $dbp->table_close($tmp_srt);
+        $adb->table_close($tmp_srt);
 
         unlink($sort_path);
         rename( $tmp_srt, $sort_path );
@@ -1157,13 +1192,13 @@ sub set_sort {
 }
 
 # Rebuilds and converts binary indexes for all tables in database directory.
-# my $status = $tools->convert_all_tables();
+# my $status = $tools->convert_tables();
 # ------------------------------------------------
-sub convert_all_tables {
+sub convert_tables {
     my ($self) = @_;
-    my $dbp = $self->{_dbp} or return;
+    my $adb = $self->{_adb} or return;
 
-    my $db_dir = $dbp->{path}->{dbase_dir};
+    my $db_dir = $adb->path('dbase_dir');
     return unless $db_dir && -d $db_dir;
 
     my @dirs = ($db_dir);
@@ -1173,7 +1208,7 @@ sub convert_all_tables {
     foreach my $d (@dirs) {
         if ( opendir my $dh, $d ) {
             push @db_files, map { File::Spec->catfile( $d, $_ ) }
-                            grep { /\.\Q$dbp->{db_ext}\E$/ }
+                            grep { /\.\Q$adb->{db_ext}\E$/ }
                             readdir($dh);
             closedir $dh;
         }
@@ -1196,6 +1231,377 @@ sub convert_all_tables {
     return \%converted;
 }
 
+# Creates a compressed, portable .amberdb archive containing table schemas,
+# native data files (.db, .del, .aut, .cnt), and integrity manifest.
+# my $archive = $tools->dump( [file => 'backup.amberdb'], [tables => ['t1', 't2']] );
+# ---------------------------------------------------------------------
+sub dump {
+    my ( $self, %opts ) = @_;
+    my $adb = $self->{_adb} or return;
+
+    require Archive::Tar;
+    require Digest::SHA;
+    require JSON::PP;
+    require File::Spec;
+    require File::Path;
+
+    # 1. Determine target tables
+    my @tables;
+    if ( $opts{tables} && ref( $opts{tables} ) eq 'ARRAY' ) {
+        @tables = @{ $opts{tables} };
+    }
+    elsif ( $opts{table} ) {
+        @tables = ( $opts{table} );
+    }
+    else {
+        @tables = $self->all_tables();
+    }
+    return unless @tables;
+
+    # 2. Flush and close open table handles for read consistency
+    $adb->close_all();
+
+    # 3. Determine output file path
+    my $year = ( $adb->{date} && $adb->{date}->{year} ) ? $adb->{date}->{year} : (localtime)[5] + 1900;
+    my $month = ( $adb->{date} && $adb->{date}->{month} ) ? $adb->{date}->{month} : sprintf( "%02d", (localtime)[4] + 1 );
+    my $day = ( $adb->{date} && $adb->{date}->{day} ) ? $adb->{date}->{day} : sprintf( "%02d", (localtime)[3] );
+    my $date_iso = "$year-$month-$day";
+    my $time_id = ( $adb->{date} && $adb->{date}->{second_id} ) ? $adb->{date}->{second_id} : time();
+
+    my $backup_base = $adb->path('backup_dir')
+      || ( $adb->path('dbase_dir') ? $adb->path('dbase_dir') . "/backup" : "backup" );
+    my $year_dir = "$backup_base/$year";
+    unless ( -d $year_dir ) {
+        File::Path::make_path($year_dir);
+    }
+
+    my $outfile = $opts{file} || "$year_dir/amberdb_${date_iso}_${time_id}.amberdb";
+
+    # Ensure parent directory for $outfile exists
+    if ( my ($outdir) = $outfile =~ m{^(.*)[/\\]} ) {
+        unless ( -d $outdir ) {
+            File::Path::make_path($outdir);
+        }
+    }
+
+    my $tar = Archive::Tar->new();
+
+    my $manifest = {
+        format          => "AmberDB Archive",
+        format_version  => 1,
+        amberdb_version => $AmberDB::VERSION || $VERSION || "5.21.0",
+        created_at      => "$date_iso " . sprintf( "%02d:%02d:%02d", (localtime)[2], (localtime)[1], (localtime)[0] ),
+        dbase_dir       => $adb->path('dbase_dir'),
+        tables          => {},
+    };
+
+    my $schema_dir = $adb->path('schema_dir')
+      || ( $adb->path('dbase_dir') ? $adb->path('dbase_dir') . "/schema" : "schema" );
+
+    # Collect .dbase database group schemas
+    if ( -d $schema_dir ) {
+        opendir my $sdh, $schema_dir;
+        my @dbase_files = grep { /\.dbase$/i } readdir($sdh);
+        closedir $sdh;
+
+        foreach my $df (@dbase_files) {
+            my ($dbs) = $df =~ /^([^.]+)\.dbase$/i;
+            next unless $dbs;
+
+            # If dumping specific tables, only include matching dbase prefix
+            if ( $opts{tables} || $opts{table} ) {
+                my $matched = 0;
+                foreach my $tid (@tables) {
+                    if ( $tid =~ /^\Q$dbs\E_/ or $tid eq $dbs ) {
+                        $matched = 1;
+                        last;
+                    }
+                }
+                next unless $matched;
+            }
+
+            my $dpath = "$schema_dir/$df";
+            if ( -e $dpath ) {
+                open my $dfh, "<:raw", $dpath or next;
+                local $/ = undef;
+                my $dcontent = <$dfh>;
+                close $dfh;
+                $tar->add_data( "schema/$df", $dcontent );
+                $manifest->{dbases}->{$dbs} = "schema/$df";
+            }
+        }
+    }
+
+    foreach my $tid (@tables) {
+        my $tpath = $adb->table_path($tid);
+        my $db_file = "$tpath." . ( $adb->{db_ext} || "db" );
+        next unless -e $db_file;
+
+        my $table_manifest = {
+            records => 0,
+            files   => [],
+            sha256  => {},
+        };
+
+        # A. Collect Schema file if exists
+        my $schema_file = "$schema_dir/$tid.table";
+        if ( -e $schema_file ) {
+            open my $sfh, "<:raw", $schema_file or next;
+            local $/ = undef;
+            my $schema_content = <$sfh>;
+            close $sfh;
+            $tar->add_data( "schema/$tid.table", $schema_content );
+            $table_manifest->{schema} = "schema/$tid.table";
+        }
+
+        # B. Count records from .db table safely
+        my $count = $adb->count($tid) // 0;
+        $table_manifest->{records} = $count;
+
+        # C. Collect data files (.db, .del, .aut, .cnt)
+        # Suffixes that represent data, NOT derived indexes
+        my @suffixes = ( ( $adb->{db_ext} || "db" ), "del", "aut", "cnt" );
+        my $base_dir = $adb->path('dbase_dir') || ".";
+        $base_dir =~ s{\\}{/}g;
+        $base_dir =~ s{/$}{};
+
+        foreach my $sfx (@suffixes) {
+            my $fpath = "$tpath.$sfx";
+            if ( -e $fpath ) {
+                open my $dfh, "<:raw", $fpath or next;
+                local $/ = undef;
+                my $dcontent = <$dfh>;
+                close $dfh;
+
+                my $norm_fpath = $fpath;
+                $norm_fpath =~ s{\\}{/}g;
+                my $arch_path = $norm_fpath;
+                if ( $norm_fpath =~ m{^\Q$base_dir\E/(.+)$} ) {
+                    $arch_path = $1;
+                }
+                else {
+                    $arch_path = "tables/$tid.$sfx";
+                }
+
+                $tar->add_data( $arch_path, $dcontent );
+                push @{ $table_manifest->{files} }, $arch_path;
+
+                my $sha256 = Digest::SHA::sha256_hex($dcontent);
+                $table_manifest->{sha256}->{$arch_path} = $sha256;
+            }
+        }
+
+        # D. Collect Authoritative String Dictionaries (_*.str)
+        my @str_files = glob "${tpath}_*.str";
+        foreach my $fpath (@str_files) {
+            next unless -e $fpath;
+            open my $dfh, "<:raw", $fpath or next;
+            local $/ = undef;
+            my $dcontent = <$dfh>;
+            close $dfh;
+
+            my $norm_fpath = $fpath;
+            $norm_fpath =~ s{\\}{/}g;
+            my $arch_path = $norm_fpath;
+            if ( $norm_fpath =~ m{^\Q$base_dir\E/(.+)$} ) {
+                $arch_path = $1;
+            }
+            else {
+                my ($fname) = $fpath =~ m{([^/\\]+)$};
+                $arch_path = "tables/$fname";
+            }
+
+            $tar->add_data( $arch_path, $dcontent );
+            push @{ $table_manifest->{files} }, $arch_path;
+
+            my $sha256 = Digest::SHA::sha256_hex($dcontent);
+            $table_manifest->{sha256}->{$arch_path} = $sha256;
+        }
+
+        $manifest->{tables}->{$tid} = $table_manifest;
+    }
+
+    # Add manifest.json to archive
+    my $json = JSON::PP->new->utf8->pretty->encode($manifest);
+    $tar->add_data( "manifest.json", $json );
+
+    # Write tar.gz archive
+    unless ( $tar->write( $outfile, Archive::Tar::COMPRESS_GZIP() ) ) {
+        cluck "[DB_BACKUP] Failed to write archive $outfile: " . $tar->error() . "\n";
+        return;
+    }
+
+    $self->{say} .= "Archive successfully written to $outfile (" . ( -s $outfile ) . " bytes)\n";
+    return wantarray ? ( $outfile, $manifest ) : $outfile;
+}
+
+# Restores a .amberdb archive into target database, validates checksums,
+# and deterministically rebuilds all binary indexes via set_index.
+# my $res = $tools->restore( file => 'backup.amberdb', [force => 1], [reindex => 1] );
+# ---------------------------------------------------------------------
+sub restore {
+    my ( $self, %opts ) = @_;
+    my $adb = $self->{_adb} or return;
+
+    my $file = $opts{file} or do {
+        cluck "[DB_RESTORE] Missing required parameter 'file'.\n";
+        return;
+    };
+    return unless -e $file;
+
+    require Archive::Tar;
+    require Digest::SHA;
+    require JSON::PP;
+    require File::Spec;
+    require File::Path;
+
+    my $tar = Archive::Tar->new();
+    unless ( $tar->read($file) ) {
+        cluck "[DB_RESTORE] Cannot read archive $file: " . $tar->error() . "\n";
+        return;
+    }
+
+    # 1. Read and parse manifest.json
+    my $manifest_content = $tar->get_content("manifest.json");
+    unless ($manifest_content) {
+        cluck "[DB_RESTORE] Archive $file is missing manifest.json.\n";
+        return;
+    }
+
+    my $manifest = eval { JSON::PP->new->utf8->decode($manifest_content) };
+    if ( $@ || ref($manifest) ne 'HASH' ) {
+        cluck "[DB_RESTORE] Corrupted manifest.json in $file: $@\n";
+        return;
+    }
+
+    # 2. Check if target DB is empty or force is set
+    my $schema_dir = $adb->path('schema_dir')
+      || ( $adb->path('dbase_dir') ? $adb->path('dbase_dir') . "/schema" : "schema" );
+    my $table_dir = $adb->path('table_dir')
+      || ( $adb->path('dbase_dir') ? $adb->path('dbase_dir') . "/tables" : "tables" );
+
+    my $force = $opts{force} || $opts{overwrite};
+    unless ($force) {
+        # Check if existing schema or data files exist
+        my $has_existing = 0;
+        foreach my $tid ( keys %{ $manifest->{tables} || {} } ) {
+            my $tpath = $adb->table_path($tid);
+            my $db_file = "$tpath." . ( $adb->{db_ext} || "db" );
+            if ( -e $db_file || -e "$schema_dir/$tid.table" ) {
+                $has_existing = 1;
+                last;
+            }
+        }
+        if ($has_existing) {
+            cluck "[DB_RESTORE] Target database is not empty. Use 'force => 1' to overwrite existing tables.\n";
+            return;
+        }
+    }
+
+    # Ensure target directories exist
+    File::Path::make_path($schema_dir) unless -d $schema_dir;
+    File::Path::make_path($table_dir)  unless -d $table_dir;
+
+    # Flush all active handles before restoring
+    $adb->close_all();
+
+    my @restored_tables;
+    my %table_filter = $opts{tables} ? map { $_ => 1 } @{ $opts{tables} } : ();
+
+    # 3. Extract .dbase database group schemas
+    if ( ref( $manifest->{dbases} ) eq 'HASH' ) {
+        foreach my $dbs ( sort keys %{ $manifest->{dbases} } ) {
+            my $arch_path = $manifest->{dbases}->{$dbs};
+            my $scontent = $tar->get_content($arch_path);
+            if ( defined $scontent ) {
+                my $target_dbase = "$schema_dir/$dbs.dbase";
+                open my $dfh, ">:raw", $target_dbase or do {
+                    cluck "[DB_RESTORE] Cannot write dbase schema $target_dbase: $!\n";
+                    return;
+                };
+                print $dfh $scontent;
+                close $dfh;
+            }
+        }
+    }
+
+    # 4. Extract table schemas and data files
+    my $base_dir = $adb->path('dbase_dir') || ".";
+    $base_dir =~ s{\\}{/}g;
+    $base_dir =~ s{/$}{};
+
+    foreach my $tid ( sort keys %{ $manifest->{tables} || {} } ) {
+        next if ( %table_filter && !$table_filter{$tid} );
+
+        my $tinfo = $manifest->{tables}->{$tid};
+
+        # A. Restore Schema
+        if ( $tinfo->{schema} ) {
+            my $scontent = $tar->get_content( $tinfo->{schema} );
+            if ( defined $scontent ) {
+                my $target_schema = "$schema_dir/$tid.table";
+                open my $sfh, ">:raw", $target_schema or do {
+                    cluck "[DB_RESTORE] Cannot write schema $target_schema: $!\n";
+                    return;
+                };
+                print $sfh $scontent;
+                close $sfh;
+            }
+        }
+
+        # B. Restore Data Files (.db, .del, .aut, .cnt)
+        my $tpath = $adb->table_path($tid);
+
+        foreach my $arch_path ( @{ $tinfo->{files} || [] } ) {
+            my $dcontent = $tar->get_content($arch_path);
+            next unless defined $dcontent;
+
+            # Verify checksum if present
+            if ( my $expected_sha = $tinfo->{sha256}->{$arch_path} ) {
+                my $actual_sha = Digest::SHA::sha256_hex($dcontent);
+                if ( $expected_sha ne $actual_sha ) {
+                    cluck "[DB_RESTORE] Checksum mismatch for $arch_path! Expected $expected_sha, got $actual_sha.\n";
+                    return;
+                }
+            }
+
+            # Native archive path: e.g. tables/products.db or 2026/sales.db
+            my $target_file = "$base_dir/$arch_path";
+
+            if ( my ($tdir) = $target_file =~ m{^(.*)[/\\]} ) {
+                File::Path::make_path($tdir) unless -d $tdir;
+            }
+
+            open my $dfh, ">:raw", $target_file or do {
+                cluck "[DB_RESTORE] Cannot write data file $target_file: $!\n";
+                return;
+            };
+            print $dfh $dcontent;
+            close $dfh;
+        }
+
+        push @restored_tables, $tid;
+    }
+
+    # 5. Rebuild all indexes if reindex is requested (default: 1)
+    my $reindex = defined $opts{reindex} ? $opts{reindex} : 1;
+    if ($reindex) {
+        foreach my $tid (@restored_tables) {
+            $self->set_index($tid);
+        }
+    }
+
+    $self->{say} .= "Restored " . scalar(@restored_tables) . " tables from $file.\n";
+
+    return {
+        ok             => 1,
+        file           => $file,
+        tables         => \@restored_tables,
+        manifest       => $manifest,
+        reindexed      => $reindex ? 1 : 0,
+    };
+}
+
 1;
 
 
@@ -1203,53 +1609,126 @@ __END__
 
 =head1 NAME
 
-AmberDB::Tools - Database maintenance, reindexing, and utility helper module
+AmberDB::Tools - Database maintenance, CLI reindexing, and bulk conversion toolset
 
 =head1 SYNOPSIS
 
+  use AmberDB;
   use AmberDB::Tools;
-  my $tools = AmberDB::Tools->new($dbp);
 
-  # Rebuild all indexes for a table
-  $tools->set_index($table_id);
+  my $adb   = AmberDB->new(path => { dbase_dir => "/path/to/dbstore" });
+  my $tools = AmberDB::Tools->new($adb);
 
-  # Rebuild search index
-  $tools->set_search($table_id);
+  # 1. Create portable .amberdb database backup archive
+  my $archive = $tools->dump();
+
+  # 2. Restore database archive with integrity validation and reindexing
+  my $result  = $tools->restore(file => "backup.amberdb", force => 1);
+
+  # 3. Rebuild all indexes for a single table (.inx, .src, .fld, .fac, .srt)
+  $tools->set_index("catalog_product");
+
+  # 4. Rebuild only specific index components
+  $tools->set_search("catalog_product");  # Rebuild full-text search index
+  $tools->set_fields("catalog_product");  # Rebuild field exact match index
+  $tools->set_filters("catalog_product"); # Rebuild facet forward filter index
+  $tools->set_sort("catalog_product");    # Rebuild binary sort index
+
+  # 5. Batch reindex / convert all tables in database directory
+  my $report = $tools->convert_tables();
 
 =head1 DESCRIPTION
 
-C<AmberDB::Tools> provides maintenance functions for rebuilding indexes, creating full-text search keys,
-managing facet forward indexes, and generating table backups.
+C<AmberDB::Tools> provides maintenance, native disaster recovery archiving (C<dump>/C<restore>), and batch utility functions for rebuilding indexes, populating full-text search inverted files, compiling forward facet filter dictionaries, generating binary sort matrices, and running automated database-wide index migrations.
+
+=head1 CONSTRUCTOR
+
+=head2 new($adb, [%options])
+
+Creates an C<AmberDB::Tools> instance associated with an active C<AmberDB> object handle.
+
+  my $tools = AmberDB::Tools->new($adb);
 
 =head1 METHODS
 
-=head2 new($dbp, [%options])
+=head2 dump([%options])
 
-Constructor for C<AmberDB::Tools>. Accepts an C<AmberDB> instance handle.
+Creates a compressed, portable C<.amberdb> archive file (gzipped tar archive) containing table and database schemas (C<schema/*.table>, C<schema/*.dbase>), native database data files (C<tables/*.db>, C<tables/*.del>, C<tables/*.aut>, C<tables/*.cnt>), and a cryptographically verified SHA-256 C<manifest.json>.
+
+Options:
+=over 4
+=item * C<file>: Custom output file path (defaults to C<backup/YYYY/amberdb_YYYY-MM-DD_time.amberdb>).
+=item * C<tables>: Array reference of table IDs to include (defaults to all tables in database).
+=item * C<table>: Single table ID to export as a focused snapshot.
+=back
+
+  my $archive = $tools->dump();
+  my $archive = $tools->dump(tables => ["catalog_product", "orders_cart"]);
+
+=head2 restore(%options)
+
+Restores a C<.amberdb> archive into the target database. Validates archive integrity via SHA-256 checksums in C<manifest.json>, extracts schemas and data files, and deterministically reconstructs all binary indexes (C<.inx>, C<.src>, C<.fld>, C<.fac>, C<.srt>) via C<set_index>.
+
+Options:
+=over 4
+=item * C<file>: Path to C<.amberdb> archive file (required).
+=item * C<force>: Boolean (default 0). Must be set to 1 to overwrite existing tables in a non-empty database directory.
+=item * C<reindex>: Boolean (default 1). Automatically executes C<set_index> for all restored tables.
+=item * C<tables>: Array reference of specific table IDs to extract from the archive.
+=back
+
+  my $res = $tools->restore(file => "backup.amberdb", force => 1);
 
 =head2 set_index($table_id, [@records])
 
-Rebuilds all indexes (readall, search, match, facet, sort) for specified table.
+Rebuilds all secondary and primary indexes for C<$table_id> based on its schema definition:
+=over 4
+=item * Primary key index (C<.inx>) via C<set_readall>
+=item * Full-text search inverted indexes (C<_${blk}.src>) via C<set_search>
+=item * Inverted field match indexes (C<_${blk}.fld>) via C<set_fields>
+=item * Columnar facet filter forward indexes (C<_${blk}.fac>) via C<set_filters>
+=item * Monotonic binary pre-sorted record indexes (C<_${blk}.srt>) via C<set_sort>
+=back
 
-=head2 set_readall($table_id, @ids)
+If C<@records> is omitted, reads all records from the base table automatically.
 
-Rebuilds primary readall key index.
+  $tools->set_index("catalog_product");
+
+=head2 set_readall($table_id, [@ids])
+
+Rebuilds the primary C<.inx> index file, populating C<keys> (compact binary packed list of IDs), C<count>, and C<lastid>.
+
+  $tools->set_readall("catalog_product");
 
 =head2 set_search($table_id, [@records])
 
-Rebuilds full-text search index.
+Scans records, tokenizes text according to schema C<search_block>, and builds inverted keyword index files (C<_${blk}.src>).
+
+  $tools->set_search("catalog_product");
 
 =head2 set_fields($table_id, [@records])
 
-Rebuilds field matching index.
+Builds inverted exact match index files (C<_${blk}.fld>) for fields specified in schema C<match_block>.
+
+  $tools->set_fields("catalog_product");
 
 =head2 set_filters($table_id, [@records])
 
-Rebuilds facet forward filter index.
+Builds columnar facet forward index files (C<_${blk}.fac>) and bidirectional string dictionaries (C<_${blk}.str>) for blocks configured in schema C<facet_block>.
+
+  $tools->set_filters("catalog_product");
 
 =head2 set_sort($table_id, [@records])
 
-Rebuilds binary sort index.
+Builds monotonic binary pre-sorted index files (C<_${blk}.srt>) according to schema C<sort_block>.
+
+  $tools->set_sort("catalog_product");
+
+=head2 convert_tables()
+
+Scans the entire database directory, identifies all physical tables, and sequentially runs C<set_index> to rebuild and migrate packed binary indexes across the entire system. Returns a status hash reference.
+
+  my $status = $tools->convert_tables();
 
 =head1 AUTHOR
 
@@ -1262,3 +1741,4 @@ Copyright (C) 2018-2026 Maruf Cetin.
 This library is free software; you can redistribute it and/or modify it under the terms of the Artistic License 2.0.
 
 =cut
+

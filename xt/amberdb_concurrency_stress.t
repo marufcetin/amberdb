@@ -34,7 +34,7 @@ if ( $@ || !$can_fork ) {
 }
 
 # Schema template for concurrent catalog tables
-sub make_scheme {
+sub make_schema {
     my ($name) = @_;
     return {
         name         => $name || "Concurrent Products",
@@ -60,7 +60,7 @@ sub make_scheme {
 subtest '1. Concurrent Multi-Process Inserts (Parallel Writers)' => sub {
     my $tmpdir = tempdir( CLEANUP => 1 );
     my $tbl_name = "catalog_writers";
-    my $table_scheme = make_scheme("Concurrent Writers Table");
+    my $table_schema = make_schema("Concurrent Writers Table");
 
     my $num_workers   = 4;
     my $recs_per_proc = 15;
@@ -74,7 +74,7 @@ subtest '1. Concurrent Multi-Process Inserts (Parallel Writers)' => sub {
         if ( $pid == 0 ) {
             # Child worker process
             my $db = AmberDB->new( path => { dbase_dir => $tmpdir }, cfg => { simple => 0 } );
-            $db->{_table}->{$tbl_name} = $table_scheme;
+            $db->{_table}->{$tbl_name} = $table_schema;
 
             for my $i ( 1 .. $recs_per_proc ) {
                 my $cat_id   = ( $i % 4 ) + 1;
@@ -108,7 +108,7 @@ subtest '1. Concurrent Multi-Process Inserts (Parallel Writers)' => sub {
 
     # Parent inspects final database consistency
     my $parent_db = AmberDB->new( path => { dbase_dir => $tmpdir }, cfg => { simple => 0 } );
-    $parent_db->{_table}->{$tbl_name} = $table_scheme;
+    $parent_db->{_table}->{$tbl_name} = $table_schema;
 
     my $total_count = $parent_db->table_count($tbl_name);
     is( $total_count, $expected_total, "Table count matches exact sum of all concurrent writes ($expected_total)" );
@@ -135,7 +135,7 @@ subtest '1. Concurrent Multi-Process Inserts (Parallel Writers)' => sub {
 subtest '2. Concurrent Read & Write Interleaving' => sub {
     my $tmpdir = tempdir( CLEANUP => 1 );
     my $tbl_name = "catalog_interleave";
-    my $table_scheme = make_scheme("Interleave Table");
+    my $table_schema = make_schema("Interleave Table");
 
     my $num_writers = 3;
     my $num_readers = 3;
@@ -149,7 +149,7 @@ subtest '2. Concurrent Read & Write Interleaving' => sub {
         die "Fork failed: $!" unless defined $pid;
         if ( $pid == 0 ) {
             my $db = AmberDB->new( path => { dbase_dir => $tmpdir }, cfg => { simple => 0 } );
-            $db->{_table}->{$tbl_name} = $table_scheme;
+            $db->{_table}->{$tbl_name} = $table_schema;
 
             for my $i ( 1 .. $writes_each ) {
                 my $title = "Interleaved_${w}_${i}";
@@ -168,7 +168,7 @@ subtest '2. Concurrent Read & Write Interleaving' => sub {
         die "Fork failed: $!" unless defined $pid;
         if ( $pid == 0 ) {
             my $db = AmberDB->new( path => { dbase_dir => $tmpdir }, cfg => { simple => 0 } );
-            $db->{_table}->{$tbl_name} = $table_scheme;
+            $db->{_table}->{$tbl_name} = $table_schema;
 
             my $read_success = 1;
             for ( 1 .. 25 ) {
@@ -199,13 +199,13 @@ subtest '2. Concurrent Read & Write Interleaving' => sub {
 subtest '3. Concurrent Independent Transactions & Crash Recovery' => sub {
     my $tmpdir = tempdir( CLEANUP => 1 );
     my $tbl_name = "catalog_transact";
-    my $table_scheme = make_scheme("Transaction Table");
+    my $table_schema = make_schema("Transaction Table");
 
     # Worker A: Successful Transaction (Commit)
     my $pid_commit = fork();
     if ( $pid_commit == 0 ) {
         my $db = AmberDB->new( path => { dbase_dir => $tmpdir }, cfg => { simple => 0 } );
-        $db->{_table}->{$tbl_name} = $table_scheme;
+        $db->{_table}->{$tbl_name} = $table_schema;
 
         $db->transact_start();
         $db->insert_id( $tbl_name, undef, "2", "2", "Committed_Book_A", "10", "150" );
@@ -218,7 +218,7 @@ subtest '3. Concurrent Independent Transactions & Crash Recovery' => sub {
     waitpid( $pid_commit, 0 );
 
     my $parent_db = AmberDB->new( path => { dbase_dir => $tmpdir }, cfg => { simple => 0 } );
-    $parent_db->{_table}->{$tbl_name} = $table_scheme;
+    $parent_db->{_table}->{$tbl_name} = $table_schema;
 
     # Verify committed records exist
     ok( $parent_db->exist_id( $tbl_name, 1 ), "Worker A record 1 committed successfully" );
@@ -228,7 +228,7 @@ subtest '3. Concurrent Independent Transactions & Crash Recovery' => sub {
     my $pid_rollback = fork();
     if ( $pid_rollback == 0 ) {
         my $db = AmberDB->new( path => { dbase_dir => $tmpdir }, cfg => { simple => 0 } );
-        $db->{_table}->{$tbl_name} = $table_scheme;
+        $db->{_table}->{$tbl_name} = $table_schema;
 
         $db->transact_start();
         my $rid = $db->insert_id( $tbl_name, undef, "2", "2", "RolledBack_Book_C", "10", "150" );
@@ -244,7 +244,7 @@ subtest '3. Concurrent Independent Transactions & Crash Recovery' => sub {
     my $pid_crash = fork();
     if ( $pid_crash == 0 ) {
         my $db = AmberDB->new( path => { dbase_dir => $tmpdir }, cfg => { simple => 0 } );
-        $db->{_table}->{$tbl_name} = $table_scheme;
+        $db->{_table}->{$tbl_name} = $table_schema;
 
         $db->transact_start();
         $db->insert_id( $tbl_name, undef, "2", "2", "Crashed_Book_D", "10", "150" );
@@ -266,7 +266,7 @@ subtest '3. Concurrent Independent Transactions & Crash Recovery' => sub {
 subtest '4. Concurrent SEO URL Slug Collisions (Duplicate Title Stress)' => sub {
     my $tmpdir = tempdir( CLEANUP => 1 );
     my $tbl_name = "catalog_slug";
-    my $table_scheme = make_scheme("SEO Slug Table");
+    my $table_schema = make_schema("SEO Slug Table");
 
     my $num_workers = 4;
     my $recs_each   = 10;
@@ -279,7 +279,7 @@ subtest '4. Concurrent SEO URL Slug Collisions (Duplicate Title Stress)' => sub 
 
         if ( $pid == 0 ) {
             my $db = AmberDB->new( path => { dbase_dir => $tmpdir }, cfg => { simple => 0 } );
-            $db->{_table}->{$tbl_name} = $table_scheme;
+            $db->{_table}->{$tbl_name} = $table_schema;
 
             for ( 1 .. $recs_each ) {
                 # All workers write with the EXACT same title simultaneously under distinct cat 99
@@ -297,7 +297,7 @@ subtest '4. Concurrent SEO URL Slug Collisions (Duplicate Title Stress)' => sub 
     }
 
     my $parent_db = AmberDB->new( path => { dbase_dir => $tmpdir }, cfg => { simple => 0 } );
-    $parent_db->{_table}->{$tbl_name} = $table_scheme;
+    $parent_db->{_table}->{$tbl_name} = $table_schema;
 
     # Fetch all records and verify SEO map bijection
     my @all_prods = $parent_db->field_fetch( $tbl_name, 1, "99" );
@@ -332,11 +332,11 @@ subtest '4. Concurrent SEO URL Slug Collisions (Duplicate Title Stress)' => sub 
 subtest '5. High-Concurrency Inventory Update with Record Locks (flock_open)' => sub {
     my $tmpdir = tempdir( CLEANUP => 1 );
     my $tbl_name = "catalog_lock";
-    my $table_scheme = make_scheme("Lock Table");
+    my $table_schema = make_schema("Lock Table");
     my $shared_id = 9999;
 
     my $parent_db = AmberDB->new( path => { dbase_dir => $tmpdir }, cfg => { simple => 0 } );
-    $parent_db->{_table}->{$tbl_name} = $table_scheme;
+    $parent_db->{_table}->{$tbl_name} = $table_schema;
     $parent_db->insert_id( $tbl_name, $shared_id, "5", "5", "Limited Edition Book", 50, 500 );
 
     my $workers = 2;
@@ -349,7 +349,7 @@ subtest '5. High-Concurrency Inventory Update with Record Locks (flock_open)' =>
 
         if ( $pid == 0 ) {
             my $db = AmberDB->new( path => { dbase_dir => $tmpdir }, cfg => { simple => 0 } );
-            $db->{_table}->{$tbl_name} = $table_scheme;
+            $db->{_table}->{$tbl_name} = $table_schema;
 
             for ( 1 .. $decrements_each ) {
                 if ( $db->flock_open( $tbl_name, "write", $shared_id ) ) {

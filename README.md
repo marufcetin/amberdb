@@ -6,18 +6,20 @@
 [![CI](https://github.com/marufcetin/amberdb/actions/workflows/ci.yml/badge.svg)](https://github.com/marufcetin/amberdb/actions)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey.svg)](https://github.com/marufcetin/amberdb)
 
-**AmberDB** is a high-performance, embedded flat-file database engine for Perl built on top of Berkeley DB (`DB_File`). It provides zero-overhead schema management, 8-byte packed binary indexing, full-text search with phonetic and language normalization, multi-dimensional columnar facet indexing, multi-tier lifecycle archiving, ACID-like undo-journal transactions, granular concurrency locking, and a built-in multilingual locale engine.
+**AmberDB** is a high-performance, embedded flat-file database engine for Perl built on top of Berkeley DB (`DB_File`). It provides zero-overhead schema management, extensible JSON-like block records without SQL JOIN bottlenecks, 8-byte packed binary indexing, intelligent full-text search with phonetic and locale-aware accent normalization, multi-dimensional columnar facet indexing, multi-tier lifecycle archiving, ACID-compliant undo-journal transactions with Strict 2-Phase Locking (Strict 2PL), granular concurrency locking, and a built-in multilingual locale engine.
 
 ---
 
 ## Key Features
 
 - 🏎️ **Ultra High-Performance**: Leverages Berkeley DB (`DB_File`) hash/btree storage with O(1) binary slicing and configurable `DB_File::HASHINFO` in-memory buffers.
+- 🧱 **JOIN-Free JSON-like Extensible Block Records**: Eliminates complex relational SQL `JOIN` overhead by storing hierarchical, extensible block records. Newly added blocks and attributes are automatically indexed on the fly for low-latency multi-dimensional querying.
+- ⚙️ **Schema-Driven Dynamic Runtime Manipulation**: Table-specific schemas govern field validations, encodings, and index mappings. Schemas and values are fully mutable and can be modified dynamically at runtime without requiring table recreation or migrations.
+- 🔍 **Intelligent & Locale-Aware Accent Search**: Advanced full-text search engine (`.src`) equipped with regional language and accent intelligence, phonetic devoicing (`b/d/g -> p/t/k`), circumflex/accent unfolding (`â/î/û -> a/i/u`), apostrophe suffix stop-words, and prefix wildcard matching.
 - 📦 **8-Byte Packed Binary Indexing**: Primary and secondary indexes use unified 8-byte packed binary buffers (`Q*` / `a8*`), enabling $O(1)$ substring slicing, sub-millisecond pagination, and memory-efficient `keys_only` scalar pipelines.
-- 🔍 **Full-Text Search Engine**: Built-in `.src` inverted index engine with phonetic devoicing (`b/d/g -> p/t/k`), circumflex vowel unfolding (`â/î/û -> a/i/u`), apostrophe suffix stop-words, and prefix wildcard matching.
 - 🏷️ **Columnar Facet Indexing (`.fac`)**: High-performance multi-dimensional facet filtering with index-level bitwise intersections for e-commerce, catalogs, and large categorical datasets.
 - 🗄️ **Multi-Tier Junk & Lifecycle Management**: Segregates active records from historical/archived data (`.db` master vs `.jnk` tier) with seamless single-pass hybrid queries (`jnktype => 'A' | 'B' | 'AB' | 'BA'`).
-- 🛡️ **ACID-like Undo-Journal Transactions**: Multi-table atomic transactions with disk-backed journaling (`.jnl`), automatic LIFO rollback upon failure or abnormal process exit, and orphaned journal recovery.
+- 🛡️ **ACID-Compliant Undo-Journal Transactions**: Full ACID multi-table transactions with disk-backed journaling (`.txn`), Strict Two-Phase Locking (Strict 2PL), automatic LIFO rollback upon failure or abnormal process exit, and orphaned journal recovery.
 - 🔒 **Multi-Granularity Concurrency Control**: Non-blocking shared reads and exclusive writes at both table-level and individual record-level using OS-native `flock`.
 - 🌐 **Multilingual Locale Engine**: Out-of-the-box support for 10 languages (`en`, `tr`, `de`, `fr`, `es`, `ja`, `ru`, `ar`, `az`) with language-specific case folding (e.g. Turkish `ı/I` and `i/İ`), collation, currency, and date formatting.
 - ⚡ **RAM-Disk Acceleration**: Integrated CLI tools and automation for mounting `tmpfs` (Linux) or `ImDisk` (Windows) for sub-microsecond in-memory table access.
@@ -34,11 +36,13 @@ AmberDB stores table data, indexes, and sidecars in a deterministic directory st
 | `.inx` | **Primary Index** | Ordered list of all record IDs + auto-increment last ID counter |
 | `.src` | **Full-Text Index** | Inverted word-to-binary-ID search index |
 | `.fld` | **Block Match Index** | Secondary field-to-ID lookup index |
+| `.str` | **Field Synonym Dictionary** | Bidirectional text-to-ID dictionary companion for `.fld` |
 | `.fac` | **Facet Index** | Columnar facet index for fast multi-dimensional filtering |
 | `.srt` | **Sorted Index** | Pre-computed sorted ID buffers for fast index-level ordering |
+| `.rwt` | **SEO URL Rewrite** | Bidirectional record ID to URL slug routing table |
 | `.del` | **Soft Delete Log** | Archive of deleted record IDs and deletion timestamps |
 | `.lnk` | **Linked Table** | Relational link mappings between records across tables |
-| `.jnl` | **Undo Journal** | Active transaction rollback journal file |
+| `.jnl` / `.txn` | **Undo Journal** | Active transaction rollback journal file |
 | `.aut` | **Audit Trail** | Change logging and modification timestamps |
 | `.cnt` | **View Counter** | High-throughput concurrent counter store |
 
@@ -77,7 +81,7 @@ use warnings;
 use AmberDB;
 
 # Initialize AmberDB instance
-my $dbp = AmberDB->new(
+my $adb = AmberDB->new(
     cfg  => { language => 'en' },
     path => { dbase_dir => './dbstore' }
 );
@@ -89,26 +93,26 @@ my $dbp = AmberDB->new(
 # --- INSERT ---
 # Record structure: (ID, Title, Category, Price, CreatedDate, Status)
 # Pass ID = 0 to auto-generate a unique 64-bit ID
-my $id = $dbp->insert_id("catalog_product", 0, "Wireless Headphones", "Electronics", 149.99, "2026-08-25", 1);
+my $id = $adb->insert_id("catalog_product", 0, "Wireless Headphones", "Electronics", 149.99, "2026-08-25", 1);
 print "Created Product ID: $id\n";
 
 # --- READ ---
-my @product = $dbp->read_id("catalog_product", $id);
+my @product = $adb->read_id("catalog_product", $id);
 print "Product Title: $product[1]\n";
 
 # --- UPDATE ---
 $product[3] = 129.99; # Update Price
-$dbp->modify_id("catalog_product", @product);
+$adb->modify_id("catalog_product", @product);
 
 # --- DELETE ---
-$dbp->delete_id("catalog_product", $id);
+$adb->delete_id("catalog_product", $id);
 ```
 
 ### 3. Querying & Pagination
 
 ```perl
 # Read all records with offset, limit, and sorting
-my ($total_count, @records) = $dbp->read_all(
+my ($total_count, @records) = $adb->read_all(
     "catalog_product",
     start => 0,
     limit => 20,
@@ -116,14 +120,14 @@ my ($total_count, @records) = $dbp->read_all(
 );
 
 # High-efficiency pipeline returning only record IDs (keys_only)
-my ($total, @ids) = $dbp->read_all("catalog_product", 0, 50, keys_only => 1);
+my ($total, @ids) = $adb->read_all("catalog_product", 0, 50, keys_only => 1);
 ```
 
 ### 4. Full-Text Search
 
 ```perl
 # Search product catalog with language normalization and filtering
-my ($total, @results) = $dbp->search_table(
+my ($total, @results) = $adb->search_table(
     "catalog_product",
     "wireless headphone",
     start   => 0,
@@ -134,7 +138,7 @@ my ($total, @results) = $dbp->search_table(
 ### 5. Multi-Block Field Filtering
 
 ```perl
-my $res = $dbp->field_filter("catalog_product", {
+my $res = $adb->field_filter("catalog_product", {
     type    => "and",
     filter  => {
         2 => "Electronics",
@@ -148,30 +152,39 @@ my $res = $dbp->field_filter("catalog_product", {
 print "Found $res->{count} matching products.\n";
 ```
 
-### 6. Transactions (ACID-like Undo-Journal)
+### 6. ACID Transactions & Strict 2PL (Undo-Journal)
+
+AmberDB provides full **ACID-compliant transactions** via disk-backed undo-journaling and Strict Two-Phase Locking (Strict 2PL):
+
+| ACID Property | AmberDB Implementation |
+| :--- | :--- |
+| **Atomicity** | Microsecond-stamped undo journals (`.txn`). On failure or manual abort, changes across base tables (`.db`), soft-delete archives (`.del`), user audit logs (`.aut`), and all secondary indexes (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, `.rwt`, `.jinx`, `.jsrc`, `.jfld`) are reverted in reverse LIFO order. |
+| **Consistency** | Strict schema type enforcement, auto-increment sequence integrity, and bidirectional secondary index / cache synchronization throughout commits and rollbacks. |
+| **Isolation** | **Strict Two-Phase Locking (Strict 2PL)**: Every record modified within an active transaction acquires an exclusive OS-level lock (`flock LOCK_EX`) held until `transact_end` or `transact_rollback`, ensuring full serializability across concurrent processes. |
+| **Durability** | Instant `IO::Handle` buffer flushing, configurable kernel-level `fsync` (`txn_sync => 1`), and automatic orphan recovery (`transact_recover`) for crashed processes. |
 
 ```perl
 # Start atomic multi-table transaction
-$dbp->transact_start();
+$adb->transact_start();
 
 eval {
-    # 1. Deduct balance
-    my @account = $dbp->read_id("user_account", $user_id);
+    # 1. Deduct balance (acquires record lock, writes undo log)
+    my @account = $adb->read_id("user_account", $user_id);
     $account[2] -= 100.00;
-    $dbp->modify_id("user_account", @account);
+    $adb->modify_id("user_account", @account);
 
     # 2. Create order
-    my $order_id = $dbp->insert_id("order_master", 0, $user_id, 100.00, "COMPLETED");
+    my $order_id = $adb->insert_id("order_master", 0, $user_id, 100.00, "COMPLETED");
 
-    # 3. Commit transaction
-    my $status = $dbp->transact_end();
+    # 3. Commit transaction (releases locks, removes journal)
+    my $status = $adb->transact_end();
     if ($status->{status} eq 'rollback') {
         die "Transaction rolled back automatically!";
     }
 };
 if ($@) {
     # Explicit manual rollback if an external exception occurred
-    $dbp->transact_rollback();
+    $adb->transact_rollback();
     warn "Transaction failed: $@";
 }
 ```
@@ -180,17 +193,17 @@ if ($@) {
 
 ```perl
 # Acquire table-level write lock
-$dbp->flock_open("catalog_product", "write");
+$adb->flock_open("catalog_product", "write");
 
 # ... perform exclusive batch operations ...
 
 # Release table-level lock
-$dbp->flock_close("catalog_product");
+$adb->flock_close("catalog_product");
 
 # Acquire record-level write lock
-$dbp->flock_open("user_account", "write", $user_id);
+$adb->flock_open("user_account", "write", $user_id);
 # ... mutate user balance ...
-$dbp->flock_close("user_account", $user_id);
+$adb->flock_close("user_account", $user_id);
 ```
 
 ---
@@ -247,11 +260,9 @@ Full comprehensive guides are available in the [`docs/`](docs/) directory:
 - 📖 **English Documentation**:
   - [AmberDB Database System & Architecture Guide](docs/en/AmberDB_User-Guide.en.md)
   - [AmberDB::Locale User Guide](docs/en/AmberDB-Locale_User-Guide.en.md)
-  - [CPAN Release & Distribution Guide](docs/en/CPAN_Release_Guide.en.md)
 - 📖 **Türkçe Dokümantasyon**:
-  - [AmberDB Veritabanı Sistemi & Mimari Rehberi](docs/tr/AmberDB_Database_System.md)
-  - [AmberDB::Locale Kullanım Rehberi](docs/tr/AmberDB-Locale_Kullanım_Rehberi.md)
-  - [CPAN Yayınlama ve Dağıtım Rehberi](docs/tr/CPAN_Yayinlama_Rehberi.md)
+  - [AmberDB Veritabanı Sistemi & Mimari Rehberi](docs/tr/AmberDB_Veritabani_Sistemi.md)
+  - [AmberDB::Locale Kullanım Rehberi](docs/tr/AmberDB-Locale_Kullanim_Rehberi.md)
 
 ---
 

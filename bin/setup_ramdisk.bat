@@ -42,7 +42,7 @@ if not exist %DRIVE%\ (
 
 mkdir %DRIVE%\tables 2>nul
 mkdir %DRIVE%\conf 2>nul
-mkdir %DRIVE%\scheme 2>nul
+mkdir %DRIVE%\schema 2>nul
 mkdir %DRIVE%\lock 2>nul
 mkdir %DRIVE%\pids 2>nul
 
@@ -58,7 +58,7 @@ echo [SUCCESS] Windows ImDisk RAM-Disk linked to AmberDB!
 echo   Cache Root: %CACHE_DIR% -^> %DRIVE%\
 echo   ├── tables/  (DB ^& Index cache)
 echo   ├── conf/    (Compiled config cache)
-echo   ├── scheme/  (Table ^& DBase schema cache)
+echo   ├── schema/  (Table ^& DBase schema cache)
 echo   ├── lock/    (Flock lock files)
 echo   └── pids/    (Process ^& mutex files)
 goto end
@@ -72,7 +72,7 @@ rmdir "%CACHE_DIR%" 2>nul
 mkdir "%CACHE_DIR%" 2>nul
 mkdir "%CACHE_DIR%\tables" 2>nul
 mkdir "%CACHE_DIR%\conf" 2>nul
-mkdir "%CACHE_DIR%\scheme" 2>nul
+mkdir "%CACHE_DIR%\schema" 2>nul
 mkdir "%CACHE_DIR%\lock" 2>nul
 mkdir "%CACHE_DIR%\pids" 2>nul
 

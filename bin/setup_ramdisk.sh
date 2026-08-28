@@ -14,7 +14,7 @@ SIZE="512M"
 if [ "$1" == "--stop" ] || [ "$1" == "stop" ]; then
     echo "[RAM-DISK] Unmounting tmpfs for AmberDB..."
     umount "$CACHE_DIR" 2>/dev/null
-    mkdir -p "$CACHE_DIR"/{tables,conf,scheme,lock,pids}
+    mkdir -p "$CACHE_DIR"/{tables,conf,schema,lock,pids}
     echo "[SUCCESS] tmpfs unmounted."
     exit 0
 fi
@@ -32,12 +32,12 @@ mkdir -p "$CACHE_DIR"
 
 mount -t tmpfs -o size=$SIZE,mode=0777 tmpfs "$CACHE_DIR"
 
-mkdir -p "$CACHE_DIR"/{tables,conf,scheme,lock,pids}
+mkdir -p "$CACHE_DIR"/{tables,conf,schema,lock,pids}
 
 echo "[SUCCESS] Linux tmpfs RAM-Disk mounted!"
 echo "  Cache Root: $CACHE_DIR ($SIZE)"
 echo "  ├── tables/  (DB & Index cache)"
 echo "  ├── conf/    (Compiled config cache)"
-echo "  ├── scheme/  (Table & DBase schema cache)"
+echo "  ├── schema/  (Table & DBase schema cache)"
 echo "  ├── lock/    (Flock lock files)"
 echo "  └── pids/    (Process & mutex files)"

@@ -277,36 +277,46 @@ Dilin `alphabet_chars` tanımına uymayan tüm yabancı/özel karakterleri temiz
 
 `AmberDB` tam metin arama motorunun temelini oluşturan dil ve fonetik analiz metotlarıdır:
 
-#### `normalize_word($word)`
+#### `normalize_word($word [, $mode_write])`
 
-Kelimeyi arama indeksleme ve sorgu eşleştirme için fonetik ve morfolojik olarak normalize eder:
+Arama indeksleme ve sorgu eşleştirme için kelimeyi fonetik ve morfolojik olarak normalize eder:
 
 ```perl
 my $tr = AmberDB::Locale->new(language => "tr");
 
-# 1. Kesme işareti / Apostrof eklerini ayıklama
-$tr->normalize_word("Türkiye'nin"); # "turkiye" (kesme sonrası 'nin' stop-word olarak ayıklanır)
+# 1. Okuma / Sorgu modu (varsayılan, mode_write = 0): Ekleri temizler
+$tr->normalize_word("Türkiye'nin"); # "turkiye" (kesme işaretinden sonraki 'nin' stop-word olarak yutulur)
+$tr->normalize_word("Türkiye'de");  # "turkiye"
 
-# 2. İnceltme / Düzeltme işaretleri
+# 2. Yazma / İndeksleme modu (mode_write = 1): Kök ve birleşik hali birlikte indeksler
+$tr->normalize_word("Türkiye'de", 1); # "turkiye turkiyede"
+
+# 3. İnceltme / Düzeltme işaretleri
 $tr->normalize_word("kârın");       # "karin"
 $tr->normalize_word("ÂLÎM");        # "alim"
 
-# 3. Kelime sonu ötümsüzleşme (Sertleşme / Fonetik dönüşüm)
+# 4. Kelime sonu ötümsüzleşme (Sertleşme / Fonetik dönüşüm)
 $tr->normalize_word("tevhid");      # "tevhit"  (d$ => t)
 $tr->normalize_word("gazab");       # "gazap"   (b$ => p)
 $tr->normalize_word("mehmed");      # "mehmet"  (d$ => t)
 ```
 
-#### `search_pattern($query)` & `search_regex($query)`
+#### `search_pattern($query)`
 
 Arama sorgusu için çok dilli, esnek ve fonetik regex arama kalıpları derler:
 
 ```perl
 my $pattern = $tr->search_pattern("Türkiye");
 # "t[uü]rk[iıİI]y[eE]" gibi Türkçe ve ASCII varyantlarını kapsayan fonetik desen üretir
+```
 
-my $regex = $tr->search_regex("kablosuz kulaklık");
-# Compiled qr// regex döner
+#### `search_regex($string, $pattern)`
+
+Hedef metin (`$string`) içerisinde arama kalıbının (`$pattern`) locale kurallarıyla eşleşip eşleşmediğini kontrol eder. Eşleşirse `1`, eşleşmezse `0` döner:
+
+```perl
+my $bulundu = $tr->search_regex("İstanbul Boğazı", "istanbul"); # 1
+my $eslesti = $tr->search_regex("İzmir Kordon", $pattern);      # 1
 ```
 
 ---
@@ -327,7 +337,7 @@ $lang->decode_entities("&amp; &lt; &gt; &#x20AC; &#8364; &ccedil;");
 
 ---
 
-### 5.6 UTF-8 Güvenli Substring
+### 5.8 UTF-8 Güvenli Substring
 
 #### `substring($string, [$offset], $length)`
 
@@ -345,7 +355,7 @@ $tr->substring($raw, 0, 5);            # "Şanlı" (doğru şekilde re-encode ed
 
 ---
 
-### 5.7 Tarih/Saat İşlemleri
+### 5.9 Tarih/Saat İşlemleri
 
 #### `format_date($time [, $pattern_or_style])`
 
@@ -397,7 +407,7 @@ my $h     = $tr->parse_date("09.08.2026", hash => 1);
 
 ---
 
-### 5.8 Sayı ve Para Birimi Biçimlendirme
+### 5.10 Sayı ve Para Birimi Biçimlendirme
 
 #### `format_number($num [, %opts])`
 
@@ -440,7 +450,7 @@ $de->format_currency(1234.50, 'EUR');             # "1.234,50 €"
 
 ---
 
-### 5.9 Çoğul Kuralları (Pluralization)
+### 5.11 Çoğul Kuralları (Pluralization)
 
 #### `plural($count, \%forms)`
 
@@ -479,7 +489,7 @@ one{n%10==1&&n%100!=11}few{n%10>=2&&n%10<=4&&(n%100<10||n%100>=20)}many{...}othe
 
 ---
 
-### 5.10 Diğer Erişimciler
+### 5.12 Diğer Erişimciler
 
 ```perl
 $lang->language();   # "tr" — aktif dil etiketi

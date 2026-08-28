@@ -6,16 +6,18 @@ use Carp qw(croak cluck);
 use Fcntl qw(:flock);
 use IO::Handle;
 
-our $VERSION = '5.02';
+our $VERSION = '5.21.0';
 
 # Journal field separator — ASCII Record Separator (0x1E).
 # Tab cannot be used because raw DB values contain literal tabs.
 my $TXN_SEP = "\x1e";
 
-# $dbp->transact_error($context, $message);
+# $adb->transact_error($context, $message);
 # -
 # Records a transaction-aware error. Tags with txn_id if transaction is active.
-# Base errors (non-index) trigger rollback in transact_end.
+# Base errors trigger rollback in transact_end unless the error originates from:
+#   1. Secondary index files (.inx, .src, .fld, .fac, .rwt)
+#   2. Tables configured with 'no_transact => 1' in schema or via table_attr()
 # -
 sub transact_error {
     my ( $self, $context, $message ) = @_;
@@ -25,24 +27,35 @@ sub transact_error {
 
     my $is_index = ( $context =~ /\.(inx|src|fld|fac|rwt)/ ) ? 1 : 0;
 
+    my $is_no_transact = 0;
+    if ( !$is_index && $self->can('table_info') ) {
+        my $clean_ctx = $context;
+        $clean_ctx =~ s{\.[^.]+$}{};
+        if ( my ($t_name) = $clean_ctx =~ m{([^/\\]+)$} ) {
+            my $t_info = eval { $self->table_info($t_name) };
+            $is_no_transact = ( $t_info && $t_info->{no_transact} ) ? 1 : 0;
+        }
+    }
+
     my $error = {
-        context  => $context,
-        message  => $message,
-        txn_id   => ( $self->{_txn} && $self->{_txn}->{file} ) || undef,
-        is_index => $is_index,
+        context        => $context,
+        message        => $message,
+        txn_id         => ( $self->{_txn} && $self->{_txn}->{file} ) || undef,
+        is_index       => ( $is_index || $is_no_transact ) ? 1 : 0,
+        is_no_transact => $is_no_transact,
     };
 
     push @{ $self->{_error} ||= [] }, $error;
     shift @{ $self->{_error} } if @{ $self->{_error} } > 100;
 
-    unless ($is_index) {
+    unless ( $error->{is_index} ) {
         cluck "[DB_TXN_ERROR] $context: $message\n";
     }
 
     return;
 }
 
-# $dbp->transact_start();
+# $adb->transact_start();
 # -
 # Starts a new transaction. Opens a journal file for undo logging.
 # Applies non-blocking exclusive flock to claim ownership.
@@ -59,13 +72,7 @@ sub transact_start {
     # Recover orphaned transactions from previous crashes
     $self->transact_recover();
 
-    my $txn_dir = "$self->{path}->{dbase_dir}/txn";
-    unless ( -d $txn_dir ) {
-        mkdir $txn_dir or do {
-            $self->transact_error( "transaction", "Cannot create txn dir: $txn_dir" );
-            return;
-        };
-    }
+    my $txn_dir = ( $self->path('dbase_dir') || "." ) . "/txn";
 
     our $TXN_SEQ;
     $TXN_SEQ = 0 unless defined $TXN_SEQ;
@@ -73,7 +80,7 @@ sub transact_start {
     my $txn_file = "$txn_dir/txn_$txn_id.txn";
 
     open my $fh, "+>>", $txn_file or do {
-        $self->transact_error( "transaction", "Cannot open journal: $txn_file" );
+        $self->transact_error( "transaction", "Cannot open journal: $txn_file ($!)" );
         return;
     };
 
@@ -112,7 +119,7 @@ sub _txn_release_locks {
     }
 }
 
-# $result = $dbp->transact_end();
+# $result = $adb->transact_end();
 # -
 # Finalizes the active transaction.
 # If base errors occurred → rollback all operations.
@@ -163,7 +170,7 @@ sub transact_end {
     };
 }
 
-# $result = $dbp->transact_rollback();
+# $result = $adb->transact_rollback();
 # ------------------------------------------------
 # Forces rollback regardless of error state.
 # Use for business-logic driven rollbacks (e.g. insufficient stock).
@@ -193,7 +200,7 @@ sub transact_rollback {
     };
 }
 
-# $dbp->_txn_log($tableid, $action, $rid, $new_raw, $old_raw);
+# $adb->_txn_log($tableid, $action, $rid, $new_raw, $old_raw);
 # ------------------------------------------------
 # Appends one undo-log entry to the journal file.
 # Flushes buffer and optionally calls sync (fsync) for durability.
@@ -213,7 +220,7 @@ sub _txn_log {
     print $fh join( $TXN_SEP, $ts, $tableid, $action, $rid, $new_raw, $old_raw ), "\n";
 
     $fh->flush;
-    if ( $self->{cfg} && $self->{cfg}->{txn_sync} ) {
+    if ( $self->config('txn_sync') ) {
         eval { $fh->sync };
     }
 
@@ -221,20 +228,20 @@ sub _txn_log {
     return 1;
 }
 
-# $dbp->_txn_apply_rollback($txn_file);
+# $adb->_txn_apply_rollback($txn_file);
 # ------------------------------------------------
 # Reads journal in reverse order (LIFO), applies undo operations to BOTH
-# base database records AND index files (.inx, .src, .fld, .fac, .rwt).
-# add  → delete base record + delete index entries
-# edit → restore old base record + revert index entries (new → old)
-# del  → restore old base record + re-add index entries
+# base database records AND index files (.inx, .src, .fld, .fac, .srt, .rwt, .jinx, .jsrc, .jfld).
+# add  → delete base record + revert .aut audit entry + delete index entries
+# edit → restore old base record + revert .aut audit entry + revert index entries (new → old)
+# del  → restore old base record + revert .del archive entry + revert .aut audit entry + re-add index entries
 # Clears caches for all affected tables after rollback.
 # ------------------------------------------------
 sub _txn_apply_rollback {
     my ( $self, $txn_file ) = @_;
 
     open my $fh, "<", $txn_file or do {
-        cluck "[DB_TXN] Cannot read journal for rollback: $txn_file\n";
+        cluck "[DB_TXN] Cannot read journal for rollback: $txn_file ($!)\n";
         return;
     };
     my @lines = <$fh>;
@@ -252,21 +259,31 @@ sub _txn_apply_rollback {
 
         my $table_info = $self->table_info($tableid);
         my $table_path = $self->table_path($tableid);
-        my $is_simple  = $self->{cfg}->{simple};
+        my $is_simple  = $self->config('simple');
 
         if ( $action eq "add" ) {
             # 1. Base Undo: delete record from .db file
             $self->_txn_raw_delete( $tableid, $rid );
 
-            # 2. Index Undo: remove from indexes if not simple mode
+            # 2. Audit Undo: remove newly created record audit trail from .aut
+            $self->_txn_auth_rollback( $tableid, $table_path, $table_info, "add", $rid );
+
+            # 3. Index Undo: remove from indexes (active or junk) if not simple mode
             if ( !$is_simple && $new_raw ) {
                 my @new_rec = ( $rid, $self->db_decode($new_raw) );
                 my @batch   = ( \@new_rec );
 
-                $self->records_del( $table_path, $table_info, [$rid], $tableid );
-                $self->search_del( $table_path, $table_info, $tableid, \@batch );
-                $self->match_del( $table_path, $table_info, \@batch );
-                $self->facet_del( $table_path, $table_info, \@batch );
+                if ( $table_info->{use_junk} && $self->junk_rules( $table_info, @new_rec ) ) {
+                    $self->junk_records_del( $table_path, $table_info, [$rid], $tableid );
+                    $self->junk_search_del( $table_path, $table_info, $tableid, \@batch );
+                    $self->junk_match_del( $table_path, $table_info, \@batch );
+                }
+                else {
+                    $self->records_del( $table_path, $table_info, [$rid], $tableid );
+                    $self->search_del( $table_path, $table_info, $tableid, \@batch );
+                    $self->match_del( $table_path, $table_info, \@batch );
+                    $self->facet_del( $table_path, $table_info, \@batch );
+                }
                 $self->sort_del( $table_path, $table_info, \@batch );
 
                 if ( $table_info->{seo_block} ) {
@@ -289,15 +306,23 @@ sub _txn_apply_rollback {
             # 1. Base Undo: restore old_raw to .db file
             $self->_txn_raw_restore( $tableid, $rid, $old_raw );
 
-            # 2. Index Undo: revert indexes from new_rec back to old_rec
+            # 2. Audit Undo: pop last edit action from .aut
+            $self->_txn_auth_rollback( $tableid, $table_path, $table_info, "edit", $rid );
+
+            # 3. Index Undo: revert indexes from new_rec back to old_rec
             if ( !$is_simple && $new_raw && $old_raw ) {
                 my @old_rec = ( $rid, $self->db_decode($old_raw) );
                 my @new_rec = ( $rid, $self->db_decode($new_raw) );
                 my @pairs   = ( [ $rid, \@new_rec, \@old_rec ] );
 
-                $self->search_modify( $table_path, $table_info, $tableid, \@pairs );
-                $self->match_modify( $table_path, $table_info, \@pairs );
-                $self->facet_modify( $table_path, $table_info, \@pairs );
+                if ( $table_info->{use_junk} ) {
+                    $self->junk_transition( $table_path, $table_info, $tableid, \@pairs );
+                }
+                else {
+                    $self->search_modify( $table_path, $table_info, $tableid, \@pairs );
+                    $self->match_modify( $table_path, $table_info, \@pairs );
+                    $self->facet_modify( $table_path, $table_info, \@pairs );
+                }
                 $self->sort_modify( $table_path, $table_info, \@pairs );
 
                 if ( $table_info->{seo_block} ) {
@@ -317,15 +342,36 @@ sub _txn_apply_rollback {
             # 1. Base Undo: restore old_raw to .db file
             $self->_txn_raw_restore( $tableid, $rid, $old_raw );
 
-            # 2. Index Undo: re-add indexes for old_rec
+            # 2. Archive Undo: remove from .del archive if keep_deleted was enabled
+            if ( $table_info->{keep_deleted} ) {
+                my $del_path = "$table_path.del";
+                if ( -e $del_path ) {
+                    if ( $self->table_write($del_path) ) {
+                        $self->recs_del( $del_path, $rid );
+                        $self->table_close($del_path);
+                    }
+                }
+            }
+
+            # 3. Audit Undo: pop last del action from .aut
+            $self->_txn_auth_rollback( $tableid, $table_path, $table_info, "del", $rid );
+
+            # 4. Index Undo: re-add indexes (active or junk) for old_rec
             if ( !$is_simple && $old_raw ) {
                 my @old_rec = ( $rid, $self->db_decode($old_raw) );
                 my @batch   = ( \@old_rec );
 
-                $self->records_add( $table_path, $table_info, $tableid, [$rid] );
-                $self->search_add( $table_path, $table_info, $tableid, \@batch );
-                $self->match_add( $table_path, $table_info, \@batch );
-                $self->facet_add( $table_path, $table_info, \@batch );
+                if ( $table_info->{use_junk} && $self->junk_rules( $table_info, @old_rec ) ) {
+                    $self->junk_records_add( $table_path, $table_info, $tableid, [$rid] );
+                    $self->junk_search_add( $table_path, $table_info, $tableid, \@batch );
+                    $self->junk_match_add( $table_path, $table_info, \@batch );
+                }
+                else {
+                    $self->records_add( $table_path, $table_info, $tableid, [$rid] );
+                    $self->search_add( $table_path, $table_info, $tableid, \@batch );
+                    $self->match_add( $table_path, $table_info, \@batch );
+                    $self->facet_add( $table_path, $table_info, \@batch );
+                }
                 $self->sort_add( $table_path, $table_info, \@batch );
                 $self->set_seourl( $tableid, \@old_rec, 1 );
             }
@@ -340,7 +386,48 @@ sub _txn_apply_rollback {
     return 1;
 }
 
-# $dbp->_txn_raw_delete($tableid, $rid);
+# $adb->_txn_auth_rollback($tableid, $table_path, $table_info, $action, $rid);
+# ------------------------------------------------
+# Reverts .aut audit history entries written during a rolled-back transaction.
+# add  → deletes the newly created audit history record from .aut
+# edit → pops the last 'edit' audit history entry
+# del  → pops the last 'del' audit history entry
+# Clears the in-memory { _auth } cache for the affected table/record.
+# ------------------------------------------------
+sub _txn_auth_rollback {
+    my ( $self, $tableid, $table_path, $table_info, $action, $rid ) = @_;
+
+    return unless $table_info && $table_info->{log_owner};
+
+    my $aut_path = "$table_path.aut";
+    return unless -e $aut_path;
+
+    if ( $self->table_write($aut_path) ) {
+        if ( $action eq "add" ) {
+            $self->recs_del( $aut_path, $rid );
+        }
+        elsif ( $action eq "edit" || $action eq "del" ) {
+            my $value = $self->recs_get( $aut_path, $rid );
+            if ( $value && defined $value->{$rid} && $value->{$rid} ne '' ) {
+                my @rec = $self->db_decode( $value->{$rid} );
+                if ( @rec > 1 ) {
+                    pop @rec;
+                    $self->recs_put( $aut_path, [ $rid, @rec ] );
+                }
+                elsif ( @rec == 1 ) {
+                    $self->recs_del( $aut_path, $rid );
+                }
+            }
+        }
+        $self->table_close($aut_path);
+    }
+
+    if ( $self->{_auth} && $self->{_auth}->{$tableid} ) {
+        delete $self->{_auth}->{$tableid}->{$rid};
+    }
+}
+
+# $adb->_txn_raw_delete($tableid, $rid);
 # ------------------------------------------------
 # Deletes a record from the raw .db file directly. Used in rollback for "add".
 # ------------------------------------------------
@@ -355,7 +442,7 @@ sub _txn_raw_delete {
     $self->table_close($file_path);
 }
 
-# $dbp->_txn_raw_restore($tableid, $rid, $raw_value);
+# $adb->_txn_raw_restore($tableid, $rid, $raw_value);
 # ------------------------------------------------
 # Restores raw record string into the .db file directly. Used in rollback for "edit"/"del".
 # ------------------------------------------------
@@ -370,7 +457,7 @@ sub _txn_raw_restore {
     $self->table_close($file_path);
 }
 
-# $dbp->transact_recover();
+# $adb->transact_recover();
 # ------------------------------------------------
 # Scans txn/ directory for journal files left by dead/crashed processes.
 # Uses non-blocking exclusive flock to safely claim ownership without race conditions.
@@ -380,7 +467,7 @@ sub _txn_raw_restore {
 sub transact_recover {
     my ( $self ) = @_;
 
-    my $txn_dir = "$self->{path}->{dbase_dir}/txn";
+    my $txn_dir = ( $self->path('dbase_dir') || "." ) . "/txn";
     return unless -d $txn_dir;
 
     my @orphans = glob "$txn_dir/txn_*.txn";
@@ -425,7 +512,7 @@ sub transact_recover {
     return 1;
 }
 
-# $ts = $dbp->_txn_timestamp();
+# $ts = $adb->_txn_timestamp();
 # ------------------------------------------------
 # Returns epoch timestamp. Uses Time::HiRes for microsecond precision
 # if available, otherwise falls back to time().
@@ -444,69 +531,86 @@ __END__
 
 =head1 NAME
 
-AmberDB::Transact - Transaction and Undo Journaling Engine for AmberDB
+AmberDB::Transact - ACID-compliant transactions with Strict Two-Phase Locking (Strict 2PL) and undo journaling engine
 
 =head1 SYNOPSIS
 
-  use parent qw(
-      ...
-      AmberDB::Transact
-      ...
-  );
+  # Transaction operations are called directly on the AmberDB instance:
 
-  # Start transaction
-  $dbp->transact_start();
+  # 1. Start transaction
+  $adb->transact_start();
 
-  # Perform DB operations
-  $dbp->insert_id("table_name", @record);
-  $dbp->modify_id("table_name", $rid, @record);
+  # 2. Perform atomic CRUD operations across multiple tables
+  $adb->modify_id("inventory_stock", $product_id, @updated_stock);
+  $adb->insert_id("orders_item", @order_item_record);
 
-  # Finalize transaction (commit if clean, auto-rollback if base errors occurred)
-  my $res = $dbp->transact_end();
+  # 3. Finalize transaction (commits if clean, automatically rolls back on database errors)
+  my $res = $adb->transact_end();
   if ($res->{status} eq 'commit') {
-      print "Committed successfully!\n";
+      print "Transaction committed successfully (operations: $res->{ops})\n";
+  }
+  else {
+      warn "Transaction aborted and rolled back due to error: " . join(", ", map { $_->{message} } @{$res->{errors}});
   }
 
-  # Manual rollback driven by business logic
-  $dbp->transact_rollback();
+  # 4. Manual business-logic rollback (e.g. payment gateway declined or insufficient stock)
+  if ($payment_failed) {
+      $adb->transact_rollback();
+  }
 
-  # Recover orphaned transactions from crashed processes
-  $dbp->transact_recover();
+  # 5. Recovery of orphaned transactions from previous system/process crashes
+  $adb->transact_recover();
 
 =head1 DESCRIPTION
 
-C<AmberDB::Transact> provides ACID-like transaction logging and rollback functionality for C<AmberDB>.
-It records undo journal entries (C<.txn>) using ASCII record separators for atomic operations across base database
-files (C<.db>) and all associated index files (C<.inx>, C<.src>, C<.fld>, C<.fac>, C<.rwt>).
+C<AmberDB::Transact> provides ACID-compliant transaction undo logging, Strict Two-Phase Locking (Strict 2PL), and automated LIFO rollback for C<AmberDB>.
+It records binary undo journal entries (C<txn/txn_*.txn>) using ASCII record separators (0x1E) for atomic operations across base database files (C<.db>), soft-delete archives (C<.del>), user audit histories (C<.aut>), and all associated index files (C<.inx>, C<.src>, C<.fld>, C<.fac>, C<.srt>, C<.rwt>, C<.jinx>, C<.jsrc>, C<.jfld>).
 
-Transactions maintain process ownership via exclusive non-blocking C<flock> on journal files and guarantee
-crash durability through C<IO::Handle> buffer flushing and optional C<fsync> (C<txn_sync =E<gt> 1>).
+Transactions maintain process ownership via exclusive non-blocking C<flock> on journal files, hold record-level write locks throughout the transaction lifecycle, and guarantee crash durability through C<IO::Handle> buffer flushing, optional filesystem sync (C<txn_sync =E<gt> 1>), and automated orphaned journal recovery (C<transact_recover>).
 
-=head1 CAVEATS AND LIMITATIONS
+B<Inheritance Note:> C<AmberDB> inherits from C<AmberDB::Transact> via C<use parent>. All transaction methods documented below are invoked directly on C<$adb>.
 
-Transaction undo logging (C<_txn_log>) is only executed for single-record CRUD operations (C<insert_id>, C<modify_id>, C<delete_id>).
-Bulk batch methods (C<insert_list>, C<modify_list>, C<delete_list>) perform direct batch processing for performance and B<do not> write entries to the transaction journal.
-Consequently, changes made via bulk operations are B<not> recorded in active transactions and B<cannot> be rolled back by C<transact_rollback()> or C<transact_end()>.
-If atomicity and rollback capability are required, use single-record methods instead of bulk methods.
+=head1 BATCH ETL OPERATIONS VS BUSINESS TRANSACTIONS
+
+Transaction undo logging is designed for single-record business operations (C<insert_id>, C<modify_id>, C<delete_id>) where inter-record atomicity and consistency are required.
+Bulk batch methods (C<insert_list>, C<modify_list>, C<delete_list>) are optimized for high-throughput data ingestion (e.g. XML/JSON ETL imports) and purposely bypass the transaction journal for maximum I/O performance.
+If transactional atomicity is required for bulk records, execute individual CRUD methods in a loop enclosed within C<transact_start()> and C<transact_end()>.
 
 =head1 METHODS
 
 =head2 transact_start()
 
-Starts a new transaction by opening an undo log journal file in C<txn/> and acquiring an exclusive non-blocking flock. Automatically triggers orphan recovery.
+Starts a new transaction. Creates an undo journal file under C<dbstore/txn/>, acquires an exclusive non-blocking lock, and initializes the transaction state. Also triggers C<transact_recover> to clean up any orphaned journals from previous crashes.
+
+  my $ok = $adb->transact_start();
 
 =head2 transact_end()
 
-Finalizes the active transaction. Evaluates error log for base database failures; if critical errors exist,
-it performs a full LIFO rollback. Releases lock and unlinks journal file. Returns a hash reference with C<status> (C<commit> or C<rollback>).
+Finalizes the active transaction. Evaluates error log for base database failures:
+=over 4
+=item * If critical errors occurred: performs a full LIFO rollback of all modifications across base tables and indexes, clears caches, and unlinks the journal. Returns C<{ status =E<gt> "rollback", errors =E<gt> [...] }>.
+=item * If no critical errors occurred: commits the transaction (releases locks and unlinks journal). Returns C<{ status =E<gt> "commit", ops =E<gt> $count }>.
+=back
+
+  my $result = $adb->transact_end();
 
 =head2 transact_rollback()
 
-Forces an immediate rollback of the active transaction regardless of error state. Releases lock and unlinks journal file.
+Forces an immediate manual rollback of the active transaction regardless of whether database errors were logged. Reverts all modified records in reverse order (LIFO), restores index states, clears affected table caches, releases locks, and unlinks the journal file.
+
+  my $result = $adb->transact_rollback();
 
 =head2 transact_recover()
 
-Scans C<txn/> directory for orphaned transaction journals from crashed processes. Uses non-blocking C<flock> to safely identify dead processes without race conditions and rolls back uncommitted operations.
+Scans the C<dbstore/txn/> directory for orphaned transaction journals left behind by crashed or killed processes. Uses non-blocking C<flock> to safely identify dead processes without race conditions and rolls back uncommitted operations to restore consistency.
+
+  $adb->transact_recover();
+
+=head2 transact_error($context, $message)
+
+Logs a context-aware error during transaction processing. Errors originating from base data tables will trigger an automatic rollback when C<transact_end()> is called.
+
+  $adb->transact_error("order_processing", "Failed to update balance");
 
 =head1 AUTHOR
 

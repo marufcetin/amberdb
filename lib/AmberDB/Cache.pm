@@ -4,7 +4,7 @@ use 5.016;
 use warnings;
 use Carp qw(croak cluck);
 
-our $VERSION = '5.02';
+our $VERSION = '5.21.0';
 
 # ============================================================================
 # AmberDB Native .db and .inx RAM-Disk (tmpfs) Unified Cache Engine
@@ -13,52 +13,39 @@ our $VERSION = '5.02';
 # Resolves root directory for cache storage (typically mounted as tmpfs RAM-disk)
 sub cache_dir {
     my ($self) = @_;
-    my $cache_dir = ( length( $self->{path}->{cache_dir} // '' ) ) ? $self->{path}->{cache_dir} : "$self->{path}->{dbase_dir}/cache";
-    $self->{path}->{cache_dir} = $cache_dir;
-    unless ( -d $cache_dir ) {
-        require File::Path;
-        File::Path::make_path($cache_dir);
-    }
+    my $cache_dir = ( length( $self->path('cache_dir') // '' ) ) ? $self->path('cache_dir') : ( ( $self->path('dbase_dir') || "." ) . "/cache" );
+    $self->path( cache_dir => $cache_dir );
     return $cache_dir;
 }
 
 sub cache_tbl_dir {
     my ($self) = @_;
     my $cache_dir = $self->cache_dir() or return;
-    my $tbl_dir = ( length( $self->{path}->{cache_tbl_dir} // '' ) ) ? $self->{path}->{cache_tbl_dir} : "$cache_dir/tables";
-    $self->{path}->{cache_tbl_dir} = $tbl_dir;
-    unless ( -d $tbl_dir ) {
-        require File::Path;
-        File::Path::make_path($tbl_dir);
-    }
+    my $tbl_dir = ( length( $self->path('cache_tbl_dir') // '' ) ) ? $self->path('cache_tbl_dir') : "$cache_dir/tables";
+    $self->path( cache_tbl_dir => $tbl_dir );
     return $tbl_dir;
 }
 
 sub cache_lock_dir {
     my ($self) = @_;
     my $cache_dir = $self->cache_dir() or return;
-    my $lock_dir = ( length( $self->{path}->{lock_dir} // '' ) ) ? $self->{path}->{lock_dir} : "$cache_dir/lock";
-    $self->{path}->{lock_dir} = $lock_dir;
-    unless ( -d $lock_dir ) {
-        require File::Path;
-        File::Path::make_path($lock_dir);
-    }
+    my $lock_dir = ( length( $self->path('lock_dir') // '' ) ) ? $self->path('lock_dir') : "$cache_dir/lock";
+    $self->path( lock_dir => $lock_dir );
     return $lock_dir;
 }
 
-sub cache_scheme_dir {
+sub cache_schema_dir {
     my ($self) = @_;
     my $cache_dir = $self->cache_dir() or return;
-    my $scheme_dir = ( length( $self->{path}->{cache_scheme_dir} // '' ) ) ? $self->{path}->{cache_scheme_dir} : "$cache_dir/scheme";
-    $self->{path}->{cache_scheme_dir} = $scheme_dir;
-    unless ( -d $scheme_dir ) {
-        require File::Path;
-        File::Path::make_path($scheme_dir);
-    }
-    return $scheme_dir;
+    my $schema_dir = ( length( $self->path('cache_schema_dir') // '' ) )
+      ? $self->path('cache_schema_dir')
+      : "$cache_dir/schema";
+
+    $self->path( cache_schema_dir => $schema_dir );
+    return $schema_dir;
 }
 
-# my $info = $dbp->cache_setup();
+# my $info = $adb->cache_setup();
 # Returns diagnostics, script paths, cache size, and RAM-disk mount status for Windows (ImDisk) and Linux (tmpfs).
 # ------------------------------------------------
 sub cache_setup {
@@ -67,11 +54,11 @@ sub cache_setup {
     my $cache_dir  = $self->cache_dir();
     my $tbl_dir    = $self->cache_tbl_dir();
     my $lock_dir   = $self->cache_lock_dir();
-    my $scheme_dir = $self->cache_scheme_dir();
-    my $cache_size = $self->{cfg}->{cache_size} // '512M';
+    my $schema_dir = $self->cache_schema_dir();
+    my $cache_size = $self->config('cache_size') // '512M';
     my $is_win     = ( $^O eq 'MSWin32' || $^O eq 'msys' || $^O eq 'cygwin' || -d "R:\\" || -d "R:/" );
 
-    my $bin_dir    = "$self->{path}->{dbase_dir}/../bin";
+    my $bin_dir    = ( $self->path('dbase_dir') || "." ) . "/../bin";
     my $helper_pl  = "$bin_dir/setup_ramdisk.pl";
     my $helper_bat = "$bin_dir/setup_ramdisk.bat";
     my $helper_ps1 = "$bin_dir/setup_ramdisk.ps1";
@@ -99,7 +86,7 @@ sub cache_setup {
         cache_dir    => $cache_dir,
         tbl_dir      => $tbl_dir,
         lock_dir     => $lock_dir,
-        scheme_dir   => $scheme_dir,
+        schema_dir   => $schema_dir,
         cache_size   => $cache_size,
         is_mounted   => $is_mounted,
         mount_desc   => $mount_desc,
@@ -138,12 +125,6 @@ sub cache_file_for {
     }
 
     my $target = "$tbl_dir/${tableid}.${ext}";
-    my ($parent_dir) = $target =~ m{^(.+)/[^/]+$};
-    if ( $parent_dir && !-d $parent_dir ) {
-        require File::Path;
-        File::Path::make_path($parent_dir);
-    }
-
     return $target;
 }
 
@@ -153,7 +134,7 @@ sub _check_cache_ttl {
     return 1 unless -e $file_path;
 
     my $table_info = $self->table_info($tableid);
-    my $ttl = $table_info->{cache_ttl} // $self->{cfg}->{cache_ttl};
+    my $ttl        = $table_info ? $table_info->{cache_ttl} : undef;
     if ( defined $ttl && $ttl > 0 ) {
         my $mtime = ( stat($file_path) )[9];
         if ( defined $mtime && ( time() - $mtime ) > $ttl ) {
@@ -165,7 +146,7 @@ sub _check_cache_ttl {
     return 1;
 }
 
-# my $cache_file = $dbp->cache_ensure($tableid);
+# my $cache_file = $adb->cache_ensure($tableid);
 # Ensures cache for use_cache => 2 (Hard Cache) is populated in RAM disk.
 # Automatically triggers cache_preload if cache file is absent or TTL expired.
 # ------------------------------------------------
@@ -187,7 +168,7 @@ sub cache_ensure {
     return $cache_db;
 }
 
-# my @data = $dbp->cache_read($tableid, $key, [$type]);
+# my @data = $adb->cache_read($tableid, $key, [$type]);
 # Reads entry from cache/$tableid.db (for numeric/records) or cache/$tableid.inx (for meta/keys).
 # ------------------------------------------------
 sub cache_read {
@@ -214,7 +195,7 @@ sub cache_read {
     return $self->db_decode( $res->{$key} );
 }
 
-# my $ok = $dbp->cache_write($tableid, $key, @records);
+# my $ok = $adb->cache_write($tableid, $key, @records);
 # Writes entry to cache/$tableid.db (for numeric/records) or cache/$tableid.inx (for meta/keys).
 # ------------------------------------------------
 sub cache_write {
@@ -234,7 +215,7 @@ sub cache_write {
     return 1;
 }
 
-# my $ok = $dbp->cache_delete($tableid, [$key], [$type]);
+# my $ok = $adb->cache_delete($tableid, [$key], [$type]);
 # Invalidates entry from cache/$tableid.db / .inx or removes entire table cache files.
 # ------------------------------------------------
 sub cache_delete {
@@ -269,7 +250,7 @@ sub cache_delete {
     return 1;
 }
 
-# my $ok = $dbp->cache_preload($tableid);
+# my $ok = $adb->cache_preload($tableid);
 # Preloads all records and metadata from tables/ into cache/ for use_cache => 2 (Hard Cache)
 # Uses atomic temporary writes (.tmp.$$) to prevent multi-process race conditions.
 # ------------------------------------------------
@@ -287,12 +268,6 @@ sub cache_preload {
     my $db_ext    = $self->{db_ext} // 'db';
     my $cache_db  = "$tbl_dir/${tableid}.${db_ext}";
     my $cache_inx = "$tbl_dir/${tableid}.inx";
-
-    my ($parent_dir) = $cache_db =~ m{^(.+)/[^/]+$};
-    if ( $parent_dir && !-d $parent_dir ) {
-        require File::Path;
-        File::Path::make_path($parent_dir);
-    }
 
     my $table_path = $self->table_path($tableid);
     my $src_db     = "$table_path.${db_ext}";
@@ -368,19 +343,16 @@ sub buffer_slot {
     my $dbase      = do { ( $tableid =~ /^([a-z0-9]+)_/ )[0] };
     my $dbase_info = $self->dbase_info($dbase);
 
-    my $buffer_dir = $self->{path}->{buffer_dir} //=
-      "$self->{path}->{dbase_dir}/buffer";
-    unless ( -d $buffer_dir ) {
-        mkdir $buffer_dir or return;
-    }
+    my $buffer_dir = $self->path('buffer_dir')
+      || ( ( $self->path('dbase_dir') || "." ) . "/buffer" );
 
     my $prefix = '';
     if (
-        $self->{cfg}->{use_section}
+        $self->config('use_section')
         and ( ( $dbase_info && $dbase_info->{section} )
             or ( $self->table_info($tableid) && $self->table_info($tableid)->{section} ) )
     ) {
-        $prefix = ( $self->{cfg}->{section} // "center" ) . "-";
+        $prefix = ( $self->config('section') // "center" ) . "-";
     }
     my $buffer_file = "${prefix}${tableid}.tmp";
 
@@ -396,7 +368,7 @@ sub buffer_read {
 
     my @lines;
     open my $TMP, "<", "$buffer_dir/$buffer_file"
-      or do { cluck "[DB_BUFFER] $buffer_dir/$buffer_file can't open.\n"; return; };
+      or do { cluck "[DB_BUFFER] $buffer_dir/$buffer_file can't open: $!\n"; return; };
 
     while ( my $line = <$TMP> ) {
         my @fields = $self->db_decode($line);
@@ -420,7 +392,7 @@ sub buffer_write {
     my $tmp_path    = "${target_path}.tmp.$$";
 
     open my $TMP, ">", $tmp_path
-      or do { cluck "[DB_BUFFER] $tmp_path can't open.\n"; return; };
+      or do { cluck "[DB_BUFFER] $tmp_path can't open: $!\n"; return; };
 
     foreach my $fields (@records) {
         $fields = [$fields] unless ref($fields) eq "ARRAY";
@@ -449,30 +421,99 @@ __END__
 
 =head1 NAME
 
-AmberDB::Cache - Native .db and .inx RAM-Disk (tmpfs) unified cache and persistent buffer engine for AmberDB
+AmberDB::Cache - Native .db and .inx RAM-Disk (tmpfs) unified cache and persistent staging buffer engine
 
 =head1 SYNOPSIS
 
-  # Soft Cache (use_cache => 1):
-  # Caches metadata (lastid, keys, count) in cache/$tableid.inx and allows manual caching:
-  $dbp->cache_write("product", "vitrin", @product_data);
-  my @data = $dbp->cache_read("product", "vitrin");
-  $dbp->cache_delete("product", "vitrin");
+  # 1. Soft Cache (use_cache => 1):
+  # Custom caching for key-value datasets:
+  $adb->cache_write("catalog_product", "featured_items", @product_records);
+  my @records = $adb->cache_read("catalog_product", "featured_items");
+  $adb->cache_delete("catalog_product", "featured_items");
 
-  # Hard Cache (use_cache => 2):
-  # Mirrors entire table into cache/$tableid.db and cache/$tableid.inx (tmpfs RAM-disk)
-  $dbp->cache_preload("catalog_category");
+  # 2. Hard Cache (use_cache => 2):
+  # Preloads entire database and index files into tmpfs RAM-disk:
+  $adb->cache_preload("catalog_category");
 
-  # Persistent buffer operations (stored under dbstore/buffer/)
-  $dbp->buffer_write("product", @heavy_computation_records);
-  my @records = $dbp->buffer_read("product");
-  $dbp->buffer_delete("product");
+  # 3. Persistent Disk Buffer Staging (stored in dbstore/buffer/):
+  $adb->buffer_write("export_job", @large_dataset_chunks);
+  my @staged_data = $adb->buffer_read("export_job");
+  $adb->buffer_delete("export_job");
+
+  # 4. RAM-Disk diagnostics and setup info:
+  my $info = $adb->cache_setup();
 
 =head1 DESCRIPTION
 
-C<AmberDB::Cache> manages two distinct storage subsystems:
-1. Unified RAM-Disk (tmpfs) cache mirroring AmberDB's native C<.db> and C<.inx> formats under C<dbstore/cache/>.
-2. Persistent disk buffer staging under C<dbstore/buffer/> for heavy computation and temporary dataset staging.
+C<AmberDB::Cache> provides two complementary high-performance caching subsystems:
+
+=over 4
+
+=item 1. B<Unified RAM-Disk (tmpfs / ImDisk) Cache:> Mirrors AmberDB's native C<.db> (record data) and C<.inx> (primary indexes) files in ultra-fast memory storage under C<dbstore/cache/>. Supports TTL expiration (C<cache_ttl>) and atomic background cache preloading.
+
+=item 2. B<Persistent Disk Buffer Staging:> Manages temporary serialized staging tables under C<dbstore/buffer/> for multi-stage ETL pipelines, large dataset transformations, or batch background workers.
+
+=back
+
+B<Inheritance Note:> C<AmberDB> inherits from C<AmberDB::Cache> via C<use parent>. All cache and buffer methods documented below can be invoked directly on any C<$adb> instance.
+
+=head1 METHODS
+
+=head2 cache_setup()
+
+Inspects operating system environment (Linux C<tmpfs> or Windows C<ImDisk>), returns diagnostic metadata, mount status, configured cache size, and paths to RAM-disk helper setup scripts (bash, powershell, perl).
+
+  my $diag = $adb->cache_setup();
+  # Returns: { is_mounted => 1, mount_desc => "tmpfs mounted on ...", cache_size => "512M", ... }
+
+=head2 cache_read($tableid, $key, [$type])
+
+Reads and deserializes a cached record from C<cache/$tableid.db> (for record data) or C<cache/$tableid.inx> (for metadata keys). Returns the decoded list of fields. Checks TTL expiration automatically.
+
+  my @cached_row = $adb->cache_read("catalog_product", "101");
+
+=head2 cache_write($tableid, $key, @records)
+
+Serializes and writes record data to the RAM-disk cache file.
+
+  $adb->cache_write("catalog_product", "top_sellers", [ 101, "Prod A" ], [ 102, "Prod B" ]);
+
+=head2 cache_delete($tableid, [$key], [$type])
+
+Invalidates cache entries. If C<$key> is provided, removes only that specific key. If C<$key> is omitted, removes and unlinks the entire table cache files (both C<.db> and C<.inx>).
+
+  $adb->cache_delete("catalog_product", "featured_items"); # Invalidate single entry
+  $adb->cache_delete("catalog_product");                  # Clear entire table cache
+
+=head2 cache_preload($tableid)
+
+Preloads all records and metadata from the persistent storage tables directory into the RAM-disk cache directory. Uses atomic temporary files (C<.tmp.$$>) and file locking to prevent race conditions during live updates.
+
+  $adb->cache_preload("catalog_category");
+
+=head2 cache_ensure($tableid)
+
+Ensures that the RAM-disk cache for a table configured with C<use_cache =E<gt> 2> is populated and valid. Automatically triggers C<cache_preload> if the cache file is absent or expired.
+
+  my $cache_path = $adb->cache_ensure("catalog_category");
+
+=head2 buffer_write($tableid, @records)
+
+Writes structured records to a persistent disk buffer file located at C<dbstore/buffer/${tableid}.tmp>. Uses atomic temp-file replacement for safe multi-process writes.
+
+  $adb->buffer_write("nightly_import", @processed_rows);
+
+=head2 buffer_read($tableid)
+
+Reads and deserializes all staged records from the disk buffer file. Returns a list of array references.
+
+  my @rows = $adb->buffer_read("nightly_import");
+
+=head2 buffer_delete($tableid)
+
+Deletes and unlinks the disk buffer staging file for the given table ID.
+
+  $adb->buffer_delete("nightly_import");
 
 =head1 AUTHOR
 

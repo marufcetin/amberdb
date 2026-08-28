@@ -10,13 +10,13 @@ print "=================================================================\n";
 print " AmberDB Database Binary Index Converter & Re-indexer      \n";
 print "=================================================================\n\n";
 
-my $dbp = AmberDB->new(
+my $adb = AmberDB->new(
     cfg => {},
     path => { dbase_dir => "" }
 );
-my $tools = AmberDB::Tools->new( dbp => $dbp );
+my $tools = AmberDB::Tools->new( $adb );
 
-my $dbstore_dir = $dbp->{path}->{dbase_dir};
+my $dbstore_dir = $adb->path('dbase_dir') || "dbstore";
 my $tables_dir  = "$dbstore_dir/tables";
 
 unless ( -d $tables_dir ) {
@@ -26,36 +26,24 @@ unless ( -d $tables_dir ) {
 print "Database Directory  : $tables_dir\n\n";
 
 
-# Discover files in tables_dir
-my @tables = $tools->all_tables();
+# Discover tables across all database directories
+my @table_list = $tools->all_tables();
 
-my %tables;
-my %side_files = ( del => 0, aut => 0, cnt => 0 );
-
-foreach my $file ( sort @tables ) {
-    $file =~ s|\Q$tables_dir\E/?||i;
-    next if $file =~ /^\_/; # skip temporary/hidden files
-    next if $file =~ /\s/;  # skip backup filenames with spaces
-
-    if ( $file =~ /^([a-z0-9_]+)\.db$/i ) {
-        $tables{$1} = 1;
-    }
-    elsif ( $file =~ /\.del$/i ) {
-        $side_files{del}++;
-    }
-    elsif ( $file =~ /\.aut$/i ) {
-        $side_files{aut}++;
-    }
-    elsif ( $file =~ /\.cnt$/i ) {
-        $side_files{cnt}++;
-    }
+my %side_files = ( del => 0, aut => 0, cnt => 0, str => 0 );
+foreach my $tid (@table_list) {
+    my $tpath = $adb->table_path($tid);
+    $side_files{del}++ if -e "$tpath.del";
+    $side_files{aut}++ if -e "$tpath.aut";
+    $side_files{cnt}++ if -e "$tpath.cnt";
+    my @strs = glob "${tpath}_*.str";
+    $side_files{str} += scalar(@strs);
 }
 
-my @table_list = sort keys %tables;
 print "Found " . scalar(@table_list) . " main tables (.db) to re-index.\n";
 print "Detected side files: " . $side_files{del} . " .del (archived deleted), "
     . $side_files{aut} . " .aut (audit logs), "
-    . $side_files{cnt} . " .cnt (view counters).\n";
+    . $side_files{cnt} . " .cnt (view counters), "
+    . $side_files{str} . " .str (string dictionaries).\n";
 print "-----------------------------------------------------------------\n";
 
 sub format_num {
@@ -94,8 +82,8 @@ foreach my $tableid (@table_list) {
     my $t0 = time();
     eval {
         my $ok = $tools->set_index($tableid);
-        my $rec_count = $dbp->table_count($tableid);
-        $rec_count = scalar($dbp->table_keys($tableid)) unless defined $rec_count;
+        my $rec_count = $adb->table_count($tableid);
+        $rec_count = scalar($adb->table_keys($tableid)) unless defined $rec_count;
         my $elapsed = sprintf( "%.2f", time() - $t0 );
 
         # Calculate file sizes for this table (.db master and derived indexes)

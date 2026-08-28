@@ -12,6 +12,7 @@ WriteMakefile(
     MIN_PERL_VERSION => '5.016',
     PL_FILES         => {},
     EXE_FILES        => [
+        'bin/amberdb_backup.pl',
         'bin/convert_dbstore.pl',
         'bin/setup_ramdisk.pl',
     ],

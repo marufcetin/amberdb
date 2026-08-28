@@ -14,22 +14,22 @@ use AmberDB;
 use AmberDB::Tools;
 
 my $tmpdir = tempdir( CLEANUP => 1 );
-my $dbp = AmberDB->new(
+my $adb = AmberDB->new(
     path => { dbase_dir => $tmpdir },
     cfg  => { simple => 0 }
 );
 
-# Schema mock
-$dbp->{_table}->{catalog_product} = {
+# Schema definition via official table_attr API
+$adb->table_attr( 'catalog_product', {
     record_index => 1,
     search_block => [1],
     match_block  => [2],
     use_facet    => 1,
     sort_block   => [ { blk => 3, type => 'numeric' } ],
     id_type      => 'num',
-};
+} );
 
-my $tools = AmberDB::Tools->new($dbp);
+my $tools = AmberDB::Tools->new($adb);
 isa_ok( $tools, 'AmberDB::Tools' );
 
 # ---------------------------------------------------------------------------
@@ -37,9 +37,9 @@ subtest '1. Table creation, population & set_index' => sub {
     plan tests => 6;
 
     # Insert test data
-    $dbp->insert_id( 'catalog_product', 1, 'Laptop Pro', 'Electronics', 1500 );
-    $dbp->insert_id( 'catalog_product', 2, 'Mechanical Keyboard', 'Accessories', 120 );
-    $dbp->insert_id( 'catalog_product', 3, 'Gaming Mouse', 'Accessories', 80 );
+    $adb->insert_id( 'catalog_product', 1, 'Laptop Pro', 'Electronics', 1500 );
+    $adb->insert_id( 'catalog_product', 2, 'Mechanical Keyboard', 'Accessories', 120 );
+    $adb->insert_id( 'catalog_product', 3, 'Gaming Mouse', 'Accessories', 80 );
 
     ok( $tools->table_exist('catalog_product'), "Table exists detected" );
 
@@ -47,7 +47,7 @@ subtest '1. Table creation, population & set_index' => sub {
     my $ok = $tools->set_index('catalog_product');
     ok( $ok, "set_index successfully completed" );
 
-    my $table_path = $dbp->table_path('catalog_product');
+    my $table_path = $adb->table_path('catalog_product');
     ok( -e "$table_path.inx", "Readall index .inx generated" );
     ok( -e "${table_path}_1.src", "Search index .src generated" );
     ok( -e "${table_path}_2.fld", "Match field index .fld generated" );
@@ -58,7 +58,7 @@ subtest '1. Table creation, population & set_index' => sub {
 subtest '2. check_readall & check_search consistency' => sub {
     plan tests => 2;
 
-    my @records = $dbp->read_all('catalog_product');
+    my @records = $adb->read_all('catalog_product');
     my $diff_readall = $tools->check_readall( 'catalog_product', @records );
     is_deeply( $diff_readall, {}, "check_readall reports 0 discrepancies for valid index" );
 
@@ -73,13 +73,13 @@ subtest '3. tie2csv, csv2tie & vacuum' => sub {
     my $ok_csv = $tools->tie2csv('catalog_product');
     ok( $ok_csv, "tie2csv executed" );
 
-    my $table_path = $dbp->table_path('catalog_product');
+    my $table_path = $adb->table_path('catalog_product');
     ok( -e "$table_path.csv", "Exported CSV file exists" );
 
     my $ok_import = $tools->csv2tie('catalog_product');
     ok( $ok_import, "csv2tie restored data from CSV" );
 
-    my @after_import = $dbp->read_all('catalog_product');
+    my @after_import = $adb->read_all('catalog_product');
     is( scalar(@after_import), 3, "All 3 records restored after CSV import" );
 
     my $ok_vac = $tools->vacuum( 'catalog_product', 1 );
@@ -97,7 +97,7 @@ subtest '4. replace_blockdata' => sub {
 
     ok( ref($status) eq 'HASH', "replace_blockdata returned status" );
 
-    my @rec2 = $dbp->read_id( 'catalog_product', 2 );
+    my @rec2 = $adb->read_id( 'catalog_product', 2 );
     is( $rec2[2], 'Computer Peripherals', "Target column value updated across table" );
 };
 

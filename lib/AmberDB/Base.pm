@@ -6,7 +6,7 @@ use Encode qw(is_utf8 encode decode);
 use Carp qw(croak cluck);
 use parent qw(AmberDB::Locale AmberDB::Array);
 
-our $VERSION = '5.02';
+our $VERSION = '5.21.0';
 my $CREATED = '2014-12-20';
 
 # ------------------------------------------------
@@ -20,8 +20,8 @@ sub new {
     return $self;
 }
 
-# my $record  = $dbp->db_encode(@fields);
-# my $record  = $dbp->db_encode(\%hash_data);
+# my $record  = $adb->db_encode(@fields);
+# my $record  = $adb->db_encode(\%hash_data);
 # ------------------------------------------------
 sub db_encode {
     my ( $self, @fields ) = @_;
@@ -59,8 +59,8 @@ sub db_encode {
     return join( "\t", @encoded );
 }
 
-# my @fields   = $dbp->db_decode($record);
-# my $hash_ref = $dbp->db_decode($record);
+# my @fields   = $adb->db_decode($record);
+# my $hash_ref = $adb->db_decode($record);
 # ------------------------------------------------
 sub db_decode {
     my ( $self, $record ) = @_;
@@ -134,7 +134,7 @@ sub char_unescape {
 }
 
 # encode like cgi escape
-# my $sifresiz = $dbp->uri_encode("sifreli");
+# my $sifresiz = $adb->uri_encode("sifreli");
 # ------------------------------------------------
 sub uri_encode {
     my ( $self, $str ) = @_;
@@ -145,7 +145,7 @@ sub uri_encode {
 }
 
 # decode like cgi unescape
-# my $sifresiz = $dbp->uri_decode("sifresiz");
+# my $sifresiz = $adb->uri_decode("sifresiz");
 # ------------------------------------------------
 sub uri_decode {
     my ( $self, $str ) = @_;
@@ -155,7 +155,7 @@ sub uri_decode {
     return $str;
 }
 
-# my $key_escape = $dbp->key_encode($key);
+# my $key_escape = $adb->key_encode($key);
 # ------------------------------------------------
 sub key_encode {
     my ( $self, $key ) = @_;
@@ -170,7 +170,7 @@ sub key_encode {
     return $key_escape;
 }
 
-# $data = $dbp->set_charset($from, $to, $data);
+# $data = $adb->set_charset($from, $to, $data);
 # Converts between character encoding tables...
 # ------------------------------------------------
 sub set_charset {
@@ -264,7 +264,7 @@ sub sanitize_table {
 }
 
 # ($id, $path) = $self->schema_arg($arg, "table"|"dbase")
-# arg: "catalog_product"  -> derives path from scheme_dir
+# arg: "catalog_product"  -> derives path from schema_dir
 # arg: "/lib/X/catalog_product.table" -> uses path directly
 # ------------------------------------------------
 sub schema_arg {
@@ -277,10 +277,13 @@ sub schema_arg {
         return ( $id, $arg );
     }
     my $clean = $self->sanitize_table($arg);
-    return ( $clean, "$self->{path}->{scheme_dir}/$clean.$ext" );
+    my $schema_dir = $self->path('schema_dir')
+      || ( $self->path('dbase_dir') ? $self->path('dbase_dir') . "/schema" : "schema" );
+    return ( $clean, "$schema_dir/$clean.$ext" );
 }
 
-# my $dbase_info = $dbp->dbase_info($dbase);
+# Retrieves database group schema definition.
+# my $dbase_info = $adb->dbase_info($dbase);
 # ------------------------------------------------
 sub dbase_info {
 
@@ -291,10 +294,10 @@ sub dbase_info {
 
     return $self->{_dbase}->{$dbase} if $self->{_dbase}->{$dbase};
 
-    my $cache_scheme = ( $self->can('cache_scheme_dir') ) ? $self->cache_scheme_dir() : undef;
+    my $cache_schema = ( $self->can('cache_schema_dir') ) ? $self->cache_schema_dir() : undef;
     my $target_path  = $dbase_path;
-    if ( $cache_scheme && -e "$cache_scheme/$dbase.dbase" ) {
-        $target_path = "$cache_scheme/$dbase.dbase";
+    if ( $cache_schema && -e "$cache_schema/$dbase.dbase" ) {
+        $target_path = "$cache_schema/$dbase.dbase";
     }
 
     if ( -e $target_path ) {
@@ -302,12 +305,15 @@ sub dbase_info {
         my $do_data = do $target_path;
         if ($do_data) {
             $self->{_dbase}->{$dbase} = $do_data;
-            if ( $cache_scheme && !-e "$cache_scheme/$dbase.dbase" && -d $cache_scheme ) {
+            if ( $cache_schema && !-e "$cache_schema/$dbase.dbase" && $self->dir_exist($cache_schema) ) {
                 require File::Copy;
-                eval { File::Copy::copy( $dbase_path, "$cache_scheme/$dbase.dbase" ) };
+                eval { File::Copy::copy( $dbase_path, "$cache_schema/$dbase.dbase" ) };
             }
         }
         else {
+            if ($@) {
+                cluck "[AMBERDB_SCHEMA] Syntax error in dbase schema file '$target_path': $@\n";
+            }
             $self->{_dbase}->{$dbase} = {};
         }
     }
@@ -315,29 +321,29 @@ sub dbase_info {
     return $self->{_dbase}->{$dbase};
 }
 
-# my $table_info = $dbp->table_info($table_id);
-# my $table_info = $dbp->table_info("/path/to/catalog_product.table");
+# my $table_info = $adb->table_info($table_id);
+# my $table_info = $adb->table_info("/path/to/catalog_product.table");
 # ------------------------------------------------
 sub table_info {
 
     my ( $self, $arg ) = @_;
 
-    return unless $arg;
+    return {} unless $arg;
     my ( $table, $table_path ) = $self->schema_arg( $arg, "table" );
     $table && $table_path or return {};
 
     my $dbase = ( $table =~ /^([a-z0-9]+)_/ )[0];
-    return $self->{_table}->{$table}
+    return { %{ $self->{_table}->{$table} } }
         if $self->{_table}->{$table} && %{ $self->{_table}->{$table} };
 
-    return {} if $self->{cfg}->{simple};
+    return {} if $self->config('simple');
 
     $self->{_table}->{$table} = {};
 
-    my $cache_scheme = ( $self->can('cache_scheme_dir') ) ? $self->cache_scheme_dir() : undef;
+    my $cache_schema = ( $self->can('cache_schema_dir') ) ? $self->cache_schema_dir() : undef;
     my $target_path  = $table_path;
-    if ( $cache_scheme && -e "$cache_scheme/$table.table" ) {
-        $target_path = "$cache_scheme/$table.table";
+    if ( $cache_schema && -e "$cache_schema/$table.table" ) {
+        $target_path = "$cache_schema/$table.table";
     }
 
     if ( -e $target_path ) {
@@ -345,22 +351,38 @@ sub table_info {
         my $do_data = do $target_path;
         if ($do_data) {
             $self->{_table}->{$table} = $do_data;
-            if ( $cache_scheme && !-e "$cache_scheme/$table.table" && -d $cache_scheme ) {
+            if ( $cache_schema && !-e "$cache_schema/$table.table" && $self->dir_exist($cache_schema) ) {
                 require File::Copy;
-                eval { File::Copy::copy( $table_path, "$cache_scheme/$table.table" ) };
+                eval { File::Copy::copy( $table_path, "$cache_schema/$table.table" ) };
             }
             if ( $do_data->{use_cache} && $do_data->{use_cache} == 2 ) {
                 $self->cache_ensure($table);
+            }
+        }
+        else {
+            if ($@) {
+                cluck "[AMBERDB_SCHEMA] Syntax error in table schema file '$target_path': $@\n";
             }
         }
     }
 
     $self->dbase_info($dbase);
 
-    return $self->{_table}->{$table};
+    return { %{ $self->{_table}->{$table} || {} } };
 }
 
-# my $table_path = $dbp->table_path($table);
+# $bool = $adb->dir_exist($dir);
+# Checks if a directory, alias, symbolic link, or filesystem entry exists.
+# ------------------------------------------------
+sub dir_exist {
+
+    my ( $self, $dir ) = @_;
+
+    return 0 unless defined $dir && length $dir;
+    return ( -d $dir || -l $dir || -e $dir ) ? 1 : 0;
+}
+
+# my $table_path = $adb->table_path($table);
 # ------------------------------------------------
 sub table_path {
 
@@ -374,24 +396,23 @@ sub table_path {
         if $self->{_table}->{$table}->{_path};
 
     # set simple mode if DATADIR directory does not exist
-    if ( !-d $self->{path}->{dbase_dir} ) {
-        $self->{cfg}->{simple} = 1;
+    if ( !$self->dir_exist( $self->path('dbase_dir') ) ) {
+        $self->config( simple => 1 );
     }
 
     # return table path if simple mode
-    if ( $self->{cfg}->{simple} ) {
-        my $target = "$self->{path}->{dbase_dir}/$table";
+    if ( $self->config('simple') ) {
+        my $target = ( $self->path('dbase_dir') || "." ) . "/$table";
         my ($parent_dir) = $target =~ m{^(.+)/[^/]+$};
-        if ( $parent_dir && !-d $parent_dir ) {
-            require File::Path;
-            File::Path::make_path($parent_dir);
+        if ( $parent_dir && !$self->dir_exist($parent_dir) ) {
+            croak "[AMBERDB_FATAL] Database directory '$parent_dir' does not exist for table '$table'";
         }
         $self->{_table}->{$table}->{_path} = $target;
         return $target . ($with_ext ? ".$self->{db_ext}" : "");
     }
 
     # set path value
-    my $dbase_dir = $self->{path}->{dbase_dir} ||= ".";
+    my $dbase_dir = $self->path('dbase_dir') || ".";
 
     my ($dbase) = ( $table =~ /^([a-z0-9]+)_/i );
     $dbase //= "";
@@ -401,11 +422,10 @@ sub table_path {
 
     # if root dbase
     if ( $self->{_dbase}->{$dbase}->{root} ) {
-        my $target = "$self->{path}->{dbase_dir}/$table";
+        my $target = ( $self->path('dbase_dir') || "." ) . "/$table";
         my ($parent_dir) = $target =~ m{^(.+)/[^/]+$};
-        if ( $parent_dir && !-d $parent_dir ) {
-            require File::Path;
-            File::Path::make_path($parent_dir);
+        if ( $parent_dir && !$self->dir_exist($parent_dir) ) {
+            croak "[AMBERDB_FATAL] Database directory '$parent_dir' does not exist for table '$table'";
         }
         $self->{_table}->{$table}->{_path} = $target;
         return $self->{_table}->{$table}->{_path} . ($with_ext ? ".$self->{db_ext}" : "");
@@ -414,12 +434,12 @@ sub table_path {
     # if using year
     my $yeardir;
     if (
-        $self->{cfg}->{use_year}
+        $self->config('use_year')
         and (  $self->{_dbase}->{$dbase}->{year}
             or $self->{_table}->{$table}->{year} )
       )
     {
-        $yeardir = $self->{path}->{year_dir} || $self->{date}->{year};
+        $yeardir = $self->path('year_dir') || $self->{date}->{year};
     }
     else {
         delete( $self->{_dbase}->{$dbase}->{year} )
@@ -430,22 +450,20 @@ sub table_path {
         $yeardir = "tables";
     }
     $dbase_dir .= "/$yeardir" if $yeardir;
-    mkdir $dbase_dir unless -d $dbase_dir;
 
     # if using section
     if (
-        $self->{cfg}->{use_section}
+        $self->config('use_section')
         and (  $self->{_dbase}->{$dbase}->{section}
             or $self->{_table}->{$table}->{section} )
       ) {
-        $self->{cfg}->{section} ||= "center";
-        $dbase_dir .= "_$self->{cfg}->{section}";
-        mkdir $dbase_dir unless -d $dbase_dir;
+        my $section = $self->{_table}->{$table}->{section} || $self->config('section') || "center";
+        $dbase_dir .= "_$section";
     }
 
     # if using language
     if (
-        $self->{cfg}->{use_language} and 
+        $self->config('use_language') and 
             (  $self->{_dbase}->{$dbase}->{lang} ||
                $self->{_table}->{$table}->{lang} )
     ) {
@@ -453,53 +471,64 @@ sub table_path {
                    $self->{_table}->{$table}->{lang} // "";
 
         $dbase_dir .= "_$lang";
-        mkdir $dbase_dir unless -d $dbase_dir;
     }
 
-    # if could not create via mkdir
-    unless ( -d $dbase_dir ) {
-        require File::Path;
-        my $ok = File::Path::make_path($dbase_dir);
-        cluck "[MKPATH] MSG: $dbase_dir forced creation! Status: $ok\n";
+    unless ( $self->dir_exist($dbase_dir) ) {
+        croak "[AMBERDB_FATAL] Database directory '$dbase_dir' does not exist for table '$table'";
     }
 
     my $target = "$dbase_dir/$table";
-    my ($parent_dir) = $target =~ m{^(.+)/[^/]+$};
-    if ( $parent_dir && !-d $parent_dir ) {
-        require File::Path;
-        File::Path::make_path($parent_dir);
-    }
-
     $self->{_table}->{$table}->{_path} = $target;
 
     return $self->{_table}->{$table}->{_path} . ($with_ext ? ".$self->{db_ext}" : "");
 }
 
-# my $ok = $dbp->table_attr($table, { force => 1, keep_deleted => 1, match => [1,2] });
+# my $attrs = $adb->table_attr($table);
+# my $id_type = $adb->table_attr($table, "id_type");
+# $adb->table_attr($table, id_type => "ascii", keep_deleted => 1);
+# $adb->table_attr($table, { force => 1, keep_deleted => 1, match => [1,2] });
 # ------------------------------------------------
 sub table_attr {
 
-    my ( $self, $table, $attrs ) = @_;
+    my ( $self, $table, @args ) = @_;
 
-    if ( !$self->{_table}->{$table}->{_path} ) {
+    $table = $self->sanitize_table($table);
+    return unless defined $table && length $table;
+
+    # 1. No extra arguments: return shallow copy of table attributes
+    if ( !@args ) {
+        return { %{ $self->{_table}->{$table} || {} } };
+    }
+
+    # 2. Single scalar argument: getter -> $adb->table_attr($table, 'id_type')
+    if ( @args == 1 && !ref( $args[0] ) ) {
+        return $self->{_table}->{$table}->{ $args[0] };
+    }
+
+    # 3. Setter: key-value list or hashref
+    my %attrs = ( @args == 1 && ref( $args[0] ) eq "HASH" ) ? %{ $args[0] } : @args;
+    my $needs_path_refresh = 0;
+
+    foreach my $key ( keys %attrs ) {
+        $self->{_table}->{$table}->{$key} = $attrs{$key};
+        $needs_path_refresh = 1 if $key =~ /^(year|section|lang)$/;
+    }
+
+    if ($needs_path_refresh) {
+        delete $self->{_table}->{$table}->{_path};
         $self->table_path($table);
     }
 
-    ref($attrs) eq "HASH" or return;
-    foreach my $key ( keys %$attrs ) {
-        $self->{_table}->{$table}->{$key} = $attrs->{$key};
-    }
-
-    return 1;
+    return $self;
 }
 
-# my $table_path = $dbp->table_infset($table);
+# my $table_path = $adb->table_infset($table);
 # ------------------------------------------------
 sub table_infset {
 
     my ( $self, $table ) = @_;
 
-    $self->{cfg}->{simple} and return 1;
+    $self->config('simple') and return 1;
     my $tbl = $self->{_table}->{$table};
     ref($tbl) eq 'HASH' or return;
 
@@ -512,8 +541,10 @@ sub table_infset {
     # Scalar keys
     my @scalar_keys = qw(
       name record_index keep_deleted log_owner parent_table
-      use_menu id_type force use_cache use_alias use_synonym
+      use_menu id_type force use_cache use_alias
       use_counter use_facet stop_word min_char
+      use_junk cache_ttl repeat_ids repeat_start
+      no_transact no_backup
     );
     foreach my $key (@scalar_keys) {
         next unless exists $tbl->{$key};
@@ -525,7 +556,7 @@ sub table_infset {
     # Array keys
     my @array_keys = qw(
       search_block match_block view_block facet_block
-      seo_block reverse
+      filter_block seo_block reverse
     );
     foreach my $key (@array_keys) {
         next unless ref( $tbl->{$key} ) eq "ARRAY";
@@ -564,6 +595,22 @@ sub table_infset {
         $table_str .= "\tfacet_rules => $fa_val,\n";
     }
 
+    # Serialize junk_rules
+    if ( ref( $tbl->{junk_rules} ) eq 'ARRAY' && @{ $tbl->{junk_rules} } ) {
+        my $jr = $tbl->{junk_rules};
+        my $jr_val;
+        if ( ref( $jr->[0] ) eq 'ARRAY' ) {
+            my @rules_str = map {
+                "[" . join( ", ", map { $_ =~ /^\d+$/ ? $_ : "\"$_\"" } @$_ ) . "]"
+            } @$jr;
+            $jr_val = "[ " . join( ", ", @rules_str ) . " ]";
+        }
+        else {
+            $jr_val = "[ " . join( ", ", map { $_ =~ /^\d+$/ ? $_ : "\"$_\"" } @$jr ) . " ]";
+        }
+        $table_str .= "\tjunk_rules => $jr_val,\n";
+    }
+
     # Serialize blocks in correct format
     if ( ref( $tbl->{blocks} ) eq "ARRAY" && @{ $tbl->{blocks} } ) {
         $table_str .= "\tblocks => [\n";
@@ -581,6 +628,14 @@ sub table_infset {
                 $table_str .= 
                     " rdbm  => { table => \"$blok->{rdbm}{table}\", display => $disp },";
             }
+            elsif ( defined $blok->{rdbm} && $blok->{rdbm} ne '' && !ref( $blok->{rdbm} ) ) {
+                $table_str .= " rdbm  => \"$blok->{rdbm}\",";
+            }
+            if ( ref( $blok->{extend} ) eq 'HASH' && $blok->{extend}{table} ) {
+                my $join_col = $blok->{extend}{join} || 'id';
+                $table_str .= 
+                    " extend => { table => \"$blok->{extend}{table}\", join => \"$join_col\" },";
+            }
             $blok->{option} and
               $table_str .= " option => \"$blok->{option}\",";
             $table_str .= " },\n";
@@ -589,8 +644,12 @@ sub table_infset {
     }
 
     if ($table_str) {
-        open my $YZ, ">", "$self->{path}->{scheme_dir}/$table_path.table"
-          or return;
+        my $schema_dir = $self->path('schema_dir') || ( $self->path('dbase_dir') ? $self->path('dbase_dir') . "/schema" : "schema" );
+        open my $YZ, ">", "$schema_dir/$table_path.table"
+          or do {
+            cluck "[DB_SCHEMA] Could not write schema $schema_dir/$table_path.table: $!\n";
+            return;
+          };
         print $YZ "{\n";
         print $YZ $table_str;
         print $YZ "}\n";
@@ -605,12 +664,12 @@ sub table_infset {
 # @liste = $self->db_sortid("table_id", @liste);
 # ------------------------------------------------
 sub db_sortid {
+
     my ( $self, $table, @records ) = @_;
 
-    # Check empty list
-    return () unless @records;
+    scalar @records or return ();
 
-    my $id_type = $table ? ( $self->{_table}->{$table}->{id_type} // '' ) : '';
+    my $id_type = $table ? ( $self->table_attr( $table, 'id_type' ) // '' ) : '';
     my $field   = ( ref( $records[0] ) eq "ARRAY" ) ? 0 : undef;
 
     if ( !$id_type ) {
@@ -631,32 +690,151 @@ sub set_datadir {
 
     # declarations
     my @dirs = qw(
-      dbase_dir table_dir scheme_dir backup_dir
+      dbase_dir table_dir schema_dir backup_dir
       cache_dir lock_dir buffer_dir
     );
     foreach my $dir (@dirs) {
-        $self->{path}->{$dir} //= "";
+        $self->{_path}->{$dir} //= "";
     }
 
-    $self->{path}->{dbase_dir}  = $dbase_dir;
+    $self->{_path}->{dbase_dir}  = $dbase_dir;
 
     # db_ext tanımlı ve "db" değil ise simple moduna al
-    if ( defined $self->{cfg}->{db_ext} && $self->{cfg}->{db_ext} ne "db" ) {
-        $self->{cfg}->{simple} = 1;
+    if ( defined $self->config('db_ext') && $self->config('db_ext') ne "db" ) {
+        $self->config( simple => 1 );
     }
 
     # do not proceed if DATADIR directory does not exist
-    return 1 if ( $self->{cfg}->{simple} );
+    return 1 if ( $self->config('simple') );
 
     # return table if simple
-    $self->{path}->{backup_dir} = "$dbase_dir/backup";
-    $self->{path}->{buffer_dir} = "$dbase_dir/buffer";
-    $self->{path}->{cache_dir}  = "$dbase_dir/cache";
-    $self->{path}->{lock_dir}   = "$dbase_dir/cache/lock";
-    $self->{path}->{scheme_dir} = "$dbase_dir/scheme";
-    $self->{path}->{table_dir}  = "$dbase_dir/tables";
+    $self->{_path}->{backup_dir} ||= "$dbase_dir/backup";
+    $self->{_path}->{buffer_dir} ||= "$dbase_dir/buffer";
+    $self->{_path}->{cache_dir}  ||= "$dbase_dir/cache";
+    $self->{_path}->{lock_dir}   ||= "$dbase_dir/cache/lock";
+    $self->{_path}->{schema_dir} ||= "$dbase_dir/schema";
+    $self->{_path}->{table_dir}  ||= "$dbase_dir/tables";
+
+    # Centralized directory creation: create required base directories at initialization
+    require File::Path;
+    for my $dir (
+        $self->{_path}->{dbase_dir},
+        $self->{_path}->{table_dir},
+        $self->{_path}->{schema_dir},
+        $self->{_path}->{backup_dir},
+        $self->{_path}->{buffer_dir},
+        $self->{_path}->{cache_dir},
+        $self->{_path}->{lock_dir},
+        "$self->{_path}->{cache_dir}/tables",
+        "$self->{_path}->{cache_dir}/schema",
+        "$self->{_path}->{dbase_dir}/txn",
+    ) {
+        if ( defined $dir && length($dir) && !$self->dir_exist($dir) ) {
+            eval { File::Path::make_path($dir) };
+        }
+    }
 
     return 1;
+}
+
+# my $cfg_val = $adb->config("language");
+# my $all_cfg = $adb->config();
+# $adb->config(language => "en", no_write => 1);
+# $adb->config({ language => "en", no_write => 1 });
+# ------------------------------------------------
+sub config {
+
+    my ( $self, @args ) = @_;
+
+    # 1. No arguments: return shallow copy of all configuration
+    if ( !@args ) {
+        return { %{ $self->{_cfg} || {} } };
+    }
+
+    # 2. Single scalar argument: getter -> $adb->config('language')
+    if ( @args == 1 && !ref( $args[0] ) ) {
+        return $self->{_cfg}->{ $args[0] };
+    }
+
+    # 3. Setter: key-value list or hashref
+    my %pairs = ( @args == 1 && ref( $args[0] ) eq 'HASH' ) ? %{ $args[0] } : @args;
+
+    # Internal dispatch table for side-effects
+    my $hooks = {
+        language => sub {
+            my $val = shift;
+            $self->{_cfg}->{language} = $val;
+            $self->_load_locale($val) if $self->can('_load_locale');
+        },
+        db_ext => sub {
+            my $val = shift;
+            $self->{_cfg}->{db_ext} = $val;
+            $self->{db_ext} = $val;
+            if ( defined $val && $val ne "db" ) {
+                $self->{_cfg}->{simple} = 1;
+            }
+            $self->_invalidate_table_paths();
+        },
+        simple => sub {
+            my $val = shift;
+            $self->{_cfg}->{simple} = $val ? 1 : 0;
+            $self->_invalidate_table_paths();
+        },
+    };
+
+    while ( my ( $key, $val ) = each %pairs ) {
+        if ( exists $hooks->{$key} ) {
+            $hooks->{$key}->($val);
+        }
+        else {
+            $self->{_cfg}->{$key} = $val;
+        }
+    }
+
+    return $self;
+}
+
+# my $dbase_dir = $adb->path("dbase_dir");
+# my $paths_hash = $adb->path();
+# $adb->path(schema_dir => "/custom/schema");
+# ------------------------------------------------
+sub path {
+
+    my ( $self, @args ) = @_;
+
+    # 1. No arguments: return shallow copy of all path mappings
+    if ( !@args ) {
+        return { %{ $self->{_path} || {} } };
+    }
+
+    # 2. Single scalar argument: getter -> $adb->path('dbase_dir')
+    if ( @args == 1 && !ref( $args[0] ) ) {
+        return $self->{_path}->{ $args[0] };
+    }
+
+    # 3. Setter: key-value list or hashref
+    my %pairs = ( @args == 1 && ref( $args[0] ) eq 'HASH' ) ? %{ $args[0] } : @args;
+
+    for my $key ( keys %pairs ) {
+        $self->{_path}->{$key} = $pairs{$key};
+    }
+    $self->_invalidate_table_paths();
+
+    return $self;
+}
+
+# Invalidate cached table paths if global path-affecting configurations change
+# ------------------------------------------------
+sub _invalidate_table_paths {
+
+    my ($self) = @_;
+
+    if ( $self->{_table} && ref( $self->{_table} ) eq 'HASH' ) {
+        for my $tbl ( keys %{ $self->{_table} } ) {
+            delete $self->{_table}->{$tbl}->{_path}
+              if ref( $self->{_table}->{$tbl} ) eq 'HASH';
+        }
+    }
 }
 
 # field_to_list and repeat_fields have been moved to AmberDB::Index.
@@ -665,7 +843,7 @@ sub set_datadir {
 # have been moved to AmberDB::Index.
 
 
-# my ($count, @records) = $dbp->recs_cutting($start, $limit, @records);
+# my ($count, @records) = $adb->recs_cutting($start, $limit, @records);
 # ------------------------------------------------
 sub recs_cutting {
 
@@ -716,7 +894,7 @@ sub init_date {
     return $self->{date};
 }
 
-# $dbp->bin_encode(\@rids, [$id_type])
+# $adb->bin_encode(\@rids, [$id_type])
 # Encodes list of record IDs into 8-byte unified packed binary format.
 # If $id_type is 'ascii', enforces 8-byte limit and packs as a8*.
 # If $id_type is 'num', packs as 64-bit uint Q>*.
@@ -743,7 +921,7 @@ sub bin_encode {
     }
 }
 
-# $dbp->bin_decode($binary_buffer, $start, $limit, $dir, [$id_type])
+# $adb->bin_decode($binary_buffer, $start, $limit, $dir, [$id_type])
 # Decodes 8-byte unified binary buffer with O(1) substr slicing.
 # Deterministically detects numeric (Big-Endian leading \0) vs ASCII (a8).
 # Returns ($total_count, @sliced_ids)
@@ -819,16 +997,34 @@ __END__
 
 =head1 NAME
 
-AmberDB::Base - Core encoding, decoding, schema loading, and path resolution base class
+AmberDB::Base - Core serialization, schema resolution, binary packing, file locking, and low-level I/O base class
 
 =head1 SYNOPSIS
 
-  use parent 'AmberDB::Base';
+  # Methods are inherited and invoked directly via AmberDB instance ($adb):
+
+  # 1. Serialization of flat or nested data
+  my $raw_line = $adb->db_encode("Title", [ "tag1", "tag2" ], { key => "val" });
+  my @fields   = $adb->db_decode($raw_line);
+
+  # 2. Schema and Path Resolution
+  my $schema     = $adb->table_info("catalog_product");
+  my $table_path = $adb->table_path("catalog_product");
+
+  # 3. Compact 8-Byte Binary Index Packing
+  my $binary_blob = $adb->bin_encode([ 101, 102, 103 ], "num");
+  my ($total_cnt, @ids) = $adb->bin_decode($binary_blob, 0, 20, "asc", "num");
+
+  # 4. Table & Record File Locking
+  $adb->flock_open("orders_cart", "write", $record_id);
+  # ... critical section ...
+  $adb->flock_close("orders_cart", $record_id);
 
 =head1 DESCRIPTION
 
-C<AmberDB::Base> serves as the foundational layer for flat-file database serialization, table schema parsing,
-data path resolution, character escaping, and index maintenance.
+C<AmberDB::Base> serves as the foundational layer of AmberDB. It implements flat-file record serialization with nested data support, deterministic schema loading, path mapping based on storage partitions (dbase, year, section, language), compact 8-byte fixed-width binary packing, file locking, and low-level C<DB_File> access.
+
+B<Inheritance Note:> C<AmberDB> inherits directly from C<AmberDB::Base> via C<use parent>. All methods documented below can be invoked on any C<$adb> instance.
 
 =head1 TABLE NAMING CONVENTIONS
 
@@ -848,17 +1044,112 @@ AmberDB enforces a strict, deterministic table naming convention:
 
 =head1 METHODS
 
-=head2 db_encode(@fields) / db_decode($record)
+=head2 db_encode(@fields)
 
-Serializes Perl structures (scalars, arrays, hashes) into tab-delimited strings and deserializes them back.
+Serializes a list of Perl values (scalars, array references, or hash references) into a tab-delimited flat-file line. Nested structures are encoded using internal prefixes (C<ARRAY:>, C<HASH:>) and escaped safely.
+
+  my $encoded = $adb->db_encode("101", "Product Name", [ "red", "blue" ], { stock => 5 });
+
+=head2 db_decode($record)
+
+Deserializes a tab-delimited flat-file line back into its native Perl data types. In list context, returns a list of fields; in scalar context, returns an array reference (or single field if only one column exists).
+
+  my @fields = $adb->db_decode($encoded);
+
+=head2 char_escape($str) / char_unescape($str)
+
+Escapes and unescapes structural control characters (tabs, newlines, pipes, equals signs, ampersands, record separators) into safe entity representations.
+
+=head2 uri_encode($str) / uri_decode($str)
+
+Percent-encodes and decodes strings for safe inclusion in URLs or HTTP query strings.
+
+  my $encoded_url = $adb->uri_encode("search query & params");
+
+=head2 key_encode($key)
+
+Transliterates non-alphanumeric characters into clean ASCII characters, stripping illegal symbols to produce safe disk filenames and index keys.
+
+=head2 set_charset($from_encoding, $to_encoding, $data)
+
+Transcodes text data between character encodings (e.g. C<'iso-8859-9'> to C<'utf8'>).
+
+=head2 get_words($string, [$action], [$table])
+
+Tokenizes C<$string> into search index keywords, stripping punctuation, applying language-specific stopwords, and normalizing casing.
+
+  my %words = $adb->get_words("Kablosuz Kulaklık & Aksesuarlar");
+
+=head2 bin_encode(\@record_ids, [$id_type])
+
+Packs a list of record IDs into a compact, fixed 8-byte binary buffer:
+=over 4
+=item * Numeric IDs (C<id_type =E<gt> 'num'>): Packed as 64-bit unsigned Big-Endian integers (C<QE<gt>>).
+=item * ASCII IDs (C<id_type =E<gt> 'ascii'>): Packed as fixed 8-byte ASCII strings (C<a8>), strictly validated against 8-byte limits.
+=back
+
+  my $packed_buffer = $adb->bin_encode([ 1, 2, 3 ], 'num');
+
+=head2 bin_decode($binary_buffer, [$start], [$limit], [$direction], [$id_type])
+
+Decodes an 8-byte binary buffer using O(1) C<substr> byte-offset slicing without unpacking the entire buffer into memory. Returns C<($total_count, @slice_ids)>.
+
+=over 4
+=item * C<$start>: 0-based record offset.
+=item * C<$limit>: Maximum number of records to return (0 for all remaining).
+=item * C<$direction>: C<'asc'> (default) or C<'desc'> (slices from the end).
+=item * C<$id_type>: Optional C<'num'> or C<'ascii'> (auto-detected if omitted).
+=back
+
+  my ($total, @page_ids) = $adb->bin_decode($packed_buffer, 0, 20, 'desc');
 
 =head2 table_info($table_id)
 
-Loads and returns metadata schema hash for specified table. C<$table_id> must follow the lowercase snake_case naming convention (e.g., C<catalog_product>).
+Loads and returns the metadata schema hash for the specified table (e.g. C<catalog_product>). Automatically caches loaded schemas in memory.
+
+  my $schema = $adb->table_info("catalog_product");
+
+=head2 dbase_info($dbase_name)
+
+Loads and returns configuration settings for a logical database group (e.g. C<catalog>).
+
+  my $db_cfg = $adb->dbase_info("catalog");
 
 =head2 table_path($table_id)
 
-Resolves physical file system path for target table based on dbase, year, section, and language settings.
+Resolves and returns the full absolute file system path (without file extension) for the target table based on its schema partition rules (dbase, year, section, language).
+
+  my $path_prefix = $adb->table_path("catalog_product");
+
+=head2 flock_open($table_id, [$mode], [$record_id])
+
+Acquires a file lock on a table or individual record. C<$mode> can be C<'write'> (exclusive C<LOCK_EX>, default) or C<'read'> (shared C<LOCK_SH>). Non-blocking; retries with exponential backoff.
+
+  $adb->flock_open("catalog_product", "write", 101);
+
+=head2 flock_close($table_id, [$record_id])
+
+Releases a table-level or record-level lock previously acquired by C<flock_open()>.
+
+  $adb->flock_close("catalog_product", 101);
+
+=head2 Low-Level Database Accessors
+
+=over 4
+
+=item * C<recs_get($file_path, @keys)> — Fetches raw serialized values for given keys from an open C<DB_File> handle.
+
+=item * C<recs_put($file_path, @records)> — Bulk writes C<[ $key, $val ]> pairs into an open C<DB_File> handle.
+
+=item * C<recs_del($file_path, @keys)> — Deletes keys from an open C<DB_File> handle.
+
+=item * C<recs_keys($file_path)> — Retrieves all keys sequentially from an open C<DB_File> handle using C-level cursor iterations.
+
+=item * C<recs_scan($file_path, $mode_or_callback)> — Scans all entries in sequential order.
+
+=item * C<recs_exist($file_path, @keys)> — Fast existence check directly on the underlying database file.
+
+=back
 
 =head1 AUTHOR
 

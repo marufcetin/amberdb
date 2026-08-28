@@ -5,6 +5,7 @@ use warnings;
 use Fcntl qw(:DEFAULT :flock);
 use DB_File;
 use Carp qw(croak cluck);
+use Hash::Util qw(lock_keys lock_value);
 use parent qw(
     AmberDB::Base
     AmberDB::Index
@@ -21,7 +22,7 @@ use parent qw(
 our $DB_HASH;
 our $hash_info;
 
-our $VERSION = '5.02';
+our $VERSION = '5.21.0';
 my $CREATED = '2005-01-28';
 
 
@@ -36,17 +37,21 @@ sub new {
     foreach ( keys %input ) {
         $self->{$_} = $input{$_};
     }
+
+    # Map public input keys to internal private keys
+    $self->{_cfg}  = delete $self->{cfg}  // $self->{_cfg}  // {};
+    $self->{_path} = delete $self->{path} // $self->{_path} // {};
+
     $self->{_dbase} ||= {};
     $self->{_table} ||= {};
     $self->{_cache} ||= {};
     $self->{_auth}  ||= {};
     $self->{_pid}   ||= {};
-    $self->{path}   ||= {};
-    $self->{cfg}->{user} ||= "user_system";
+    $self->{_cfg}->{user} ||= "user_system";
 
     # data path for database.
-    $self->{path}->{dbase_dir}  ||= ".";
-    $self->{path}->{dbase_dir}  =~ s/\/$//;
+    $self->{_path}->{dbase_dir}  ||= ".";
+    $self->{_path}->{dbase_dir}  =~ s/\/$//;
 
     # file extensions
     # -----------------------------
@@ -74,12 +79,55 @@ sub new {
 
     bless $self, $class;
 
-    # Initialise locale engine — reads cfg->{language} (default "tr" for
+    # Initialise locale engine — reads _cfg->{language} (default "tr" for
     # backward compatibility with existing Tie users who expect Turkish behaviour).
-    $self->_load_locale($self->{cfg}{language});
+    $self->_load_locale($self->config('language'));
 
     $self->init_date();
-    $self->set_datadir( $self->{path}->{dbase_dir} );
+    $self->set_datadir( $self->path('dbase_dir') );
+
+    # Ensure internal containers exist
+    $self->{_db}          ||= {};
+    $self->{_dbm}         ||= {};
+    $self->{_fd}          ||= {};
+    $self->{_tie}         ||= {};
+    $self->{_record_lock} ||= {};
+    $self->{_last_autoid} ||= {};
+    $self->{_error}       ||= [];
+
+    # 1. Lock allowed keys to prevent typos or unauthorized top-level attributes
+    my %seen;
+    my @input_keys = grep { $_ ne 'cfg' && $_ ne 'path' } keys %input;
+    my @allowed = grep { !$seen{$_}++ } (
+        @input_keys,
+        qw(
+            _dbase _table _cache _auth _pid _txn _db _dbm _fd _tie
+            _record_lock _last_autoid _error _adb _rdbm_memo say
+            _path _cfg db_ext ext date locale seo_max_len
+            day day_id dayname days hour hour_id minute minute_id
+            month month_id monthname months only_time second second_id
+            short str time year year_dir
+            _lang _locale _collator _uc_re _lc_re _sort_re _accent_re
+            _ascii_re _search_re _search_map _phonetic_rules _safe_re
+            _letter_re _splitter_re _html_entities
+        )
+    );
+    lock_keys( %$self, @allowed );
+
+    # 2. Lock key values for core containers to prevent accidental reassignment
+    lock_value( %$self, '_dbase' );
+    lock_value( %$self, '_table' );
+    lock_value( %$self, '_cache' );
+    lock_value( %$self, '_auth' );
+    lock_value( %$self, '_pid' );
+    lock_value( %$self, '_db' );
+    lock_value( %$self, '_dbm' );
+    lock_value( %$self, '_fd' );
+    lock_value( %$self, '_tie' );
+    lock_value( %$self, '_record_lock' );
+    lock_value( %$self, '_last_autoid' );
+    lock_value( %$self, '_path' );
+    lock_value( %$self, '_cfg' );
 
     return $self;
 }
@@ -99,7 +147,7 @@ sub DESTROY {
 }
 
 # Adds a new record. Creates the table if it doesn't exist.
-# my $rid = $dbp->insert_id($tableid, $rid, @fields);
+# my $rid = $adb->insert_id($tableid, $rid, @fields);
 # ------------------------------------------------
 sub insert_id {
 
@@ -108,7 +156,7 @@ sub insert_id {
     if ( ref $rid eq "ARRAY" ) { return () }
 
     # if defined NOWRITE
-    $self->{cfg}->{no_write}
+    $self->config('no_write')
       and do { $self->transact_error( $tableid, "No authority to write to the file" ); return; };
 
     # check inputs.
@@ -159,14 +207,17 @@ sub insert_id {
         }
     }
 
-    # add new record and close table.
-    $self->recs_put( $file_path, [ $rid, @record ] );
-
-    # Transaction journal & record locking
+    # Transaction journal & record locking (Lock before write - Strict 2PL)
     my $is_txn = ( $self->{_txn} && $self->{_txn}->{active} ) ? 1 : 0;
     $self->flock_open( $tableid, "write", $rid );
     if ($is_txn) {
         $self->{_txn}->{locks}->{"${tableid}_${rid}"} = 1;
+    }
+
+    # add new record and close table.
+    $self->recs_put( $file_path, [ $rid, @record ] );
+
+    if ($is_txn) {
         my $new_raw;
         $self->{_db}->{$file_path}->get( $rid, $new_raw );
         $self->_txn_log( $tableid, "add", $rid, $new_raw, "" );
@@ -175,7 +226,7 @@ sub insert_id {
     $self->table_close($file_path);
     unless ($is_txn) { $self->flock_close( $tableid, $rid ); }
 
-    $self->{cfg}->{simple} and return $rid;
+    $self->config('simple') and return $rid;
 
     # for index actions
     @record = ( $rid, @record );
@@ -209,7 +260,7 @@ sub insert_id {
 
 # for bulk record inserting
 # Note: Bulk operations (insert_list, modify_list, delete_list) do NOT use transactions (_txn_log).
-# my $statu_hash = $dbp->insert_list($tableid, @records);
+# my $statu_hash = $adb->insert_list($tableid, @records);
 # ------------------------------------------------
 sub insert_list {
 
@@ -219,11 +270,11 @@ sub insert_list {
     scalar @records or return {};
 
     # Write authority cancelled.
-    $self->{cfg}->{no_write}
+    $self->config('no_write')
       and do { cluck "[DB_TIE] No authority to write to the file.\n"; return; };
 
     # Continue with the individual method in simple mode
-    if ( $self->{cfg}->{simple} ) {
+    if ( $self->config('simple') ) {
         my %statu;
         foreach my $record (@records) {
             my $rid = $self->insert_id( $tableid, @$record );
@@ -314,7 +365,7 @@ sub modify_id {
     my ( $self, $tableid, $rid, @record ) = @_;
 
     # Write authority cancelled.
-    $self->{cfg}->{no_write}
+    $self->config('no_write')
       and do { $self->transact_error( $tableid, "No authority to write to the file" ); return; };
 
     # Perform the checks.
@@ -328,27 +379,38 @@ sub modify_id {
     my $table_path = $self->table_path($tableid);
     my $file_path  = "$table_path.$self->{db_ext}";
 
+    # Transaction journal & record locking (Lock BEFORE reading/modifying - Strict 2PL)
+    my $is_txn = ( $self->{_txn} && $self->{_txn}->{active} ) ? 1 : 0;
+    $self->flock_open( $tableid, "write", $rid );
+    if ($is_txn) {
+        $self->{_txn}->{locks}->{"${tableid}_${rid}"} = 1;
+    }
+
     my ( $new_record, $old_record, $value );
 
     # Open the data file.
     $self->table_write($file_path)
-      or do { $self->transact_error( $tableid, "$file_path can't open" ); return; };
+      or do {
+          unless ($is_txn) { $self->flock_close( $tableid, $rid ); }
+          $self->transact_error( $tableid, "$file_path can't open" );
+          return;
+      };
 
     # Perform the record check. (exists or not)
     $old_record = $self->recs_get( $file_path, $rid )->{$rid};
     if ( !$table_info->{force} ) {
-        $old_record
-          or do { $self->transact_error( $tableid, "Record not exist: $rid" ); return; };
+        if ( !$old_record ) {
+            $self->table_close($file_path);
+            unless ($is_txn) { $self->flock_close( $tableid, $rid ); }
+            $self->transact_error( $tableid, "Record not exist: $rid" );
+            return;
+        }
     }
 
     # Perform the record operation and close the file.
     $self->recs_put( $file_path, [ $rid, @record ] );
 
-    # Transaction journal & record locking
-    my $is_txn = ( $self->{_txn} && $self->{_txn}->{active} ) ? 1 : 0;
-    $self->flock_open( $tableid, "write", $rid );
     if ($is_txn) {
-        $self->{_txn}->{locks}->{"${tableid}_${rid}"} = 1;
         my $new_raw;
         $self->{_db}->{$file_path}->get( $rid, $new_raw );
         $self->_txn_log( $tableid, "edit", $rid, $new_raw, $old_record // "" );
@@ -360,7 +422,7 @@ sub modify_id {
     # Cache invalidate
     $self->cache_delete($tableid, $rid);
 
-    $self->{cfg}->{simple} and return $rid;
+    $self->config('simple') and return $rid;
 
     my @old_rec = ( $rid, $self->db_decode($old_record) );
     my @new_rec = ( $rid, @record );
@@ -411,11 +473,11 @@ sub modify_list {
     scalar @records or return {};
 
     # Write authority cancelled.
-    $self->{cfg}->{no_write}
+    $self->config('no_write')
       and do { cluck "[DB_TIE] No authority to write to the file.\n"; return; };
 
     # Continue with the individual method in simple mode
-    if ( $self->{cfg}->{simple} ) {
+    if ( $self->config('simple') ) {
         my %statu;
         foreach my $record (@records) {
             my $rid = $self->modify_id( $tableid, @$record );
@@ -499,7 +561,7 @@ sub delete_id {
     my ( $self, $tableid, $rid ) = @_;
 
     # Write authority cancelled.
-    $self->{cfg}->{no_write}
+    $self->config('no_write')
       and do { $self->transact_error( $tableid, "No authority to write to the file" ); return; };
 
     # If no ID, return error.
@@ -514,26 +576,34 @@ sub delete_id {
     my $file_path  = "$table_path.$self->{db_ext}";
     my $del_path   = "$table_path.del";
 
+    # Transaction journal & record locking (Lock BEFORE reading/deleting - Strict 2PL)
+    my $is_txn = ( $self->{_txn} && $self->{_txn}->{active} ) ? 1 : 0;
+    $self->flock_open( $tableid, "write", $rid );
+    if ($is_txn) {
+        $self->{_txn}->{locks}->{"${tableid}_${rid}"} = 1;
+    }
+
     # Replace record
     # Check writability
     $self->table_write($file_path)
-      or do { $self->transact_error( $tableid, "Could not open $file_path to write" ); return; };
+      or do {
+          unless ($is_txn) { $self->flock_close( $tableid, $rid ); }
+          $self->transact_error( $tableid, "Could not open $file_path to write" );
+          return;
+      };
 
     # If no record, return
     my $record = $self->recs_get( $file_path, $rid )->{$rid};
     if ( !$record ) {
         $self->table_close($file_path);
+        unless ($is_txn) { $self->flock_close( $tableid, $rid ); }
         return;
     }
 
     # Delete the record
     $self->recs_del( $file_path, $rid );
 
-    # Transaction journal & record locking
-    my $is_txn = ( $self->{_txn} && $self->{_txn}->{active} ) ? 1 : 0;
-    $self->flock_open( $tableid, "write", $rid );
     if ($is_txn) {
-        $self->{_txn}->{locks}->{"${tableid}_${rid}"} = 1;
         $self->_txn_log( $tableid, "del", $rid, "", $record );
     }
 
@@ -543,7 +613,7 @@ sub delete_id {
     # Cache invalidate
     $self->cache_delete($tableid, $rid);
 
-    $self->{cfg}->{simple} and return $rid;
+    $self->config('simple') and return $rid;
 
     # Move to archive if keep_deleted enabled
     if ( $table_info->{keep_deleted} ) {
@@ -607,11 +677,11 @@ sub delete_list {
     scalar @records or return {};
 
     # Write authority cancelled
-    $self->{cfg}->{no_write}
+    $self->config('no_write')
       and do { cluck "[DB_TIE] No authority to write to the file. $tableid\n"; return; };
 
     # Continue with individual method in simple mode
-    if ( $self->{cfg}->{simple} ) {
+    if ( $self->config('simple') ) {
         my %statu;
         foreach my $record (@records) {
             my $rid = $self->delete_id( $tableid, $record );
@@ -713,7 +783,7 @@ sub delete_list {
     return \%statu;
 }
 
-# my $ok = $dbp->insert_links($tableid, [rid1, lnk1], [rid2, lnk2]);
+# my $ok = $adb->insert_links($tableid, [rid1, lnk1], [rid2, lnk2]);
 # Writes alias link bindings into .lnk file.
 # ------------------------------------------------
 sub insert_links {
@@ -726,7 +796,7 @@ sub insert_links {
     $table_info->{use_alias} or return;
 
     # Yazma yetkisi iptal edildi.
-    $self->{cfg}->{no_write}
+    $self->config('no_write')
       and do { cluck "[DB_TIE] No authority to write to the file.\n"; return; };
 
     my $table_path = $self->table_path($tableid);
@@ -744,7 +814,7 @@ sub insert_links {
     return 1;
 }
 
-# my $ok = $dbp->insert_strs($tableid, $blk, [str1a, str1b], [str2a, str2b]);
+# my $ok = $adb->insert_strs($tableid, $blk, [str1a, str1b], [str2a, str2b]);
 # Updates synonym mapping tables (.str); appends new values to existing list.
 # ------------------------------------------------
 sub insert_strs {
@@ -754,10 +824,9 @@ sub insert_strs {
     $tableid or return;
     @records or return;
     my $table_info = $self->table_info($tableid);
-    $table_info->{use_synonym} or return;
 
     # Write authority cancelled
-    $self->{cfg}->{no_write}
+    $self->config('no_write')
       and do { cluck "[DB_TIE] No authority to write to the file.\n"; return; };
 
     my $table_path = $self->table_path($tableid);
@@ -780,7 +849,7 @@ sub insert_strs {
 }
 
 # Checks if a record exists. Opens table by $rid, returns 1 if present.
-# my $ok = $dbp->exist_id("tableid", $id);
+# my $ok = $adb->exist_id("tableid", $id);
 # ------------------------------------------------
 sub exist_id {
 
@@ -822,7 +891,7 @@ sub exist_list {
 }
 
 # Checks whether physical database file exists on disk.
-# my $ok = $dbp->exist_table("tableid", rwt);
+# my $ok = $adb->exist_table("tableid", rwt);
 # ------------------------------------------------
 sub exist_table {
 
@@ -905,8 +974,8 @@ sub read_id {
 }
 
 # Reads all records or range of records.
-# my @records = $dbp->read_all("tableID");
-# my ($count, @records) = $dbp->read_all("tableID", 0, 20);
+# my @records = $adb->read_all("tableID");
+# my ($count, @records) = $adb->read_all("tableID", 0, 20);
 # ------------------------------------------------
 sub read_all {
 
@@ -942,9 +1011,9 @@ sub read_all {
 
     my $count;
 
-    # no_index: schema-based (scheme) or request-based bypass
+    # no_index: schema-based or request-based bypass
     my $no_index  = $table_info->{no_index} || $opts{no_index};
-    my $keys_only = $opts{keys_only}        || $self->{cfg}->{keys_only};
+    my $keys_only = $opts{keys_only}        || $self->config('keys_only');
 
     # 0. Sorted reading option (.srt binary key sequence)
     if ( my $s_opt = $opts{sort} ) {
@@ -1091,7 +1160,7 @@ sub read_list {
     ref $ids eq "ARRAY" or $ids = [$ids];
     return unless @$ids;
 
-    if ( $self->{cfg}->{keys_only} ) {
+    if ( $self->config('keys_only') ) {
         return @$ids;
     }
 
@@ -1174,7 +1243,7 @@ sub read_list {
     return @records;
 }
 
-# my @records = $dbp->read_links($tableid, @rids);
+# my @records = $adb->read_links($tableid, @rids);
 # Returns rid -> canonical_rid mapping from .lnk file.
 # ------------------------------------------------
 sub read_links {
@@ -1284,7 +1353,7 @@ sub read_count {
     return ( $count[1] || 0 );
 }
 
-# my @rids = $dbp->read_field("invoice_active", 2, $values);
+# my @rids = $adb->read_field("invoice_active", 2, $values);
 # Returns record IDs matching specified value via .fld index. $values may be arrayref.
 # ------------------------------------------------
 sub read_field {
@@ -1308,7 +1377,7 @@ sub read_field {
             my ( undef, @ids ) = $self->index_get( $field_path, $val );
             push @all, @ids;
         }
-        if ( !@all && $table_info && $table_info->{use_synonym} && -e $str_path ) {
+        if ( !@all && -e $str_path ) {
             for my $val ( $self->field_to_list($values) ) {
                 my ($c) = $self->index_get( $str_path, $val, 'raw' );
                 if ( defined $c && $c ne '' ) {
@@ -1330,7 +1399,7 @@ sub read_field {
     return @result;
 }
 
-# my @record_ids = $dbp->read_search("invoice_active", [ blok2, blok4 ], $search_string);
+# my @record_ids = $adb->read_search("invoice_active", [ blok2, blok4 ], $search_string);
 # Searches across multiple .src blocks; returns IDs present in all blocks (AND logic).
 # ------------------------------------------------
 sub read_search {
@@ -1364,8 +1433,8 @@ sub read_search {
 }
 
 
-# my @records = $dbp->field_fetch("tableid", $blokno, "fetch");
-# my ($count, @records) = $dbp->field_fetch("tableid", $blokno, [ "fetch1", "fetch2" ], $start, $limit);
+# my @records = $adb->field_fetch("tableid", $blokno, "fetch");
+# my ($count, @records) = $adb->field_fetch("tableid", $blokno, [ "fetch1", "fetch2" ], $start, $limit);
 # ------------------------------------------------
 sub field_fetch {
 
@@ -1415,8 +1484,8 @@ sub field_fetch {
             push @all, @ids;
         }
 
-        # .str synonym fallback - batch resolve missing values
-        if ( !@all && $table_info->{use_synonym} && -e $str_path ) {
+        # .str dictionary lookup fallback - batch resolve missing values
+        if ( !@all && -e $str_path ) {
             my @raw_terms = $self->field_to_list($fetch);
             for my $fld_val (@raw_terms) {
                 my ($c) = $self->index_get( $str_path, $fld_val, 'raw' );
@@ -1448,7 +1517,7 @@ sub field_fetch {
         }
 
         # Return keys only if requested
-        if ( $opts{keys_only} || $self->{cfg}->{keys_only} ) {
+        if ( $opts{keys_only} || $self->config('keys_only') ) {
             return $limit ? ( $count, @records ) : @records;
         }
 
@@ -1494,7 +1563,7 @@ sub field_fetch {
             ( $count, @records ) = $self->recs_cutting( $start, $limit, @records );
         }
 
-        if ( $opts{keys_only} || $self->{cfg}->{keys_only} ) {
+        if ( $opts{keys_only} || $self->config('keys_only') ) {
             @records = map { $$_[0] } @records;
             return $limit ? ( $count, @records ) : @records;
         }
@@ -1504,7 +1573,7 @@ sub field_fetch {
 }
 
 # all keys of a blok from table — .fld index varsa ondan, yoksa tam tarama ile.
-# my @record_ids = $dbp->field_keys("tablename", 2);
+# my @record_ids = $adb->field_keys("tablename", 2);
 # ------------------------------------------------
 sub field_keys {
 
@@ -1549,8 +1618,8 @@ sub field_keys {
 }
 
 # Returns map of value -> ID list for a .fld block. If $keyid is passed, returns list for that key only.
-# my $results = $dbp->field_keyvals(TABLENAME, FIELD);
-# my $results = $dbp->field_keyvals(TABLENAME, FIELD, [KEY]);
+# my $results = $adb->field_keyvals(TABLENAME, FIELD);
+# my $results = $adb->field_keyvals(TABLENAME, FIELD, [KEY]);
 # ------------------------------------------------
 sub field_keyvals {
 
@@ -1577,7 +1646,7 @@ sub field_keyvals {
                 my ( undef, @ids ) = $self->index_get( $field_path, $qid );
                 push @all_ids, @ids;
             }
-            if ( !@all_ids && $table_info && $table_info->{use_synonym} && -e $str_path ) {
+            if ( !@all_ids && -e $str_path ) {
                 my ($c) = $self->index_get( $str_path, $keyid, 'raw' );
                 if ( defined $c && $c ne '' ) {
                     my ( undef, @ids ) = $self->index_get( $field_path, $c );
@@ -1621,9 +1690,9 @@ sub field_keyvals {
 }
 
 # Performs comparative field search across database blocks.
-# my $field_obj = $dbp->field_filter("table_name", { filter => { f1 => v1, f2 => [v2,v3] }, start=>0, limit=>20 })
-# my $field_obj = $dbp->field_filter("table_name", [field1, find1], [field2, find2] ...);
-# my $field_obj = $dbp->field_filter("table_name", [field1, find1], $start, $limit)
+# my $field_obj = $adb->field_filter("table_name", { filter => { f1 => v1, f2 => [v2,v3] }, start=>0, limit=>20 })
+# my $field_obj = $adb->field_filter("table_name", [field1, find1], [field2, find2] ...);
+# my $field_obj = $adb->field_filter("table_name", [field1, find1], $start, $limit)
 # $field_obj    = { count => $count, keys => \@keys }
 # ------------------------------------------------
 sub field_filter {
@@ -1686,7 +1755,7 @@ sub field_filter {
             my %seen;
             for my $val (@values) {
                 my ( undef, @ids ) = $self->index_get( $field_files{$blk}, $val );
-                if ( !@ids && $table_info && $table_info->{use_synonym} ) {
+                if ( !@ids ) {
                     my $str_path = "${table_path}_${blk}.str";
                     if ( -e $str_path ) {
                         my ($c) = $self->index_get( $str_path, $val, 'raw' );
@@ -1801,9 +1870,9 @@ sub field_filter {
 }
 
 # Performs database search...
-# my @search = $dbp->search_table($tableid, $string);
-# my ($count, @search) = $dbp->search_table($tableid, $string, $and_or, $start, $limit);
-# my ($count, @search) = $dbp->search_table($tableid, $string, start => 0, limit => 20, sort => -4, filter => { field => 6, value => 12 });
+# my @search = $adb->search_table($tableid, $string);
+# my ($count, @search) = $adb->search_table($tableid, $string, $and_or, $start, $limit);
+# my ($count, @search) = $adb->search_table($tableid, $string, start => 0, limit => 20, sort => -4, filter => { field => 6, value => 12 });
 # ------------------------------------------------
 sub search_table {
 
@@ -2022,7 +2091,7 @@ sub search_table {
             ( $count, @records ) = $self->recs_cutting( $start, $limit, @records );
         }
 
-        if ( $opts{keys_only} || $self->{cfg}->{keys_only} ) {
+        if ( $opts{keys_only} || $self->config('keys_only') ) {
             return $limit ? ( $count, @records ) : @records;
         }
 
@@ -2123,7 +2192,7 @@ sub search_table {
             ( $count, @records ) = $self->recs_cutting( $start, $limit, @records );
         }
 
-        if ( $opts{keys_only} || $self->{cfg}->{keys_only} ) {
+        if ( $opts{keys_only} || $self->config('keys_only') ) {
             @records = map { $$_[0] } @records;
             return $limit ? ( $count, @records ) : @records;
         }
@@ -2132,7 +2201,7 @@ sub search_table {
     return $limit ? ( $count, @records ) : @records;
 }
 
-# my $ok = $dbp->search_string($input_string, $search_string);
+# my $ok = $adb->search_string($input_string, $search_string);
 # ---------------------------------------------------------------------
 sub search_string {
 
@@ -2159,7 +2228,7 @@ sub search_string {
 }
 
 # Calculates record count.
-# my $count = $dbp->table_count($tableid);
+# my $count = $adb->table_count($tableid);
 # ------------------------------------------------
 sub table_count {
 
@@ -2211,7 +2280,7 @@ sub table_count {
 }
 
 # Finds last record ID. Check cache first, then .inx, then full scan.
-# my $last_id = $dbp->table_lastid($tableid);
+# my $last_id = $adb->table_lastid($tableid);
 # ------------------------------------------------
 sub table_lastid {
 
@@ -2257,7 +2326,7 @@ sub table_lastid {
     return $last_id;
 }
 
-# my @record_ids = $dbp->table_keys($tableid);
+# my @record_ids = $adb->table_keys($tableid);
 # ------------------------------------------------
 sub table_keys {
 
@@ -2301,7 +2370,7 @@ sub table_keys {
 # Sanitizes and validates a record ID according to table id_type (num or ascii).
 # For id_type eq 'ascii': cleans non-ASCII chars and enforces deterministic 8-byte limit.
 # For id_type eq 'num': enforces numeric digits.
-# my $clean_id = $dbp->id_check($tableid, $rid);
+# my $clean_id = $adb->id_check($tableid, $rid);
 # ------------------------------------------------
 sub id_check {
     my ( $self, $tableid, $rid ) = @_;
@@ -2309,7 +2378,7 @@ sub id_check {
     return unless defined $rid && $rid ne '';
 
     # In simple mode: no ID format/length restrictions
-    return $rid if $self->{cfg}->{simple};
+    return $rid if $self->config('simple');
 
     my $table_info = $tableid ? $self->table_info($tableid) : {};
     my $id_type    = $table_info->{id_type} // 'num';
@@ -2320,7 +2389,7 @@ sub id_check {
         $rid =~ s/\.+/./g;
         $rid =~ s/\-+/-/g;
         $rid =~ s/\_+/_/g;
-        if ( !$self->{cfg}->{simple} && length($rid) > 8 ) {
+        if ( !$self->config('simple') && length($rid) > 8 ) {
             cluck "[DB_TIE] ASCII ID '$rid' exceeds maximum allowed 8 bytes limit ($tableid).\n";
             return;
         }
@@ -2334,7 +2403,7 @@ sub id_check {
 }
 
 # Sets or gets table auto id.
-# my $id = $dbp->table_autoid($tableid, [$id]);
+# my $id = $adb->table_autoid($tableid, [$id]);
 # ------------------------------------------------
 sub table_autoid {
 
@@ -2345,13 +2414,13 @@ sub table_autoid {
     my $id_type    = $table_info->{id_type} // 'num';
 
     if ( defined $aid && $aid ne '' ) {
-        if ( $self->{cfg}->{id_check} ) {
+        if ( $self->config('id_check') ) {
             $aid = $self->id_check( $tableid, $aid );
         }
         return unless defined $aid && $aid ne '';
 
         # Numeric ID must be greater than current lastid unless simple mode
-        if ( $id_type ne 'ascii' && !$self->{cfg}->{simple} ) {
+        if ( $id_type ne 'ascii' && !$self->config('simple') ) {
             my $last = $self->table_lastid($tableid) || 0;
             $last = $self->{_last_autoid}->{$tableid}
               if ( $self->{_last_autoid}->{$tableid} && $self->{_last_autoid}->{$tableid} > $last );
@@ -2378,7 +2447,7 @@ sub table_autoid {
 }
 
 # Creates empty DB file.
-# my $ok = $dbp->table_create($tableid);
+# my $ok = $adb->table_create($tableid);
 # ------------------------------------------------
 sub table_create {
 
@@ -2400,7 +2469,7 @@ sub table_create {
 }
 
 # Opens DB_File read-only, returns tie handle.
-# my $fh = $dbp->table_read($table_path);
+# my $fh = $adb->table_read($table_path);
 # ------------------------------------------------
 sub table_read {
     my ( $self, $file_path ) = @_;
@@ -2426,7 +2495,7 @@ sub table_read {
 }
 
 # Opens DB_File read/write, applies exclusive flock.
-# $dbp->table_write($file_path);
+# $adb->table_write($file_path);
 # ------------------------------------------------
 sub table_write {
     my ( $self, $file_path ) = @_;
@@ -2454,7 +2523,7 @@ sub table_write {
         Time::HiRes::usleep(10000);
     }
     unless ($db_obj) {
-        cluck "[DB_TIE] $file_path DB table cannot be opened.\n";
+        cluck "[DB_TIE] $file_path DB table cannot be opened: $!\n";
         return;
     }
 
@@ -2472,7 +2541,10 @@ sub table_write {
     }
 
     open( $self->{_dbm}->{$file_path}, "+<&=", $self->{_fd}->{$file_path} )
-      or return;
+      or do {
+        cluck "[DB_TIE] Cannot dup filehandle for $file_path: $!\n";
+        return;
+      };
     flock( $self->{_dbm}->{$file_path}, LOCK_EX );
 
     $self->{_tie}->{$file_path} = \%db;
@@ -2480,11 +2552,13 @@ sub table_write {
 }
 
 # Unlocks, closes file, cleans up internal handle pool.
-# $dbp->table_close($file_path);
+# $adb->table_close($file_path);
 # ------------------------------------------------
 sub table_close {
 
     my ( $self, $file_path ) = @_;
+
+    return 1 unless $file_path;
 
     if ( $self->{_db}->{$file_path} ) {
         eval { $self->{_db}->{$file_path}->sync() };
@@ -2494,15 +2568,21 @@ sub table_close {
         close( $self->{_dbm}->{$file_path} );
         delete( $self->{_dbm}->{$file_path} );
     }
-    delete( $self->{_db}->{$file_path} );
-    delete( $self->{_fd}->{$file_path} );
-    delete( $self->{_tie}->{$file_path} );
+
+    my $tie_ref = delete $self->{_tie}->{$file_path};
+    delete $self->{_db}->{$file_path};
+    delete $self->{_fd}->{$file_path};
+
+    if ( $tie_ref && ref($tie_ref) eq 'HASH' ) {
+        no warnings 'untie';
+        eval { untie %$tie_ref };
+    }
 
     return 1;
 }
 
 # Closes all open DB files. Called automatically by DESTROY.
-# $dbp->close_all();
+# $adb->close_all();
 # ------------------------------------------------
 sub close_all {
 
@@ -2527,7 +2607,7 @@ sub close_all {
 }
 
 # Locks a single record or entire table file.
-# $dbp->flock_open($table_id, [$mode], [$record_id]);
+# $adb->flock_open($table_id, [$mode], [$record_id]);
 # $mode: "write" (LOCK_EX, default) or "read" (LOCK_SH)
 # If $record_id provided -> locks dbstore/lock/${table_id}_${record_id}.lock (record-level)
 # If $record_id omitted  -> locks dbstore/lock/${table_id}.lock (table-level)
@@ -2538,9 +2618,9 @@ sub flock_open {
     $tableid or return;
     $mode ||= "write";
 
-    my $lock_dir = ( length( $self->{path}->{lock_dir} // '' ) )
-      ? $self->{path}->{lock_dir}
-      : ( $self->can('cache_lock_dir') ? $self->cache_lock_dir() : "$self->{path}->{dbase_dir}/cache/lock" );
+    my $lock_dir = ( length( $self->path('lock_dir') // '' ) )
+      ? $self->path('lock_dir')
+      : ( $self->can('cache_lock_dir') ? $self->cache_lock_dir() : ( $self->path('dbase_dir') || "." ) . "/cache/lock" );
     unless ( -d $lock_dir ) {
         require File::Path;
         File::Path::make_path($lock_dir) or do {
@@ -2565,7 +2645,7 @@ sub flock_open {
     my $lock_file = "$lock_dir/${lock_name}.lock";
 
     open my $fh, ">>", $lock_file or do {
-        cluck "[DB_LOCK] Cannot open lock file: $lock_file\n";
+        cluck "[DB_LOCK] Cannot open lock file: $lock_file ($!)\n";
         return;
     };
 
@@ -2578,7 +2658,7 @@ sub flock_open {
 }
 
 # Unlocks and closes lock file for record or table.
-# $dbp->flock_close($table_id, [$record_id]);
+# $adb->flock_close($table_id, [$record_id]);
 # ------------------------------------------------
 sub flock_close {
     my ( $self, $tableid, $record_id ) = @_;
@@ -2604,7 +2684,7 @@ sub flock_close {
 
 # Reads directly from DB_File for a single key; returns decoded (rid, @fields).
 # Legacy helper - recs_get preferred for bulk reads.
-# my @fields = $dbp->table_readid("file_path", $id);
+# my @fields = $adb->table_readid("file_path", $id);
 # ------------------------------------------------
 sub table_readid {
 
@@ -2630,8 +2710,8 @@ sub table_readid {
 
 # Checks presence of one or more keys in open DB_File table.
 # Usage:
-#   my $exists = $dbp->recs_exist($file_path, $rid);        # Returns 1 or 0 (single key)
-#   my $map    = $dbp->recs_exist($file_path, @keys);       # Returns { key1 => 1, key2 => 0, ... }
+#   my $exists = $adb->recs_exist($file_path, $rid);        # Returns 1 or 0 (single key)
+#   my $map    = $adb->recs_exist($file_path, @keys);       # Returns { key1 => 1, key2 => 0, ... }
 # ------------------------------------------------
 sub recs_exist {
     my ( $self, $file_path, @records ) = @_;
@@ -2664,7 +2744,7 @@ sub recs_exist {
 
 # Reads all keys from DB_File handle in sequential order using C-level seq.
 # Usage:
-#   my @keys = $dbp->recs_keys($file_path);
+#   my @keys = $adb->recs_keys($file_path);
 # ------------------------------------------------
 sub recs_keys {
     my ( $self, $file_path ) = @_;
@@ -2673,12 +2753,12 @@ sub recs_keys {
 
 # Scans key-value pairs sequentially using DB_File seq.
 # Usage:
-#   $dbp->recs_scan($file_path, sub { my ($key, $val) = @_; ... }); # Custom callback
-#   my $hash   = $dbp->recs_scan($file_path);           # Default / 'hash': { key => raw_val }
-#   my $keys   = $dbp->recs_scan($file_path, 'keys');   # 'keys': [$k1, $k2, ...] or ($k1, $k2, ...)
-#   my $values = $dbp->recs_scan($file_path, 'values'); # 'values' / 'value': [$v1, $v2, ...] or ($v1, $v2, ...)
-#   my $pairs  = $dbp->recs_scan($file_path, 'each');   # 'each' / 'pairs': [ [$k1, $v1], ... ]
-#   my $count  = $dbp->recs_scan($file_path, 'count');  # 'count': total record count (scalar)
+#   $adb->recs_scan($file_path, sub { my ($key, $val) = @_; ... }); # Custom callback
+#   my $hash   = $adb->recs_scan($file_path);           # Default / 'hash': { key => raw_val }
+#   my $keys   = $adb->recs_scan($file_path, 'keys');   # 'keys': [$k1, $k2, ...] or ($k1, $k2, ...)
+#   my $values = $adb->recs_scan($file_path, 'values'); # 'values' / 'value': [$v1, $v2, ...] or ($v1, $v2, ...)
+#   my $pairs  = $adb->recs_scan($file_path, 'each');   # 'each' / 'pairs': [ [$k1, $v1], ... ]
+#   my $count  = $adb->recs_scan($file_path, 'count');  # 'count': total record count (scalar)
 # ------------------------------------------------
 sub recs_scan {
     my ( $self, $file_path, $mode ) = @_;
@@ -2755,7 +2835,7 @@ sub recs_scan {
 }
 
 # Reads multiple keys in single pass over open DB_File handle. Returns { key => raw_val }.
-# my $recs_val = $dbp->recs_get($file_path, @rec_ids);
+# my $recs_val = $adb->recs_get($file_path, @rec_ids);
 # ------------------------------------------------
 sub recs_get {
 
@@ -2786,7 +2866,7 @@ sub recs_get {
 }
 
 # Writes records in bulk to open DB_File handle. Each item must be in [$rid, @fields] format.
-# my $ok = $dbp->recs_put($file_path, @records);
+# my $ok = $adb->recs_put($file_path, @records);
 # ------------------------------------------------
 sub recs_put {
 
@@ -2817,7 +2897,7 @@ sub recs_put {
 }
 
 # Deletes provided IDs from open DB_File handle.
-# my $ok = $dbp->recs_del($file_path, @recs); # ID's
+# my $ok = $adb->recs_del($file_path, @recs); # ID's
 # ------------------------------------------------
 sub recs_del {
 
@@ -2836,7 +2916,7 @@ sub recs_del {
     foreach my $rid (@recs) {
         my $k = $self->utf_encode("$rid");
         my $ret = $db->del($k);
-        warn "[DB_TIE] $file_path can't delete $rid.\n" if $ret > 0;
+        warn "[DB_TIE] $file_path can't delete $rid.\n" if $ret < 0;
     }
 
     return 1;
@@ -2847,10 +2927,10 @@ sub recs_del {
 # Returns (0, ()) if file/key is missing or empty.
 # Reads an index entry using direct DB_File C object methods ($db->get).
 # Usage:
-#   my ($total, @ids) = $dbp->index_get($table_path, $key);
-#   my ($total, @ids) = $dbp->index_get($table_path, $key, 'ids', $start, $limit, $dir);
-#   my ($count)        = $dbp->index_get($table_path, "count", "raw");
-#   my ($val)          = $dbp->index_get($table_path, $rid, "raw");
+#   my ($total, @ids) = $adb->index_get($table_path, $key);
+#   my ($total, @ids) = $adb->index_get($table_path, $key, 'ids', $start, $limit, $dir);
+#   my ($count)        = $adb->index_get($table_path, "count", "raw");
+#   my ($val)          = $adb->index_get($table_path, $rid, "raw");
 # Mode / Type:
 #   'ids'  (default)  -> Decodes packed binary ID sequence via bin_decode.
 #   'raw' / 'scalar'  -> Returns raw scalar string ($raw).
@@ -2915,9 +2995,9 @@ sub index_get {
 # Automatically encodes ARRAY ref payload with bin_encode.
 # Raw/scalar index files (such as .rwt, .str, count, lastid) bypass binary encoding.
 # Usage:
-#   $dbp->index_put($table_path, $key, \@ids);         # auto-detected as 'ids'
-#   $dbp->index_put($table_path, $key, \@ids, 'ids');  # explicit 'ids'
-#   $dbp->index_put($table_path, $key, $val,  'raw');  # explicit 'raw'
+#   $adb->index_put($table_path, $key, \@ids);         # auto-detected as 'ids'
+#   $adb->index_put($table_path, $key, \@ids, 'ids');  # explicit 'ids'
+#   $adb->index_put($table_path, $key, $val,  'raw');  # explicit 'raw'
 # ------------------------------------------------
 sub index_put {
     my ( $self, $table_path, $key, $val, $type, $id_type ) = @_;
@@ -2959,7 +3039,7 @@ sub index_put {
 
 # Deletes a single index key using direct DB_File C object methods ($db->del).
 # Usage:
-#   $dbp->index_del($table_path, $key);
+#   $adb->index_del($table_path, $key);
 # ------------------------------------------------
 sub index_del {
     my ( $self, $table_path, $key ) = @_;
@@ -2983,54 +3063,61 @@ sub index_del {
     return $ret == 0 ? 1 : 0;
 }
 
-# Writes add|edit|del operation to user-based CSV backup file.
-# Exits silently if no_backup or user missing.
-# my $ok = $dbp->recs_back("add|edit|del", $tableid, @records);
+# Writes add|edit|del operation to daily CSV backup audit stream (backup/YYYY/YYYY-MM-DD.csv).
+# Exits silently if no_backup is set (globally or in table schema).
+# my $ok = $adb->recs_back("add|edit|del", $tableid, @records);
 # ------------------------------------------------
 sub recs_back {
 
     my ( $self, $action, $tableid, @records ) = @_;
 
-    ( $action and $tableid and ( scalar @records ) ) or return;
+    ( $action and $tableid and scalar @records ) or return;
 
-    $self->{cfg}->{no_backup}->{"*"} and return;
-    $self->{cfg}->{no_backup}->{$tableid} and return;
-    return unless $self->{cfg}->{user};
+    # Global config check: disables backup for all tables
+    return if $self->config('no_backup');
+
+    # Table schema check: no_backup => 1 in table schema
+    my $table_info = $self->table_info($tableid);
+    return if $table_info->{no_backup};
+
+    my $user = $self->config('user') || 'system';
 
     $tableid =~ s/[:\/\\]/--/g;
 
-    if ( !-d "$self->{path}->{backup_dir}" ) {
-        mkdir("$self->{path}->{backup_dir}");
+    my $backup_base = $self->path('backup_dir')
+      || ( $self->path('dbase_dir') ? $self->path('dbase_dir') . "/backup" : "backup" );
+    my $year = ( $self->{date} && $self->{date}->{year} ) ? $self->{date}->{year} : (localtime)[5] + 1900;
+    my $month = ( $self->{date} && $self->{date}->{month} ) ? $self->{date}->{month} : sprintf( "%02d", (localtime)[4] + 1 );
+    my $day = ( $self->{date} && $self->{date}->{day} ) ? $self->{date}->{day} : sprintf( "%02d", (localtime)[3] );
+    my $date_iso = "$year-$month-$day";
+    my $time_str = ( $self->{date} && $self->{date}->{str} ) ? $self->{date}->{str} : "$date_iso " . sprintf( "%02d:%02d:%02d", (localtime)[2], (localtime)[1], (localtime)[0] );
+
+    my $year_dir = "$backup_base/$year";
+    unless ( -d $year_dir ) {
+        require File::Path;
+        File::Path::make_path($year_dir);
     }
-    if ( !-d "$self->{path}->{backup_dir}/dbday" ) {
-        mkdir("$self->{path}->{backup_dir}/dbday");
-    }
-    if ( !-d "$self->{path}->{backup_dir}/dbday/$self->{date}->{day_id}" ) {
-        mkdir("$self->{path}->{backup_dir}/dbday/$self->{date}->{day_id}");
-    }
-    my $backup_dir =
-      "$self->{path}->{backup_dir}/dbday/$self->{date}->{day_id}";
+
+    my $backup_file = "$year_dir/$date_iso.csv";
+
+    open my $YAZ, ">>:encoding(UTF-8)", $backup_file
+      or do {
+        cluck "[DB_BACKUP] Cannot open backup file $backup_file: $!\n";
+        return;
+      };
 
     foreach my $record (@records) {
         ref($record) eq "ARRAY" or $record = [$record];
-        my $bac_key = "$tableid--$record->[0]"
-          ;    # used as user identifier rather than file name
+        my $rid     = $record->[0];
         my $bac_val = $self->db_encode( @{$record}[ 1 .. $#$record ] );
-        open my $YAZ, ">>:encoding(UTF-8)",
-          "$backup_dir/$self->{cfg}->{user}.csv"
-          or (
-            warn( "[DB_TIE] $backup_dir/$self->{cfg}->{user}.csv can't open.\n" )
-            and next
-          );
-        print $YAZ
-          "$action\t$tableid\t$record->[0]\t$bac_val\t$self->{date}->{str}\n";
-        close $YAZ;
+        print $YAZ "$time_str\t$user\t$action\t$tableid\t$rid\t$bac_val\n";
     }
+    close $YAZ;
 
     return 1;
 }
 
-# my $view_pre = $dbp->auth_view($tableid, $rid);
+# my $view_pre = $adb->auth_view($tableid, $rid);
 # Returns add/edit/del audit history on record as HTML <pre>.
 # ------------------------------------------------
 sub auth_view {
@@ -3060,7 +3147,7 @@ sub auth_view {
 
 # Loads record ownership audit trail into memory (_auth) from .aut file.
 # AUTH called internally only from read_list and read_id.
-# my $ok = $dbp->auth_read($tableid, $table_path, @record_ids);
+# my $ok = $adb->auth_read($tableid, $table_path, @record_ids);
 # ------------------------------------------------
 sub auth_read {
 
@@ -3104,7 +3191,7 @@ sub auth_read {
 }
 
 # Writes user/action audit to .aut file. Active when log_owner is enabled.
-# my $ok = $dbp->auth_write($tableid, $table_path, "add|edit|del", $rid);
+# my $ok = $adb->auth_write($tableid, $table_path, "add|edit|del", $rid);
 # ------------------------------------------------
 sub auth_write {
 
@@ -3129,6 +3216,7 @@ sub auth_write {
     my $value = $self->recs_get( $file_path, $rid );
 
     my @record = $self->db_decode( $value->{$rid} );
+    my $user   = $self->config('user') || 'user_system';
     if ( !scalar @record ) {
         if ( $action ne "add" ) {
             @record = (
@@ -3136,11 +3224,11 @@ sub auth_write {
             );
         }
         else {
-            @record = ( $self->{cfg}->{user} );
+            @record = ( $user );
         }
     }
     push @record,
-      [ $self->{cfg}->{user}, $action, $self->{date}->{minute_id} ];
+      [ $user, $action, $self->{date}->{minute_id} ];
     $self->recs_put( $file_path, [ $rid, @record ] );
     $self->table_close($file_path);
 
@@ -3158,12 +3246,12 @@ __END__
 
 =head1 NAME
 
-AmberDB - High-performance Berkeley DB (DB_File) flat-file database engine
+AmberDB - High-performance Berkeley DB (DB_File) based pure Perl database engine
 
 =head1 SYNOPSIS
 
   use AmberDB;
-  my $dbp = AmberDB->new(
+  my $adb = AmberDB->new(
       cfg  => { language => "tr" },
       path => { dbase_dir => "./dbstore" }
   );
@@ -3171,48 +3259,89 @@ AmberDB - High-performance Berkeley DB (DB_File) flat-file database engine
   my @record = ( 0, "John Doe", "New York", 1980, 'john@example.com' );
 
   # Insert record
-  $dbp->insert_id("table_id", @record);
+  $adb->insert_id("table_id", @record);
 
   # Update record
-  $dbp->modify_id("table_id", @record_updated);
+  $adb->modify_id("table_id", $record_id, @record_updated);
 
   # Delete record
-  $dbp->delete_id("table_id", $record_id);
+  $adb->delete_id("table_id", $record_id);
 
   # Read record by ID
-  my @record = $dbp->read_id("table_id", $record_id);
+  my @record = $adb->read_id("table_id", $record_id);
 
   # Read all records
-  my @records = $dbp->read_all("table_id");
+  my @records = $adb->read_all("table_id");
 
   # Read list of records by IDs
-  my @records = $dbp->read_list("table_id", \@id_list);
+  my @records = $adb->read_list("table_id", \@id_list);
 
   # Search for the string "New York" in field 2 using the match function.
-  my @records = $dbp->field_fetch("table_id", 2, "New York");
+  my @records = $adb->field_fetch("table_id", 2, "New York");
+  # or if the New York ID is 142
+  my @records = $adb->field_fetch("table_id", 2, 142);
+
 
   # Full-text string search
-  my @records = $dbp->search_table("table_id", "search string");
+  my @records = $adb->search_table("table_id", "search string");
 
+  # If `read_all`, `field_fetch`, and `search_table` take the `$limit` parameter, they will not read all records; they will read a specific range based on `start` and `limit`, and return the number of records at the beginning.
+  my ($count, @records) = $adb->read_all("table_id", $start, $limit);
+  my ($count, @records) = $adb->field_fetch("table_id", $field_no, $match_value, $start, $limit);
+  my ($count, @records) = $adb->search_table("table_id", "search string", $start, $limit);
+  
   # Direct low-level table access
-  $dbp->table_write($file_path);
-  my $records = $dbp->recs_get($file_path, @rec_ids);
-  my $ok      = $dbp->recs_put($file_path, @records);
-  $dbp->table_close($file_path);
+  $adb->table_write($file_path);
+  my $records = $adb->recs_get($file_path, @rec_ids);
+  my $ok      = $adb->recs_put($file_path, @records);
+  $adb->table_close($file_path);
 
   # Transaction example (Checkout / Stock operation)
-  $dbp->transact_start();
-  my $order_id = $dbp->insert_id("order", 0, $user_id, $item_id, $qty);
-  my $res = $dbp->transact_end();
-  if ($res->{status} eq 'rollback') {
-      warn "Checkout transaction failed and rolled back!";
+  my $res = $adb->transact_start();
+  my $order_id = $adb->insert_id("order", 0, $user_id, $item_id, $qty);
+  if ( !$order_id ) {
+      $adb->transact_rollback();
   }
+  my $stock_id = $adb->modify_id("stock", $item_id, $user_id, $item_id, $new_qty);
+  $adb->transact_end();
 
 =head1 DESCRIPTION
 
-C<AmberDB> provides flat-file database storage, indexing, and transaction management capabilities using Perl's C<DB_File> tie
-interface. It supports automatic primary key generation, indexing (search, field-matching, facets),
-ACID-like undo-journal transactions with automatic/manual rollbacks, soft deletion, language sorting, and localized record manipulation.
+C<AmberDB> is a high-performance, flat-file NoSQL database engine for Perl built on top of Berkeley DB (C<DB_File>). It combines the speed of flat-file storage with enterprise features: schema-driven multi-dimensional indexing, ACID-compliant transactions with Strict Two-Phase Locking (Strict 2PL), columnar faceted navigation, multilingual locale processing, and native RAM-disk caching.
+
+=head1 SUBMODULE ARCHITECTURE & INHERITANCE
+
+C<AmberDB> is built as a unified coordinator that incorporates all functionality from specialized submodules via inheritance (C<use parent>). When you instantiate an C<AmberDB> object (C<$adb>), all methods from the following submodules are directly available as methods on C<$adb>:
+
+=over 4
+
+=item * B<L<AmberDB::Base>> — Core record serialization (C<db_encode>, C<db_decode>), schema loading (C<table_info>), path mapping (C<table_path>), compact 8-byte binary packing (C<bin_encode>, C<bin_decode>), and file locking (C<flock_open>, C<flock_close>).
+
+=item * B<L<AmberDB::Array>> — Array set operations (C<array_nodup>, C<array_crop>, C<array_add>, C<array_punch>, C<array_substr>), matrix transformations (C<inverse_matrix>), filtering (C<array_filter>), multi-dimensional sorting (C<array_sort>), and deep copying (C<deep_copy>).
+
+=item * B<L<AmberDB::String>> — Smart string truncation (C<sub_str>, C<truncate_text>, C<short_title>), whitespace flattening (C<trim_space>), bidirectional HTML conversion (C<text2html>, C<html2text>), content type detection (C<what_isthis>), and HTML entity sanitization.
+
+=item * B<L<AmberDB::Date>> — Compact chronological ID getters (C<day_id>, C<second_id>, C<month_id>), date string parsing (C<str2dateid>, C<dateid2str>), range generation (C<day_range>), ISO week numbers (C<dateid2week>), and relative offset calculation (C<offset2date>).
+
+=item * B<L<AmberDB::Locale>> — Multilingual text processing, locale-aware casing (C<uc>, C<lc>, C<ucfirst>), Unicode Collation (UCA) sorting (C<sort>), ASCII transliteration (C<to_ascii>), number-to-words / cheque conversion (C<num2text>), number formatting (C<format_number>), currency formatting (C<format_currency>), and CLDR pluralization (C<plural>).
+
+=item * B<L<AmberDB::Locale::Currency>> — ISO 4217 currency definitions, symbols, and UI dropdown lists.
+
+=item * B<L<AmberDB::Cache>> — Unified RAM-disk (tmpfs / ImDisk) cache engine (C<cache_read>, C<cache_write>, C<cache_preload>) and persistent staging buffers (C<buffer_read>, C<buffer_write>).
+
+=item * B<L<AmberDB::Transact>> — Multi-table ACID-compliant transaction engine with Strict Two-Phase Locking (Strict 2PL) and undo journaling (C<transact_start>, C<transact_end>, C<transact_rollback>, C<transact_recover>).
+
+=item * B<L<AmberDB::Index>> — Inverted full-text keyword indexing (C<.src>), exact field match indexing (C<.fld>), binary pre-sorted indexing (C<.srt>), and bidirectional SEO URL rewrite maps (C<.rwt>).
+
+=item * B<L<AmberDB::Index::Facet>> — Columnar forward indexing (C<.fac>), disjunctive count calculation, and dynamic scoped menu builder (C<facet_menu>, C<field_fltkeys>).
+
+=item * B<L<AmberDB::Index::Junk>> — Schema-driven dual-tier cold record archiving (Hot Tier A vs. Cold Tier B) and query layer routing (C<jnktype =E<gt> 'A'|'AB'|'B'|'BA'>).
+
+=item * B<L<AmberDB::Tools>> — Maintenance CLI, index rebuilding (C<set_index>, C<set_search>, C<set_filters>), and database-wide conversion.
+
+=back
+
+All submodules (except C<AmberDB::Tools> which takes an C<$adb> handle) can also be instantiated and used independently in standalone scripts.
 
 =head1 TABLE NAMING CONVENTIONS
 
@@ -3230,41 +3359,106 @@ AmberDB enforces a strict, deterministic lowercase snake_case table naming conve
 
 =back
 
+=head1 SCHEMA DEFINITION & CONFIGURATION (.table & IN-MEMORY)
+
+AmberDB is schema-driven. Table schemas define primary key constraints, field blocks, multi-dimensional indexes, automatic SEO slug generation, facet filters, lifecycle junk rules, and repeating nested items.
+
+Schemas can be defined in two ways:
+
+=over 4
+
+=item 1. B<Disk-Based Schema Files:> Placed in the C<dbstore/schema/E<lt>table_nameE<gt>.table> directory. AmberDB loads and parses them automatically upon first access.
+
+=item 2. B<Programmatic In-Memory Schemas:> Defined directly on the AmberDB instance via C<$adb-E<gt>table_attr('table_id', { ... })>.
+
+=back
+
+=head2 Example Table Schema (C<catalog_product.table>)
+
+Defining blocks in the schema is not mandatory. However, `record_index`, `match_block`, `search_block`, and `sort_block` are crucial, especially for the automatic creation of indexes during record keeping. `record_index` only takes the value 0/1. `match_block` and `search_block` determine which blocks will be indexed, while `sort_block` determines both the blocks to be sorted and the sort type.
+
+  {
+      name         => "Product Catalog",
+      record_index => 1,                      # Enable .inx primary record index
+      match_block  => [1, 2, 3, 11],          # .fld exact field match indexes (Category, Brand, etc.)
+      search_block => [4, 5, 7],              # .src full-text search fields (Title, Subtitle, Description)
+      sort_block   => [ 4, { blk => 10, type => 'num' } ], # .srt pre-sorted ID buffers
+      keep_deleted => 1,                      # Enable soft-delete audit log (.del)
+      log_owner    => 1,                      # Enable change audit logging (.aut)
+  }
+
+=head2 Dynamic Runtime Schema Manipulation (C<table_attr>)
+
+Schemas can be dynamically reconfigured in-memory at runtime without modifying disk files or requiring table migrations:
+
+  # Dynamically change full-text search fields on the fly
+  $adb->table_attr("catalog_product", { search_block => [ 4, 9 ] });
+
+  # Toggle caching or soft-delete modes dynamically
+  $adb->table_attr("catalog_product", { use_cache => 0, keep_deleted => 0 });
+
+=head2 Expandable Records without SQL JOINs (Repeating Blocks)
+
+AmberDB supports hierarchical, JSON-like extensible records without the need for child tables or relational C<JOIN> queries. Multiple repeating child items (e.g., order lines, cart items, invoice lines) can be appended directly to the parent record. C<repeat_start> should indicate the block number where the last repeating record started. The AmberDB engine writes the first ID of each row from C<repeat_start> to the end, concatenated by commas, to the C<repeat_ids> block. You must ensure that this block number also appears in C<match_block>.
+
+  # Schema configuration for expanding order table
+  {
+      name         => "Customer Orders",
+      record_index => 1,
+      match_block  => [1, 2, 4],    # Customer ID, Order Date, Products
+      repeat_ids   => 4,            # products field: item ids, separated by comma
+      repeat_start => 5,            # repeat block begin at block 5
+      blocks       => [
+          { id => "id",          name => "Order ID",     type => "auto_id" },
+          { id => "customer_id", name => "Customer ID",  type => "text" },
+          { id => "order_date",  name => "Order Date",   type => "text" },
+          { id => "total_price", name => "Total Amount", type => "num" },
+          { id => "products",    name => "Products",     type => "text" },
+          # Repeating line items:
+          { id => "item_id",     name => "Item ID",      type => "text" },
+          { id => "item_title",  name => "Product Title",type => "text" },
+          { id => "item_qty",    name => "Quantity",     type => "num" },
+          { id => "item_price",  name => "Unit Price",   type => "num" },
+      ],
+  }
+
 =head1 TRANSACTIONS
 
 Transactions provide multi-table atomic updates backed by undo-log journals (C<.txn> files).
 If a database error occurs (e.g. file lock failure, duplicate ID), or if custom business validation fails (e.g. insufficient stock),
 all base records and indexes across all affected tables are restored to their exact pre-transaction state.
 
-B<Note / Limitation:> Bulk operations (C<insert_list>, C<modify_list>, C<delete_list>) perform direct batch writes for performance and B<do not> write to the transaction undo journal. Therefore, bulk operations are not covered by transactions and cannot be rolled back with C<transact_rollback()> or C<transact_end()>. Always use single-record CRUD operations (C<insert_id>, C<modify_id>, C<delete_id>) when transaction/rollback support is needed.
-
 =head2 Checkout / Stock Deduction Example
 
-  $dbp->transact_start();
+  $adb->transact_start();
 
   # 1. Check & update stock
-  my @product = $dbp->read_id("product", $product_id);
+  my @product = $adb->read_id("product", $product_id);
   my $current_stock = $product[4];
 
   if ($current_stock < $quantity) {
       # Custom business logic rollback (e.g. stock insufficient)
-      $dbp->transact_rollback();
+      $adb->transact_rollback();
       return { success => 0, error => "Out of stock" };
   }
 
   $product[4] -= $quantity;
-  $dbp->modify_id("product", $product_id, @product);
+  $adb->modify_id("product", $product_id, @product);
 
   # 2. Insert order record
-  my $order_id = $dbp->insert_id("orders", 0, $user_id, $product_id, $quantity, time());
+  my $order_id = $adb->insert_id("orders", 0, $user_id, $product_id, $quantity, time());
 
   # 3. Finalize transaction (auto-rollbacks if base error occurred)
-  my $txn = $dbp->transact_end();
+  my $txn = $adb->transact_end();
   if ($txn->{status} eq 'commit') {
       return { success => 1, order_id => $order_id };
   } else {
       return { success => 0, error => "The operation failed, the changes were reverted." };
   }
+
+B<Note / Limitations:> Bulk/list operations (C<insert_list>, C<modify_list>, C<delete_list>) do not support the transact operation. There is a fundamental reason for this. Junk operations are designed for loading, editing, or deleting a list containing records of the same type. Records in a list do not hierarchically affect each other. For example, when entering 1000 product records in bulk via XML, if one or more of them cannot be saved due to incorrect formatting, it does not cause a problem for the other records.
+
+Furthermore, if the user truly wants to perform an operation on the list using transact, they can put it in a loop and use the individual C<insert_id>, C<modify_id>, C<delete_id> operations.
 
 =head1 METHODS
 
@@ -3272,21 +3466,37 @@ B<Note / Limitation:> Bulk operations (C<insert_list>, C<modify_list>, C<delete_
 
 Instantiates a new C<AmberDB> object.
 
+=head2 config([$key], [%options])
+
+Gets or sets runtime configuration flags deterministically with automatic hook/side-effect dispatching (e.g. locale reloading, table path invalidation):
+
+    # Single scalar getter
+    my $lang = $adb->config('language');
+
+    # Bulk getter (returns a safe shallow copy)
+    my $cfg = $adb->config();
+
+    # Key-value setter with method chaining
+    $adb->config( language => 'en', no_write => 1 );
+
+    # Hashref setter
+    $adb->config({ simple => 1, cache_size => '1024M' });
+
 =head2 insert_id($table_id, [$record_id], @record)
 
-Inserts a new record into specified table. Supports transaction logging.
+Inserts a new record into specified table. It automatically generates search, match, slug, and facet indexes if they are defined in the table schema. It supports transact operations. In normal records, there is no need to enter an ID value. It can be entered as empty, undef, or 0. The system automatically generates the ID using an incrementing counter and returns the ID value.
 
 =head2 insert_list($table_id, @records)
 
-Inserts multiple records in a single bulk operation. Bypasses transaction logging.
+Inserts multiple records in a single bulk operation. Aside from Transact, it processes records, search, match, SEO slug, and facet indexes all at once with high performance.
 
 =head2 modify_id($table_id, $record_id, @record)
 
-Updates existing record data. Supports transaction logging.
+Updates existing record data. It automatically updates the search, match, slug, and facet indexes if they are defined in the table schema. It supports transact operations.
 
 =head2 modify_list($table_id, @records)
 
-Modifies multiple records in a single bulk operation. Bypasses transaction logging.
+Modifies multiple records in a single bulk operation. Aside from Transact, it processes records, search, match, SEO slug, and facet indexes all at once with high performance.
 
 =head2 delete_id($table_id, $record_id)
 
@@ -3294,7 +3504,7 @@ Deletes specified record from table. Supports transaction logging.
 
 =head2 delete_list($table_id, @records)
 
-Deletes multiple records in a single bulk operation. Bypasses transaction logging.
+Deletes multiple records in a single bulk operation. Aside from Transact, it processes records, search, match, SEO slug, and facet indexes all at once with high performance.
 
 =head2 read_id($table_id, $record_id)
 
@@ -3305,66 +3515,97 @@ Reads single record by primary key ID.
 Reads active records from table. Supports pagination, binary index optimization (C<.inx>, C<.srt>), sorting, and C<keys_only>:
 
     # Default sort (newest ID first)
-    my @records = $dbp->read_all("catalog_product");
+    my @records = $adb->read_all("catalog_product");
 
     # Sort by block 2 (default: descending / highest first)
-    my @records = $dbp->read_all("catalog_product", sort => { blk => 2 });
-    my @records = $dbp->read_all("catalog_product", sort => 2);
+    my @records = $adb->read_all("catalog_product", sort => { blk => 2 });
+    my @records = $adb->read_all("catalog_product", sort => 2);
 
     # Sort by block 2 reversed (ascending / lowest first)
-    my @records = $dbp->read_all("catalog_product", sort => { blk => 2, reverse => 1 });
-    my @records = $dbp->read_all("catalog_product", sort => -2);
+    my @records = $adb->read_all("catalog_product", sort => { blk => 2, reverse => 1 });
+    my @records = $adb->read_all("catalog_product", sort => -2);
 
     # Natural primary key reverse (oldest first: 1..N)
-    my @records = $dbp->read_all("catalog_product", sort => { reverse => 1 });
+    my @records = $adb->read_all("catalog_product", sort => { reverse => 1 });
 
-    # Tiered query mode: 'A' (Active only), 'B' (Junk only), 'AB' (Active first, then Junk)
-    my @active_only = $dbp->read_all("catalog_product", jnktype => 'A', keys_only => 1);
-    my @all_tiered  = $dbp->read_all("catalog_product", jnktype => 'AB', keys_only => 1);
+Tiered query mode: 'A' (Active only), 'B' (Junk only), 'AB' (Active first, then Junk)
 
-    # Paginated with sorting
-    my ($count, @records) = $dbp->read_all("catalog_product", 0, 20, sort => { blk => 2, reverse => 1 });
+    my @active_only = $adb->read_all("catalog_product", jnktype => 'A');
+    my @all_tiered  = $adb->read_all("catalog_product", jnktype => 'AB');
 
-    # Return only scalar record IDs (memory-efficient pipeline)
-    my ($count, @ids) = $dbp->read_all("catalog_product", 0, 50, keys_only => 1);
-    my @all_ids       = $dbp->read_all("catalog_product", keys_only => 1);
+Paginated with sorting
+
+    my ($count, @records) = $adb->read_all("catalog_product", 0, 20);
+    my ($count, @records) = $adb->read_all("catalog_product", 0, 20, sort => -2);
+
+Return only scalar record IDs (memory-efficient pipeline)
+
+    my ($count, @ids) = $adb->read_all("catalog_product", 0, 50, keys_only => 1);
+    my @all_ids       = $adb->read_all("catalog_product", keys_only => 1);
+
+Forcing non-indexed reading (no_index)
+
+    my @all_ids = $adb->read_all("catalog_product", 0, 0, no_index => 1);
 
 =head2 read_list($table_id, \@id_list)
 
 Reads multiple records matching provided ID list while preserving exact list ordering.
 
+    # Read the entire active order list.
+    my @records = $adb->read_all("order_active");
+
+    # Extract customer IDs from block 1 using the map.
+    my %customer_ids = map { $_->[1] => 1 } @records;
+
+    # You've found the customer ID keys, now read them using read_list.
+    my @customers = $adb->read_list("customers", [ keys %customer_ids ]);
+
 =head2 field_fetch($table_id, $block, $value, [$start], [$limit], [%options])
 
 Fetches records matching one or more block values using the C<.fld> match index (or sequential table scan fallback if unindexed). Supports multi-value queries, automatic deduplication, sorting, pagination, and C<keys_only>:
 
-    # Single value match
-    my @records = $dbp->field_fetch("catalog_product", 1, "5");
+Let's say the first block in the products table is categories. Category ID 5 is "General Literature". We are retrieving products from the General Literature category.
 
-    # Multi-value matching (comma string, semicolon, or ARRAY ref)
-    my @records = $dbp->field_fetch("catalog_product", 1, ["5", "8"]);
-    my @records = $dbp->field_fetch("catalog_product", 1, "5, 8");
+    my @records = $adb->field_fetch("products", 1, "5");
 
-    # Paginated with sorting
-    my ($count, @records) = $dbp->field_fetch(
-        "catalog_product", 1, "5",
-        start => 0,
-        limit => 20,
-        sort  => { blk => 10, reverse => 1 }
+Multi-value matching (comma string, semicolon, or ARRAY ref)
+Category 5 is "General Literature" or Category 8 is "World Classics"
+
+    my @records = $adb->field_fetch("products", 1, ["5", "8"]);
+    my @records = $adb->field_fetch("products", 1, "5, 8");
+
+Paginated with sorting
+Attention: If the $limit parameter is given, it will return the $total_count value at the beginning.
+
+    my ($total_count, @records) = $adb->field_fetch(
+        "products", 1, "5",
+        0, 20,
+        sort => { blk => 10, reverse => 1 }  # Or shorthand: sort => -10 (ascending)
     );
 
-    # Return only record IDs
-    my ($count, @ids) = $dbp->field_fetch("catalog_product", 1, "5", 0, 20, keys_only => 1);
-    my @all_ids       = $dbp->field_fetch("catalog_product", 1, "5", keys_only => 1);
+Return only record IDs: keys_only flag
+
+    my @all_ids             = $adb->field_fetch("products", 1, "5", keys_only => 1);
+    my ($total_count, @ids) = $adb->field_fetch("products", 1, "5", 0, 20, keys_only => 1);
+
+If the `use_junk` flag is enabled in the table schema and the `junk_rules` rules are active, records that violate these rules will be indexed as junk by the search engine. If you send the `jnkmode => A|AB|B|BA` parameter to `field_fetch`, the matching order will be created accordingly: A: Active records, B: Junk records.
+
+    my @active = $adb->field_fetch("products", 1, "5", jnkmode => 'A'); # Only Active records
+
+C<field_fetch> uses the C<match_block> definition in the schema and accesses inverted match index files (C<.fld>), providing $O(1)$ average-time lookup per indexed key (total retrieval cost scales with the number of requested values and matching record IDs). If C<match_block> is not defined or if running in simple mode, C<field_fetch> falls back to a sequential table scan.
 
 =head2 search_table($table_id, $query, [$start], [$limit], [$mode], [%options])
 
-Searches table for matching query terms using full-text C<.src> index (or sequential table scan fallback if unindexed). Features advanced language normalization (apostrophe suffix stop-words, Turkish phonetic devoicing C<b/d/g -E<gt> p/t/k>, circumflex vowels C<â/î/û>), block filtering, tier mode selection (C<jnktype =E<gt> 'A' | 'AB' | 'B' | 'BA'>), sorting, pagination, and C<keys_only>:
+It performs searches matching query terms using the full-text C<.src> index (or a sorted table scan backup method if unindexed). C<search_table> uses the C<AmberDB::Locale> module. It features advanced language normalization according to the selected language (apostrophe stop words, accent normalization, phonetic silencing as in Turkish C<b/d/g -E<gt> p/t/k>, circumflex vowels C<â/î/û>), block filtering, for example, filtering the search by a fixed category such as General Literature, layer mode selection (C<jnktype =E<gt> 'A' | 'AB' | 'B' | 'BA'>), sorting, pagination, and C<keys_only> features.
+
+C<search_table> is applied to blocks defined by C<search_block> in the schema. Each block is indexed separately, and a file with the extension `C<{tableid}_{blokid}.src` is created for each block. During the search, the blocks are combined. By redefining `search_block` at search time, some blocks can be excluded from the search. For example, the product name, author, company, and barcode are indexed. In the invoice generation panel, the author and company blocks can be excluded, leaving only the product name and barcode. It performs full keyword searches; it does not search for partial or incomplete keywords.
 
     # Basic AND full-text search (Active only)
-    my @records = $dbp->search_table("catalog_product", "kablosuz kulaklık", jnktype => 'A');
+    my @records = $adb->search_table("catalog_product", "kablosuz kulaklık");
 
     # Filtered search with index-level sort and pagination across both tiers
-    my ($total, @search) = $dbp->search_table(
+    my ($total, @search) = $adb->search_table( "catalog_product", "kulaklık", 0, 20 );
+    my ($total, @search) = $adb->search_table(
         "catalog_product", "kulaklık",
         start   => 0,
         limit   => 20,
@@ -3374,14 +3615,14 @@ Searches table for matching query terms using full-text C<.src> index (or sequen
     );
 
     # Return only scalar record IDs
-    my ($total, @ids) = $dbp->search_table("catalog_product", "kulaklık", 0, 50, keys_only => 1);
-    my @all_ids       = $dbp->search_table("catalog_product", "kulaklık", keys_only => 1);
+    my @all_ids       = $adb->search_table("catalog_product", "kulaklık", keys_only => 1);
+    my ($total, @ids) = $adb->search_table("catalog_product", "kulaklık", 0, 50, keys_only => 1);
 
 =head2 field_filter($table_id, \%filter_options)
 
 Performs multi-block filtered queries (AND / OR) with support for multi-value filters, tier mode selection (C<jnktype>), sorting, and pagination:
 
-    my $res = $dbp->field_filter("catalog_product", {
+    my $res = $adb->field_filter("catalog_product", {
         type    => "and",
         filter  => { 1 => "5", 6 => ["12", "14"] },
         sort    => { blk => 5, reverse => 1 },
@@ -3391,75 +3632,99 @@ Performs multi-block filtered queries (AND / OR) with support for multi-value fi
     });
     # Returns: { count => $total, ids => \@matching_ids }
 
-=head2 table_attr($table_id, \%attributes)
+=head2 exist_id($table_id, $record_id)
 
-Dynamically overrides or customizes table schema attributes in-memory at runtime without altering schema files on disk:
+Checks if a single record exists in the specified table. Returns 1 if present, 0 otherwise:
 
-    # Narrow down search scope dynamically (e.g. barcode + title for POS scanner)
-    $dbp->table_attr("catalog_product", { search_block => [ 4, 9 ] });
+    my $exists = $adb->exist_id("catalog_product", 101);
 
-    # Include soft-deleted records or customize indexing flags on the fly
-    $dbp->table_attr("catalog_product", { keep_deleted => 1, use_cache => 0 });
+=head2 exist_list($table_id, @record_ids)
 
-=head2 id_check($table_id, $record_id)
+Queries the presence of multiple record IDs in a single pass. Returns a hash reference C<{ id =E<gt> 1/0 }>:
 
-Sanitizes and validates record ID against table schema (C<id_type>). Enforces deterministic 8-byte limit for ASCII IDs.
+    my $map = $adb->exist_list("catalog_product", 101, 102, 103);
 
-=head2 bin_encode(\@rids, [$id_type])
+=head2 exist_table($table_id, [$ext])
 
-Encodes list of record IDs into 8-byte unified packed binary format (C<Q>*> for numeric, C<a8*> for ASCII).
+Checks whether the physical database table or index file exists on disk. C<$ext> defaults to C<$self-E<gt>{db_ext}> (C<'db'>):
 
-=head2 bin_decode($binary_buffer, [$start], [$limit], [$dir], [$id_type])
+    my $has_table = $adb->exist_table("catalog_product");
+    my $has_index = $adb->exist_table("catalog_product", "inx");
 
-Decodes 8-byte unified binary buffer with O(1) C<substr> slicing and deterministic numeric/ASCII detection.
+=head2 table_count($table_id)
 
-=head2 index_get($table_path, $key, [$type], [$start], [$limit], [$dir])
+Returns the total number of records in the specified table. Reads from the primary C<.inx> index if enabled, or scans the main table:
 
-Reads an entry from an index file (C<.inx>, C<.fld>, C<.src>, C<.fac>, C<.srt>). C<$type> can be C<'ids'> (binary decode) or C<'raw'> (scalar).
+    my $total_records = $adb->table_count("catalog_product");
 
-=head2 index_put($table_path, $key, $value, [$type])
+=head2 table_keys($table_id)
 
-Writes an entry to an index file with automatic C<bin_encode> for ARRAY references.
+Returns an array of all record IDs present in the table (retrieved from memory cache, C<.inx> index, or sequential table scan):
 
-=head2 index_del($table_path, $key)
+    my @all_ids = $adb->table_keys("catalog_product");
 
-Deletes an entry from an index file.
+=head2 table_lastid($table_id)
+
+Returns the highest / auto-increment primary key ID currently allocated in the table:
+
+    my $last_id = $adb->table_lastid("catalog_product");
+
+=head2 table_attr($table_id, [$key_or_attributes])
+
+Reads or dynamically customizes table schema attributes in-memory at runtime without altering schema files on disk:
+
+    # 1. Single attribute getter (scalar)
+    my $id_type = $adb->table_attr("catalog_product", "id_type");
+
+    # 2. Bulk attribute getter (returns a safe shallow copy)
+    my $attrs = $adb->table_attr("catalog_product");
+
+    # 3. Key-value setter (automatically recalculates paths if year/section/lang changes)
+    $adb->table_attr("catalog_product", id_type => "ascii", keep_deleted => 1);
+
+    # 4. Hashref setter
+    $adb->table_attr("catalog_product", { search_block => [ 4, 9 ], use_cache => 0 });
+
+=head2 table_create($table_id)
+
+Creates an empty physical database file (C<.db>) on disk. If a table is accessed with C<table_write> and does not exist, it is created automatically. C<table_create> is useful to prevent file-not-found errors before initial read operations on new tables:
+
+    $adb->table_create("catalog_product");
 
 =head2 table_read($file_path)
 
-Opens a DB_File handle in read-only mode (C<O_RDONLY>) and caches it in internal pool.
+Opens a C<DB_File> database file in read-only mode (C<O_RDONLY>). No exclusive lock is applied. C<table_read> and C<table_write> are used for both base data files (C<.db>) and index files (note that internal encodings differ):
+
+    my $db_obj = $adb->table_read("/path/to/table.db");
 
 =head2 table_write($file_path)
 
-Opens a DB_File handle in read-write mode (C<O_RDWR | O_CREAT>) with exclusive file lock (C<flock LOCK_EX>).
+Opens a C<DB_File> database file in read-write mode (C<O_RDWR | O_CREAT>) and acquires an exclusive write lock (C<flock LOCK_EX>). Uses the file path as the handle key:
+
+    my $db_obj = $adb->table_write("/path/to/table.db");
 
 =head2 table_close($file_path)
 
-Syncs, unlocks, and closes the specified DB_File handle, removing it from internal pool.
+Syncs, unlocks, and closes the specified C<DB_File> handle, releasing its file lock and removing it from the internal connection pool:
 
-=head2 recs_get($file_path, @record_ids)
+    $adb->table_close("/path/to/table.db");
 
-Reads multiple keys in a single pass over the open DB_File handle. Returns C<{ key =E<gt> raw_val }>.
+=head2 recs_exist($file_path, @record_ids)
 
-=head2 recs_put($file_path, @records)
+Low-level existence check directly on an open C<DB_File> handle. Returns boolean C<1/0> for a single ID, or a hash reference C<{ id =E<gt> 1/0 }> for multiple IDs:
 
-Writes records in bulk to open DB_File handle. Each item must be in C<[$rid, @fields]> or C<[$rid, $val]> format.
-
-=head2 recs_del($file_path, @record_ids)
-
-Deletes provided record IDs from open DB_File handle.
-
-=head2 recs_exist($file_path, @keys)
-
-Checks presence of key(s) in DB_File table. Returns boolean for single key, or C<{ key =E<gt> 1/0 }> for multiple keys.
+    my $is_found = $adb->recs_exist($file_path, "101");
+    my $id_map   = $adb->recs_exist($file_path, "101", "102");
 
 =head2 recs_keys($file_path)
 
-Extracts all keys from DB_File handle in sequential order using C-level C<seq>.
+Extracts all raw keys directly from an open C<DB_File> handle in sequential order using C-level C<seq>:
+
+    my @raw_keys = $adb->recs_keys($file_path);
 
 =head2 recs_scan($file_path, [$mode_or_callback])
 
-Scans open DB_File handle sequentially using C-level C<seq>. Supports multiple modes:
+Scans key-value pairs sequentially directly from an open C<DB_File> handle using C-level C<seq>. Supports multiple modes:
 - C<\&callback>: Invokes C<callback-E<gt>($key, $val)> for each pair.
 - C<'keys'>: Returns list/arrayref of all keys.
 - C<'value'> / C<'values'>: Returns list/arrayref of all raw values.
@@ -3467,17 +3732,46 @@ Scans open DB_File handle sequentially using C-level C<seq>. Supports multiple m
 - C<'count'>: Returns total number of records.
 - C<'hash'> (default): Returns key-value hash (or hashref).
 
+    # Examples
+    my @keys   = $adb->recs_scan($file_path, "keys");
+    my @values = $adb->recs_scan($file_path, "values");
+    my @each   = $adb->recs_scan($file_path, "each");
+
+    # Custom iterator
+    $adb->recs_scan($file_path, sub {
+        my ($key, $val) = @_;
+        print "Key: $key, Val: $val\n";
+    });
+
+=head2 recs_get($file_path, @record_ids)
+
+Direct raw record retrieval for specific record IDs from an open C<DB_File> handle. Returns C<{ id =E<gt> raw_val }>:
+
+    my $raw_data = $adb->recs_get($file_path, 101, 102);
+
+=head2 recs_put($file_path, @records)
+
+Writes records in bulk directly to an open C<DB_File> write handle. Each item must be in C<[$rid, @fields]> or C<[$rid, $val]> format:
+
+    $adb->recs_put($file_path, [ 101, "Category", "Brand", "Title" ]);
+
+=head2 recs_del($file_path, @record_ids)
+
+Deletes specified record IDs directly from an open C<DB_File> write handle:
+
+    $adb->recs_del($file_path, 101, 102);
+
 =head2 transact_start()
 
 Starts a new transaction for atomic multi-table operations.
 
 =head2 transact_end()
 
-Finalizes active transaction. Performs LIFO rollback if any base DB error occurred during execution.
+Transact terminates the process. If any errors occur in the underlying database during the process, it performs a LIFO rollback by executing C<transact_rollback>. If no errors are found, it commits the C<transact_commit> operation.
 
 =head2 transact_rollback()
 
-Forces an immediate manual rollback of active transaction.
+It forces a manual rollback of the active operation immediately. It doesn't need to be called in the normal flow. C<transact_end> calls C<transact_rollback> if it receives a C<transact_error> log.
 
 =head2 flock_open($table_id, [$mode], [$record_id])
 

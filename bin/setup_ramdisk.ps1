@@ -26,7 +26,7 @@ if ($Stop) {
         New-Item -ItemType Directory -Path $cacheDir -Force | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $cacheDir "tables") -Force | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $cacheDir "conf") -Force | Out-Null
-        New-Item -ItemType Directory -Path (Join-Path $cacheDir "scheme") -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $cacheDir "schema") -Force | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $cacheDir "lock") -Force | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $cacheDir "pids") -Force | Out-Null
     }
@@ -55,7 +55,7 @@ if (-not (Test-Path $driveRoot)) {
 
 New-Item -ItemType Directory -Path (Join-Path $driveRoot "tables") -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $driveRoot "conf") -Force   | Out-Null
-New-Item -ItemType Directory -Path (Join-Path $driveRoot "scheme") -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $driveRoot "schema") -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $driveRoot "lock") -Force   | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $driveRoot "pids") -Force   | Out-Null
 
@@ -72,6 +72,6 @@ Write-Host "[SUCCESS] Windows ImDisk RAM-Disk is ready and linked to AmberDB!" -
 Write-Host "  Cache Root: $cacheDir -> $driveRoot"
 Write-Host "  ├── tables/  (DB & Index cache)"
 Write-Host "  ├── conf/    (Compiled config cache)"
-Write-Host "  ├── scheme/  (Table & DBase schema cache)"
+Write-Host "  ├── schema/  (Table & DBase schema cache)"
 Write-Host "  ├── lock/    (Flock lock files)"
 Write-Host "  └── pids/    (Process & mutex files)"

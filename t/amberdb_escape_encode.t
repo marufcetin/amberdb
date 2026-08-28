@@ -14,8 +14,8 @@ use lib 'lib';
 use AmberDB;
 
 my $temp_dir = tempdir( CLEANUP => 1 );
-my $dbp = AmberDB->new( path => { dbase_dir => $temp_dir } );
-isa_ok( $dbp, 'AmberDB' );
+my $adb = AmberDB->new( path => { dbase_dir => $temp_dir } );
+isa_ok( $adb, 'AmberDB' );
 
 # 1. char_escape & char_unescape unit tests
 subtest 'char_escape and char_unescape roundtrip' => sub {
@@ -23,28 +23,28 @@ subtest 'char_escape and char_unescape roundtrip' => sub {
 
     # Test A: Windows path
     my $win_path = 'C:\temp\notes\read.txt';
-    my $esc_win  = $dbp->char_escape($win_path);
+    my $esc_win  = $adb->char_escape($win_path);
     is( $esc_win, 'C:&#92;temp&#92;notes&#92;read.txt', 'Windows path escaped with &#92;' );
-    my $unesc_win = $dbp->char_unescape($esc_win);
+    my $unesc_win = $adb->char_unescape($esc_win);
     is( $unesc_win, $win_path, 'Windows path unescaped correctly without TAB/LF corruption' );
 
     # Test B: Literal TAB, LF, CR
     my $ctrl_str = "Line1\nLine2\rLine3\tColumn";
-    my $esc_ctrl = $dbp->char_escape($ctrl_str);
+    my $esc_ctrl = $adb->char_escape($ctrl_str);
     is( $esc_ctrl, "Line1\\nLine2\\rLine3\\tColumn", 'Control chars escaped as \n, \r, \t' );
-    my $unesc_ctrl = $dbp->char_unescape($esc_ctrl);
+    my $unesc_ctrl = $adb->char_unescape($esc_ctrl);
     is( $unesc_ctrl, $ctrl_str, 'Control chars unescaped correctly' );
 
     # Test C: Delimiters and ampersand
     my $delims = 'A & B | C = D &#92; End';
-    my $esc_delims = $dbp->char_escape($delims);
+    my $esc_delims = $adb->char_escape($delims);
     is( $esc_delims, 'A &#38; B &#124; C &#61; D &#38;#92; End', 'Delimiters and & escaped' );
-    my $unesc_delims = $dbp->char_unescape($esc_delims);
+    my $unesc_delims = $adb->char_unescape($esc_delims);
     is( $unesc_delims, $delims, 'Delimiters unescaped correctly without double-decode' );
 
     # Test D: Legacy \\ unescaping
     my $legacy_str = 'C:\\\\temp\\\\notes';
-    my $unesc_legacy = $dbp->char_unescape($legacy_str);
+    my $unesc_legacy = $adb->char_unescape($legacy_str);
     is( $unesc_legacy, 'C:\temp\notes', 'Legacy double-backslash unescaped correctly' );
 };
 
@@ -60,10 +60,10 @@ subtest 'db_encode and db_decode scalar fields' => sub {
         'Normal text'
     );
 
-    my $encoded = $dbp->db_encode(@orig_fields);
+    my $encoded = $adb->db_encode(@orig_fields);
     ok( defined $encoded && length($encoded), 'db_encode produced encoded string' );
 
-    my @decoded = $dbp->db_decode($encoded);
+    my @decoded = $adb->db_decode($encoded);
     is_deeply( \@decoded, \@orig_fields, 'db_decode restored all fields identically' );
 
     # Ensure field 1 is not corrupted
@@ -76,8 +76,8 @@ subtest 'db_encode and db_decode nested data structures' => sub {
     plan tests => 3;
 
     my $data_array = [ 'C:\windows\system32', 'D:\files\notes.txt', "A=B|C&D" ];
-    my $encoded_arr = $dbp->db_encode($data_array);
-    my $decoded_arr = $dbp->db_decode($encoded_arr);
+    my $encoded_arr = $adb->db_encode($data_array);
+    my $decoded_arr = $adb->db_decode($encoded_arr);
     is_deeply( $decoded_arr, $data_array, 'Nested ARRAY with paths and delims restored' );
 
     my $data_hash = {
@@ -85,14 +85,14 @@ subtest 'db_encode and db_decode nested data structures' => sub {
         desc => "Notes:\n- item 1\tval\n- item 2",
         spec => 'price=100|stock=20&active=1'
     };
-    my $encoded_hash = $dbp->db_encode($data_hash);
-    my $decoded_hash = $dbp->db_decode($encoded_hash);
+    my $encoded_hash = $adb->db_encode($data_hash);
+    my $decoded_hash = $adb->db_decode($encoded_hash);
     is_deeply( $decoded_hash, $data_hash, 'Nested HASH with paths, newlines, and delims restored' );
 
     # Mixed record with scalars and references
     my @mixed_record = ( 1, 'Product A', [ 'C:\img\front.jpg', 'C:\img\back.jpg' ], { brand => 'Acme & Co.', model => 'X-100' } );
-    my $encoded_mixed = $dbp->db_encode(@mixed_record);
-    my @decoded_mixed = $dbp->db_decode($encoded_mixed);
+    my $encoded_mixed = $adb->db_encode(@mixed_record);
+    my @decoded_mixed = $adb->db_decode($encoded_mixed);
     is_deeply( \@decoded_mixed, \@mixed_record, 'Mixed record with scalars and refs restored' );
 };
 
@@ -109,10 +109,10 @@ subtest 'Table insert_id and read_id roundtrip' => sub {
         'Key=Val&Ref|Flag'
     );
 
-    my $saved_id = $dbp->insert_id( $table, $id, @record );
+    my $saved_id = $adb->insert_id( $table, $id, @record );
     is( $saved_id, $id, 'insert_id succeeded' );
 
-    my @read_recs = $dbp->read_id( $table, $id );
+    my @read_recs = $adb->read_id( $table, $id );
     is( $read_recs[0], $id, 'read_id returned correct ID' );
     is( $read_recs[1], 'C:\Program Files\AmberDB', 'Path 1 preserved from disk' );
     is( $read_recs[2], 'C:\temp\cache.db', 'Path 2 preserved from disk without TAB conversion' );
@@ -134,8 +134,8 @@ subtest 'Comprehensive 7 edge-case roundtrip scenarios' => sub {
 
     for my $c (@cases) {
         my ($input, $label) = @$c;
-        my $encoded = $dbp->db_encode($input);
-        my $decoded = $dbp->db_decode($encoded);
+        my $encoded = $adb->db_encode($input);
+        my $decoded = $adb->db_decode($encoded);
         is( $decoded, $input, "[OK] $label: $input" );
     }
 };

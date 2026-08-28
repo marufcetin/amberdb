@@ -5,8 +5,10 @@ bin/setup_ramdisk.ps1
 bin/setup_ramdisk.sh
 Changes
 cpanfile
+docs/en/AmberDB-Locale_User-Guide.en.md
 docs/en/AmberDB_User-Guide.en.md
-docs/tr/AmberDB_Database_System.md
+docs/tr/AmberDB-Locale_Kullanim_Rehberi.md
+docs/tr/AmberDB_Veritabani_Sistemi.md
 lib/AmberDB.pm
 lib/AmberDB/Array.pm
 lib/AmberDB/Base.pm
@@ -52,6 +54,7 @@ t/amberdb_array_sort.t
 t/amberdb_cache.t
 t/amberdb_date.t
 t/amberdb_ecommerce_facet.t
+t/amberdb_encapsulation.t
 t/amberdb_escape_encode.t
 t/amberdb_facet_columnar.t
 t/amberdb_index.t

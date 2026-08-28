@@ -11,7 +11,7 @@ use_ok('AmberDB::Array') or BAIL_OUT('Cannot load AmberDB::Array');
 use_ok('AmberDB')        or BAIL_OUT('Cannot load AmberDB');
 
 my $arr = AmberDB::Array->new();
-my $dbp = AmberDB->new();
+my $adb = AmberDB->new();
 
 subtest 'Flat List Numeric Sorting' => sub {
     plan tests => 5;
@@ -50,8 +50,8 @@ subtest 'Flat List String / ASCII Sorting' => sub {
     is_deeply( \@desc, [ 'zebra', 'mango', 'banana', 'apple' ], 'ASCII DESC' );
 
     # Via AmberDB inheritance
-    my @dbp_asc = $dbp->array_sort( 'ascii', 'asc', undef, @words );
-    is_deeply( \@dbp_asc, [ 'apple', 'banana', 'mango', 'zebra' ], 'Via $dbp->array_sort' );
+    my @adb_asc = $adb->array_sort( 'ascii', 'asc', undef, @words );
+    is_deeply( \@adb_asc, [ 'apple', 'banana', 'mango', 'zebra' ], 'Via $adb->array_sort' );
 
     # Auto-detection for strings
     my @auto_asc = $arr->array_sort( undef, 'asc', undef, @words );
@@ -93,7 +93,7 @@ subtest 'db_sortid Integration' => sub {
 
     # Flat numeric IDs -> descending
     my @flat_ids = ( 1, 5, 2, 10 );
-    my @s_flat   = $dbp->db_sortid( '_', @flat_ids );
+    my @s_flat   = $adb->db_sortid( '_', @flat_ids );
     is_deeply( \@s_flat, [ 10, 5, 2, 1 ], 'db_sortid flat numeric IDs sorted DESC' );
 
     # AoA records -> sorted by field 0 DESC
@@ -102,11 +102,11 @@ subtest 'db_sortid Integration' => sub {
         [ 5, 'Prod B' ],
         [ 2, 'Prod C' ],
     );
-    my @s_recs = $dbp->db_sortid( '_', @recs );
+    my @s_recs = $adb->db_sortid( '_', @recs );
     is_deeply( [ map { $_->[0] } @s_recs ], [ 5, 2, 1 ], 'db_sortid AoA records sorted by field 0 DESC' );
 
     # Empty list
-    my @empty = $dbp->db_sortid('_');
+    my @empty = $adb->db_sortid('_');
     is_deeply( \@empty, [], 'db_sortid empty list returns ()' );
 };
 

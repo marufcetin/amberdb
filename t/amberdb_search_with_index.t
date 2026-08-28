@@ -20,7 +20,7 @@ use_ok('AmberDB') or BAIL_OUT('Cannot load AmberDB');
 my $tmpdir = tempdir( CLEANUP => 1 );
 
 # Initialize AmberDB instance with Turkish locale
-my $dbp = AmberDB->new(
+my $adb = AmberDB->new(
     path => { dbase_dir => $tmpdir },
     cfg  => { language  => 'tr' },
 );
@@ -42,7 +42,7 @@ subtest '1. search_block Schema & Index Key File Generation' => sub {
             { blk => 5, type => 'num', len => 8 },
         ],
     };
-    $dbp->{_table}->{$tbl} = $table_info;
+    $adb->table_attr( $tbl, $table_info );
 
     # Insert initial product catalog records:
     # [ ID, SKU (blk 1), Title (blk 2), Desc (blk 3), Category (blk 4), Price (blk 5), Brand (blk 6) ]
@@ -56,10 +56,10 @@ subtest '1. search_block Schema & Index Key File Generation' => sub {
     );
 
     for my $r (@initial_records) {
-        $dbp->insert_id( $tbl, $r->[0], @$r[ 1 .. $#$r ] );
+        $adb->insert_id( $tbl, $r->[0], @$r[ 1 .. $#$r ] );
     }
 
-    my $table_path = $dbp->table_path($tbl);
+    my $table_path = $adb->table_path($tbl);
     my $src2_path  = "${table_path}_2.src";
     my $src3_path  = "${table_path}_3.src";
     my $nosrc_path = "${table_path}_1.src";
@@ -70,30 +70,30 @@ subtest '1. search_block Schema & Index Key File Generation' => sub {
     ok( !-e $nosrc_path, "Non-search block (blk 1) does NOT have .src index file" );
 
     # Verify index keys and mapped record IDs inside .src index file
-    my ( $st2_kulaklik, @ids2_kulaklik ) = $dbp->index_get( $src2_path, 'kulaklik' );
+    my ( $st2_kulaklik, @ids2_kulaklik ) = $adb->index_get( $src2_path, 'kulaklik' );
     is_deeply( [ sort { $a <=> $b } @ids2_kulaklik ], [ 1, 2, 5, 6 ],
         "Index key 'kulaklik' in block 2 correctly maps to IDs 1, 2, 5, 6" );
 
-    my ( $st2_sony, @ids2_sony ) = $dbp->index_get( $src2_path, 'sony' );
+    my ( $st2_sony, @ids2_sony ) = $adb->index_get( $src2_path, 'sony' );
     is_deeply( [ sort { $a <=> $b } @ids2_sony ], [ 1, 4 ],
         "Index key 'sony' in block 2 correctly maps to IDs 1, 4" );
 
-    my ( $st3_stereo, @ids3_stereo ) = $dbp->index_get( $src3_path, 'stereo' );
+    my ( $st3_stereo, @ids3_stereo ) = $adb->index_get( $src3_path, 'stereo' );
     is_deeply( [ sort { $a <=> $b } @ids3_stereo ], [ 1, 4, 6 ],
         "Index key 'stereo' in block 3 correctly maps to IDs 1, 4, 6" );
 
-    my ( $st3_bluetooth, @ids3_bluetooth ) = $dbp->index_get( $src3_path, 'bluetooth' );
+    my ( $st3_bluetooth, @ids3_bluetooth ) = $adb->index_get( $src3_path, 'bluetooth' );
     is_deeply( [ sort { $a <=> $b } @ids3_bluetooth ], [ 1, 5 ],
         "Index key 'bluetooth' in block 3 maps to IDs 1, 5" );
 
     # Basic search verification using search_table
-    my @res_kulaklik = $dbp->search_table( $tbl, 'kulaklık' );
+    my @res_kulaklik = $adb->search_table( $tbl, 'kulaklık' );
     is( scalar @res_kulaklik, 4, "search_table finds 4 records for 'kulaklık'" );
 
-    my @res_hoparlor = $dbp->search_table( $tbl, 'hoparlör' );
+    my @res_hoparlor = $adb->search_table( $tbl, 'hoparlör' );
     is( scalar @res_hoparlor, 2, "search_table finds 2 records for 'hoparlör'" );
 
-    my @res_sony = $dbp->search_table( $tbl, 'sony' );
+    my @res_sony = $adb->search_table( $tbl, 'sony' );
     is( scalar @res_sony, 2, "search_table finds 2 records for 'sony'" );
 };
 
@@ -104,13 +104,13 @@ subtest '2. insert_id, modify_id, delete_id Lifecycle & Search Verification' => 
     plan tests => 13;
 
     my $tbl = 'catalog_indexed';
-    my $table_path = $dbp->table_path($tbl);
+    my $table_path = $adb->table_path($tbl);
     my $src2_path  = "${table_path}_2.src";
     my $src3_path  = "${table_path}_3.src";
 
     # --- A) INSERT NEW RECORD ---
     # Insert new record 101
-    my $inserted_id = $dbp->insert_id(
+    my $inserted_id = $adb->insert_id(
         $tbl, 101,
         'SKU-101',
         'Mekanik Oyuncu Klavyesi',
@@ -120,20 +120,20 @@ subtest '2. insert_id, modify_id, delete_id Lifecycle & Search Verification' => 
     is( $inserted_id, 101, "insert_id succeeded with ID 101" );
 
     # Search for newly inserted terms
-    my @res_klavye = $dbp->search_table( $tbl, 'klavye' );
+    my @res_klavye = $adb->search_table( $tbl, 'klavye' );
     is( scalar @res_klavye, 1, "search_table finds 1 record for newly inserted 'klavye'" );
     is( $res_klavye[0]->[0], 101, "Matched record ID is 101" );
 
-    my @res_mekanik = $dbp->search_table( $tbl, 'mekanik' );
+    my @res_mekanik = $adb->search_table( $tbl, 'mekanik' );
     is( scalar @res_mekanik, 1, "search_table finds 1 record for 'mekanik'" );
 
     # Verify ID 101 is in .src index files
-    my ( undef, @ids_klavye ) = $dbp->index_get( $src3_path, 'klavye' );
+    my ( undef, @ids_klavye ) = $adb->index_get( $src3_path, 'klavye' );
     ok( ( grep { $_ == 101 } @ids_klavye ), "ID 101 present in block 3 .src index for 'klavye'" );
 
     # --- B) MODIFY RECORD ---
     # Update record 101: change "Klavye" to "Fare", "mekanik" to "optik"
-    my $modify_ok = $dbp->modify_id(
+    my $modify_ok = $adb->modify_id(
         $tbl, 101,
         'SKU-101',
         'Kablosuz Optik Fare',
@@ -143,29 +143,29 @@ subtest '2. insert_id, modify_id, delete_id Lifecycle & Search Verification' => 
     ok( $modify_ok, "modify_id succeeded for ID 101" );
 
     # Search for old words: MUST NO LONGER MATCH
-    my @old_klavye = $dbp->search_table( $tbl, 'klavye' );
+    my @old_klavye = $adb->search_table( $tbl, 'klavye' );
     is( scalar @old_klavye, 0, "Old word 'klavye' returns 0 records after modify" );
 
-    my @old_mekanik = $dbp->search_table( $tbl, 'mekanik' );
+    my @old_mekanik = $adb->search_table( $tbl, 'mekanik' );
     is( scalar @old_mekanik, 0, "Old word 'mekanik' returns 0 records after modify" );
 
     # Search for new words: MUST MATCH ID 101
-    my @new_fare = $dbp->search_table( $tbl, 'fare' );
+    my @new_fare = $adb->search_table( $tbl, 'fare' );
     is( scalar @new_fare, 1, "New word 'fare' returns 1 record after modify" );
     is( $new_fare[0]->[0], 101, "Matched ID for 'fare' is 101" );
 
-    my @new_optik = $dbp->search_table( $tbl, 'optik' );
+    my @new_optik = $adb->search_table( $tbl, 'optik' );
     is( scalar @new_optik, 1, "New word 'optik' returns 1 record after modify" );
 
     # --- C) DELETE RECORD ---
     # Delete record 101
-    $dbp->delete_id( $tbl, 101 );
+    $adb->delete_id( $tbl, 101 );
 
     # Search for words of deleted record: MUST RETURN 0
-    my @del_fare = $dbp->search_table( $tbl, 'fare' );
+    my @del_fare = $adb->search_table( $tbl, 'fare' );
     is( scalar @del_fare, 0, "Deleted record word 'fare' returns 0 records" );
 
-    my @del_optik = $dbp->search_table( $tbl, 'optik' );
+    my @del_optik = $adb->search_table( $tbl, 'optik' );
     is( scalar @del_optik, 0, "Deleted record word 'optik' returns 0 records" );
 };
 
@@ -178,7 +178,7 @@ subtest '3. search_table with Filter Block & Facet Constraints' => sub {
     my $tbl = 'catalog_indexed';
 
     # 1. Searching "kulaklık" (IDs 1, 2, 5, 6) filtered by brand (field 6 = 12: IDs 1, 2, 6)
-    my ( $total_f6, @res_f6 ) = $dbp->search_table(
+    my ( $total_f6, @res_f6 ) = $adb->search_table(
         $tbl, 'kulaklık',
         start  => 0,
         limit  => 20,
@@ -189,7 +189,7 @@ subtest '3. search_table with Filter Block & Facet Constraints' => sub {
         "Filtered search returns expected record IDs [1, 2, 6]" );
 
     # 2. Alternative syntax: hash { 6 => 12 }
-    my ( $t_h, @res_h ) = $dbp->search_table(
+    my ( $t_h, @res_h ) = $adb->search_table(
         $tbl, 'kulaklık',
         start  => 0,
         limit  => 10,
@@ -198,7 +198,7 @@ subtest '3. search_table with Filter Block & Facet Constraints' => sub {
     is( $t_h, 3, "Filter hash syntax { 6 => 12 } returns 3 records" );
 
     # 3. Alternative syntax: array [ 6, 12 ]
-    my ( $t_a, @res_a ) = $dbp->search_table(
+    my ( $t_a, @res_a ) = $adb->search_table(
         $tbl, 'kulaklık',
         start  => 0,
         limit  => 10,
@@ -207,7 +207,7 @@ subtest '3. search_table with Filter Block & Facet Constraints' => sub {
     is( $t_a, 3, "Filter array syntax [ 6, 12 ] returns 3 records" );
 
     # 4. Multi-value filter: field 6 = [12, 14] -> returns all 4 kulaklık (IDs 1, 2, 5, 6)
-    my ( $t_multi, @res_multi ) = $dbp->search_table(
+    my ( $t_multi, @res_multi ) = $adb->search_table(
         $tbl, 'kulaklık',
         start  => 0,
         limit  => 10,
@@ -216,7 +216,7 @@ subtest '3. search_table with Filter Block & Facet Constraints' => sub {
     is( $t_multi, 4, "Multi-value filter [12, 14] matches all 4 records" );
 
     # 5. Filter with non-matching value (field 6 = 99)
-    my ( $t_zero, @res_zero ) = $dbp->search_table(
+    my ( $t_zero, @res_zero ) = $adb->search_table(
         $tbl, 'hoparlör',
         start  => 0,
         limit  => 10,
@@ -227,7 +227,7 @@ subtest '3. search_table with Filter Block & Facet Constraints' => sub {
 
     # 6. Combined Search + Filter + Sort (by price desc: block 5)
     # IDs 1, 2, 6 prices: 6=>400, 1=>150, 2=>120
-    my ( $t_sort, @res_sort ) = $dbp->search_table(
+    my ( $t_sort, @res_sort ) = $adb->search_table(
         $tbl, 'kulaklık',
         start  => 0,
         limit  => 10,
@@ -245,65 +245,65 @@ subtest '4. Normalization & Apostrophe / Stop Word Handling' => sub {
     plan tests => 15;
 
     my $tbl = 'articles_indexed';
-    $dbp->{_table}->{$tbl} = {
+    $adb->table_attr( $tbl, {
         record_index => 1,
         id_type      => 'num',
         search_block => [ 1, 2 ],
-    };
+    } );
 
     # Insert records with apostrophes:
     # Record 201 contains "Türkiye'nin"
-    $dbp->insert_id( $tbl, 201, "Türkiye'nin Gezilecek Şehirleri", "Türkiye'nin başkenti Ankara ve tarihi mekanları" );
+    $adb->insert_id( $tbl, 201, "Türkiye'nin Gezilecek Şehirleri", "Türkiye'nin başkenti Ankara ve tarihi mekanları" );
     # Record 202 contains "İstanbul'da"
-    $dbp->insert_id( $tbl, 202, "İstanbul'da Kültür ve Sanat", "İstanbul'da tarihi yarımada gezisi" );
+    $adb->insert_id( $tbl, 202, "İstanbul'da Kültür ve Sanat", "İstanbul'da tarihi yarımada gezisi" );
     # Record 203 contains "Ahmet'in"
-    $dbp->insert_id( $tbl, 203, "Ahmet'in Başarı Hikayesi", "Ahmet'in okul ve iş hayatındaki başarıları" );
+    $adb->insert_id( $tbl, 203, "Ahmet'in Başarı Hikayesi", "Ahmet'in okul ve iş hayatındaki başarıları" );
 
     # Kayıtta "Türkiye'nin" geçiyorsa:
     # 1. "Türkiye" araması doğru sonucu getirir
-    my @s_tr = $dbp->search_table( $tbl, 'Türkiye' );
+    my @s_tr = $adb->search_table( $tbl, 'Türkiye' );
     is( scalar @s_tr, 1, "Search for 'Türkiye' matches record with 'Türkiye\\'nin'" );
     is( $s_tr[0]->[0], 201, "Matched ID is 201" );
 
     # 2. "Türkiye'nin" araması doğru sonucu getirir
-    my @s_tr_apos = $dbp->search_table( $tbl, "Türkiye'nin" );
+    my @s_tr_apos = $adb->search_table( $tbl, "Türkiye'nin" );
     is( scalar @s_tr_apos, 1, "Search for 'Türkiye\\'nin' matches record" );
     is( $s_tr_apos[0]->[0], 201, "Matched ID is 201" );
 
     # 3. "Türkiyenin" araması doğru sonucu getirir
-    my @s_tr_comb = $dbp->search_table( $tbl, 'Türkiyenin' );
+    my @s_tr_comb = $adb->search_table( $tbl, 'Türkiyenin' );
     is( scalar @s_tr_comb, 1, "Search for 'Türkiyenin' matches record" );
     is( $s_tr_comb[0]->[0], 201, "Matched ID is 201" );
 
     # 4. "nin" sonuç getirmez (Apostroftan sonraki hece stop word olarak atlanır)
-    my @s_nin = $dbp->search_table( $tbl, 'nin' );
+    my @s_nin = $adb->search_table( $tbl, 'nin' );
     is( scalar @s_nin, 0, "Search for apostrophe suffix 'nin' returns NO results (0 matches)" );
 
     # Additional apostrophe cases:
     # "İstanbul'da" -> matches "İstanbul", "İstanbul'da", "Istanbulda"; "da" returns 0
-    my @s_ist = $dbp->search_table( $tbl, 'İstanbul' );
+    my @s_ist = $adb->search_table( $tbl, 'İstanbul' );
     is( scalar @s_ist, 1, "Search for 'İstanbul' matches record 202" );
 
-    my @s_ist_apos = $dbp->search_table( $tbl, "İstanbul'da" );
+    my @s_ist_apos = $adb->search_table( $tbl, "İstanbul'da" );
     is( scalar @s_ist_apos, 1, "Search for 'İstanbul\\'da' matches record 202" );
 
-    my @s_ist_comb = $dbp->search_table( $tbl, 'Istanbulda' );
+    my @s_ist_comb = $adb->search_table( $tbl, 'Istanbulda' );
     is( scalar @s_ist_comb, 1, "Search for 'Istanbulda' matches record 202" );
 
-    my @s_da = $dbp->search_table( $tbl, 'da' );
+    my @s_da = $adb->search_table( $tbl, 'da' );
     is( scalar @s_da, 0, "Search for apostrophe suffix 'da' returns NO results (0 matches)" );
 
     # "Ahmet'in" -> matches "Ahmet", "Ahmet'in", "Ahmetin"; "in" returns 0
-    my @s_ahmet = $dbp->search_table( $tbl, 'Ahmet' );
+    my @s_ahmet = $adb->search_table( $tbl, 'Ahmet' );
     is( scalar @s_ahmet, 1, "Search for 'Ahmet' matches record 203" );
 
-    my @s_ahmet_apos = $dbp->search_table( $tbl, "Ahmet'in" );
+    my @s_ahmet_apos = $adb->search_table( $tbl, "Ahmet'in" );
     is( scalar @s_ahmet_apos, 1, "Search for 'Ahmet\\'in' matches record 203" );
 
-    my @s_ahmet_comb = $dbp->search_table( $tbl, 'Ahmetin' );
+    my @s_ahmet_comb = $adb->search_table( $tbl, 'Ahmetin' );
     is( scalar @s_ahmet_comb, 1, "Search for 'Ahmetin' matches record 203" );
 
-    my @s_in = $dbp->search_table( $tbl, 'in' );
+    my @s_in = $adb->search_table( $tbl, 'in' );
     is( scalar @s_in, 0, "Search for apostrophe suffix 'in' returns NO results (0 matches)" );
 };
 
@@ -314,105 +314,105 @@ subtest '5. Turkish Characters, Circumflex Vowels & Phonetic Devoicing' => sub {
     plan tests => 22;
 
     my $tbl = 'turkish_indexed';
-    $dbp->{_table}->{$tbl} = {
+    $adb->table_attr( $tbl, {
         record_index => 1,
         id_type      => 'num',
         search_block => [ 1, 2 ],
-    };
+    } );
 
     # Insert Turkish test records:
     # 301: ığdır (Iğdır / IĞDIR / igdir)
-    $dbp->insert_id( $tbl, 301, 'Iğdır Ovası Tarımı', 'IĞDIR ilinde yetişen lezzetli kayısılar' );
+    $adb->insert_id( $tbl, 301, 'Iğdır Ovası Tarımı', 'IĞDIR ilinde yetişen lezzetli kayısılar' );
     # 302: Çarşı (çarşı / ÇARŞI / carsi)
-    $dbp->insert_id( $tbl, 302, 'Tarihi Çarşı Esnafı', 'KAPALI ÇARŞI dükkanları ve esnafları' );
+    $adb->insert_id( $tbl, 302, 'Tarihi Çarşı Esnafı', 'KAPALI ÇARŞI dükkanları ve esnafları' );
     # 303: ÇÖPÇÜ (çöpçü / ÇÖPÇÜ / copcu)
-    $dbp->insert_id( $tbl, 303, 'ÇÖPÇÜ Kadrosu Hizmeti', 'Gece çalışan fedakar çöpçü emekçileri' );
+    $adb->insert_id( $tbl, 303, 'ÇÖPÇÜ Kadrosu Hizmeti', 'Gece çalışan fedakar çöpçü emekçileri' );
     # 304: kârın (şapkalı â: kârın / karın / karin / KÂRIN)
-    $dbp->insert_id( $tbl, 304, 'Şirketin kârın dağıtımı', 'Yıllık net kârın ortaklara paylaştırılması' );
+    $adb->insert_id( $tbl, 304, 'Şirketin kârın dağıtımı', 'Yıllık net kârın ortaklara paylaştırılması' );
     # 305: ÂLÎM (şapkalı Â ve Î: ÂLÎM / âlim / alim / ALİM)
-    $dbp->insert_id( $tbl, 305, 'Büyük ÂLÎM Eserleri', 'İslam âlimlerinin ve ÂLÎM zatların kıymetli kitapları' );
+    $adb->insert_id( $tbl, 305, 'Büyük ÂLÎM Eserleri', 'İslam âlimlerinin ve ÂLÎM zatların kıymetli kitapları' );
     # 306: tevhid (son harf d -> t: tevhid / tevhit / TEVHİD / TEVHİT)
-    $dbp->insert_id( $tbl, 306, 'İslamda Tevhid İnancı', 'Tevhid akidesi ve tevhid esasları' );
+    $adb->insert_id( $tbl, 306, 'İslamda Tevhid İnancı', 'Tevhid akidesi ve tevhid esasları' );
     # 307: gazab (son harf b -> p: gazab / gazap / GAZAB / GAZAP)
-    $dbp->insert_id( $tbl, 307, 'İlahi Gazab ve Rahmet', 'Gazab yerine merhamet ve af dilemek' );
+    $adb->insert_id( $tbl, 307, 'İlahi Gazab ve Rahmet', 'Gazab yerine merhamet ve af dilemek' );
     # 308: ahbab (son harf b -> p: ahbab / ahbap)
-    $dbp->insert_id( $tbl, 308, 'Eski Ahbab Ziyareti', 'Sadık ahbab ve vefalı dostlar' );
+    $adb->insert_id( $tbl, 308, 'Eski Ahbab Ziyareti', 'Sadık ahbab ve vefalı dostlar' );
     # 309: mehmed (son harf d -> t: mehmed / mehmet)
-    $dbp->insert_id( $tbl, 309, 'Mehmed Akif Ersoy Hayatı', 'Milli şairimiz Mehmed Akif ve şiirleri' );
+    $adb->insert_id( $tbl, 309, 'Mehmed Akif Ersoy Hayatı', 'Milli şairimiz Mehmed Akif ve şiirleri' );
 
     # A) Türkçe Karakter Eşleşmeleri: ığdır
-    my @s_igdir1 = $dbp->search_table( $tbl, 'ığdır' );
+    my @s_igdir1 = $adb->search_table( $tbl, 'ığdır' );
     is( scalar @s_igdir1, 1, "Search 'ığdır' matches record 301" );
 
-    my @s_igdir2 = $dbp->search_table( $tbl, 'IĞDIR' );
+    my @s_igdir2 = $adb->search_table( $tbl, 'IĞDIR' );
     is( scalar @s_igdir2, 1, "Search 'IĞDIR' matches record 301" );
 
-    my @s_igdir3 = $dbp->search_table( $tbl, 'igdir' );
+    my @s_igdir3 = $adb->search_table( $tbl, 'igdir' );
     is( scalar @s_igdir3, 1, "Search 'igdir' (ASCII) matches record 301" );
 
     # B) Türkçe Karakter Eşleşmeleri: Çarşı
-    my @s_carsi1 = $dbp->search_table( $tbl, 'çarşı' );
+    my @s_carsi1 = $adb->search_table( $tbl, 'çarşı' );
     is( scalar @s_carsi1, 1, "Search 'çarşı' matches record 302" );
 
-    my @s_carsi2 = $dbp->search_table( $tbl, 'ÇARŞI' );
+    my @s_carsi2 = $adb->search_table( $tbl, 'ÇARŞI' );
     is( scalar @s_carsi2, 1, "Search 'ÇARŞI' matches record 302" );
 
-    my @s_carsi3 = $dbp->search_table( $tbl, 'carsi' );
+    my @s_carsi3 = $adb->search_table( $tbl, 'carsi' );
     is( scalar @s_carsi3, 1, "Search 'carsi' (ASCII) matches record 302" );
 
     # C) Türkçe Karakter Eşleşmeleri: ÇÖPÇÜ
-    my @s_copcu1 = $dbp->search_table( $tbl, 'çöpçü' );
+    my @s_copcu1 = $adb->search_table( $tbl, 'çöpçü' );
     is( scalar @s_copcu1, 1, "Search 'çöpçü' matches record 303" );
 
-    my @s_copcu2 = $dbp->search_table( $tbl, 'ÇÖPÇÜ' );
+    my @s_copcu2 = $adb->search_table( $tbl, 'ÇÖPÇÜ' );
     is( scalar @s_copcu2, 1, "Search 'ÇÖPÇÜ' matches record 303" );
 
-    my @s_copcu3 = $dbp->search_table( $tbl, 'copcu' );
+    my @s_copcu3 = $adb->search_table( $tbl, 'copcu' );
     is( scalar @s_copcu3, 1, "Search 'copcu' (ASCII) matches record 303" );
 
     # D) Şapkalı Harfler (Circumflex): kârın
-    my @s_karin1 = $dbp->search_table( $tbl, 'kârın' );
+    my @s_karin1 = $adb->search_table( $tbl, 'kârın' );
     is( scalar @s_karin1, 1, "Search 'kârın' (circumflex â) matches record 304" );
 
-    my @s_karin2 = $dbp->search_table( $tbl, 'karın' );
+    my @s_karin2 = $adb->search_table( $tbl, 'karın' );
     is( scalar @s_karin2, 1, "Search 'karın' matches record 304" );
 
-    my @s_karin3 = $dbp->search_table( $tbl, 'karin' );
+    my @s_karin3 = $adb->search_table( $tbl, 'karin' );
     is( scalar @s_karin3, 1, "Search 'karin' (ASCII) matches record 304" );
 
     # E) Şapkalı Harfler (Circumflex): ÂLÎM
-    my @s_alim1 = $dbp->search_table( $tbl, 'ÂLÎM' );
+    my @s_alim1 = $adb->search_table( $tbl, 'ÂLÎM' );
     is( scalar @s_alim1, 1, "Search 'ÂLÎM' matches record 305" );
 
-    my @s_alim2 = $dbp->search_table( $tbl, 'âlim' );
+    my @s_alim2 = $adb->search_table( $tbl, 'âlim' );
     is( scalar @s_alim2, 1, "Search 'âlim' matches record 305" );
 
-    my @s_alim3 = $dbp->search_table( $tbl, 'alim' );
+    my @s_alim3 = $adb->search_table( $tbl, 'alim' );
     is( scalar @s_alim3, 1, "Search 'alim' matches record 305" );
 
     # F) Son Harf Dönüşümü (Final Devoicing d -> t): tevhid / tevhit
-    my @s_tevhid = $dbp->search_table( $tbl, 'tevhid' );
+    my @s_tevhid = $adb->search_table( $tbl, 'tevhid' );
     is( scalar @s_tevhid, 1, "Search 'tevhid' matches record 306" );
 
-    my @s_tevhit = $dbp->search_table( $tbl, 'tevhit' );
+    my @s_tevhit = $adb->search_table( $tbl, 'tevhit' );
     is( scalar @s_tevhit, 1, "Search 'tevhit' matches record 306" );
 
     # G) Son Harf Dönüşümü (Final Devoicing b -> p): gazab / gazap
-    my @s_gazab = $dbp->search_table( $tbl, 'gazab' );
+    my @s_gazab = $adb->search_table( $tbl, 'gazab' );
     is( scalar @s_gazab, 1, "Search 'gazab' matches record 307" );
 
-    my @s_gazap = $dbp->search_table( $tbl, 'gazap' );
+    my @s_gazap = $adb->search_table( $tbl, 'gazap' );
     is( scalar @s_gazap, 1, "Search 'gazap' matches record 307" );
 
     # H) Son Harf Dönüşümü: ahbab / ahbap
-    my @s_ahbab = $dbp->search_table( $tbl, 'ahbab' );
+    my @s_ahbab = $adb->search_table( $tbl, 'ahbab' );
     is( scalar @s_ahbab, 1, "Search 'ahbab' matches record 308" );
 
-    my @s_ahbap = $dbp->search_table( $tbl, 'ahbap' );
+    my @s_ahbap = $adb->search_table( $tbl, 'ahbap' );
     is( scalar @s_ahbap, 1, "Search 'ahbap' matches record 308" );
 
     # I) Son Harf Dönüşümü: mehmed / mehmet
-    my @s_mehmed = $dbp->search_table( $tbl, 'mehmed' );
+    my @s_mehmed = $adb->search_table( $tbl, 'mehmed' );
     is( scalar @s_mehmed, 1, "Search 'mehmed' matches record 309" );
 };
 
@@ -425,18 +425,18 @@ subtest '6. Logical AND / OR Search & keys_only Option' => sub {
     my $tbl = 'catalog_indexed';
 
     # 1. AND search (default): "sony kulaklık" matches only ID 1
-    my @s_and = $dbp->search_table( $tbl, 'sony kulaklık', 'and' );
+    my @s_and = $adb->search_table( $tbl, 'sony kulaklık', 'and' );
     is( scalar @s_and, 1, "AND search 'sony kulaklık' matches 1 record (ID 1)" );
     is( $s_and[0]->[0], 1, "Matched ID is 1" );
 
     # 2. OR search: "apple jbl" matches ID 3 (JBL) and ID 5 (Apple)
-    my @s_or = $dbp->search_table( $tbl, 'apple jbl', 'or' );
+    my @s_or = $adb->search_table( $tbl, 'apple jbl', 'or' );
     is( scalar @s_or, 2, "OR search 'apple jbl' matches 2 records (IDs 3 and 5)" );
     is_deeply( [ sort { $a <=> $b } map { $_->[0] } @s_or ], [ 3, 5 ],
         "OR search returns IDs [3, 5]" );
 
     # 3. keys_only option: returns plain list of record ID scalars
-    my @keys = $dbp->search_table( $tbl, 'kulaklık', keys_only => 1 );
+    my @keys = $adb->search_table( $tbl, 'kulaklık', keys_only => 1 );
     is_deeply( [ sort { $a <=> $b } @keys ], [ 1, 2, 5, 6 ],
         "keys_only => 1 returns list of record ID scalars" );
 };
@@ -453,7 +453,7 @@ subtest '7. Bulk CRUD (insert_list, modify_list, delete_list) Search Indexing' =
         id_type      => 'num',
         search_block => [ 2, 3 ],
     };
-    $dbp->{_table}->{$tbl} = $table_info;
+    $adb->table_attr( $tbl, $table_info );
 
     # --- A) BULK INSERT (insert_list) ---
     my @bulk_records = (
@@ -462,19 +462,19 @@ subtest '7. Bulk CRUD (insert_list, modify_list, delete_list) Search Indexing' =
         [ 503, 'SKU-503', 'Siyah Deri Ceket',      'Hakiki deri şık siyah ceket klasik model' ],
     );
 
-    my $ins_status = $dbp->insert_list( $tbl, @bulk_records );
+    my $ins_status = $adb->insert_list( $tbl, @bulk_records );
     is( scalar keys %$ins_status, 3, "insert_list inserted 3 records" );
 
     # Verify search keywords find newly bulk-inserted records
-    my @s_elbise = $dbp->search_table( $tbl, 'elbise' );
+    my @s_elbise = $adb->search_table( $tbl, 'elbise' );
     is( scalar @s_elbise, 1, "search_table finds 1 record for 'elbise'" );
     is( $s_elbise[0]->[0], 501, "Matched ID is 501" );
 
-    my @s_pantolon = $dbp->search_table( $tbl, 'pantolon' );
+    my @s_pantolon = $adb->search_table( $tbl, 'pantolon' );
     is( scalar @s_pantolon, 1, "search_table finds 1 record for 'pantolon'" );
     is( $s_pantolon[0]->[0], 502, "Matched ID is 502" );
 
-    my @s_ceket = $dbp->search_table( $tbl, 'ceket' );
+    my @s_ceket = $adb->search_table( $tbl, 'ceket' );
     is( scalar @s_ceket, 1, "search_table finds 1 record for 'ceket'" );
     is( $s_ceket[0]->[0], 503, "Matched ID is 503" );
 
@@ -485,35 +485,35 @@ subtest '7. Bulk CRUD (insert_list, modify_list, delete_list) Search Indexing' =
         [ 502, 'SKU-502', 'Beyaz Kumaş Pantolon', 'Kumaş beyaz pantolon şık kesim' ],
     );
 
-    my $mod_status = $dbp->modify_list( $tbl, @mod_records );
+    my $mod_status = $adb->modify_list( $tbl, @mod_records );
     is( scalar keys %$mod_status, 2, "modify_list modified 2 records" );
 
     # Verify old words are removed from search index
-    my @s_old_kirmizi = $dbp->search_table( $tbl, 'kırmızı' );
+    my @s_old_kirmizi = $adb->search_table( $tbl, 'kırmızı' );
     is( scalar @s_old_kirmizi, 0, "Old word 'kırmızı' returns 0 records after modify_list" );
 
-    my @s_old_mavi = $dbp->search_table( $tbl, 'mavi' );
+    my @s_old_mavi = $adb->search_table( $tbl, 'mavi' );
     is( scalar @s_old_mavi, 0, "Old word 'mavi' returns 0 records after modify_list" );
 
     # Verify new words match
-    my @s_new_yesil = $dbp->search_table( $tbl, 'yeşil' );
+    my @s_new_yesil = $adb->search_table( $tbl, 'yeşil' );
     is( scalar @s_new_yesil, 1, "New word 'yeşil' returns 1 record after modify_list" );
     is( $s_new_yesil[0]->[0], 501, "Matched ID is 501" );
 
-    my @s_new_beyaz = $dbp->search_table( $tbl, 'beyaz' );
+    my @s_new_beyaz = $adb->search_table( $tbl, 'beyaz' );
     is( scalar @s_new_beyaz, 1, "New word 'beyaz' returns 1 record after modify_list" );
     is( $s_new_beyaz[0]->[0], 502, "Matched ID is 502" );
 
     # --- C) BULK DELETE (delete_list) ---
     # Delete IDs 501 and 503; ID 502 should remain
-    my $del_status = $dbp->delete_list( $tbl, 501, 503 );
+    my $del_status = $adb->delete_list( $tbl, 501, 503 );
     is( scalar keys %$del_status, 2, "delete_list deleted 2 records" );
 
     # Verify deleted words return 0
-    my @s_del_yesil = $dbp->search_table( $tbl, 'yeşil' );
+    my @s_del_yesil = $adb->search_table( $tbl, 'yeşil' );
     is( scalar @s_del_yesil, 0, "Deleted record word 'yeşil' returns 0 records after delete_list" );
 
-    my @s_del_ceket = $dbp->search_table( $tbl, 'ceket' );
+    my @s_del_ceket = $adb->search_table( $tbl, 'ceket' );
     is( scalar @s_del_ceket, 0, "Deleted record word 'ceket' returns 0 records after delete_list" );
 };
 
@@ -529,7 +529,7 @@ subtest '8. Dynamic Schema Modification at Runtime (table_attr)' => sub {
         id_type      => 'num',
         search_block => [ 2, 3, 4, 9 ], # Initially search in Vendor (2), Author (3), Title (4), Barcode (9)
     };
-    $dbp->{_table}->{$tbl} = $table_info;
+    $adb->table_attr( $tbl, $table_info );
 
     # [ ID, SKU (1), Vendor (2), Author (3), Title (4), Price (5), Category (6), Desc (7), Stock (8), Barcode (9) ]
     my @records = (
@@ -539,26 +539,26 @@ subtest '8. Dynamic Schema Modification at Runtime (table_attr)' => sub {
     );
 
     for my $r (@records) {
-        $dbp->insert_id( $tbl, $r->[0], @$r[ 1 .. $#$r ] );
+        $adb->insert_id( $tbl, $r->[0], @$r[ 1 .. $#$r ] );
     }
 
     # 1. Initially with search_block => [2, 3, 4, 9], "Arçelik" matches all 3 records (Vendor, Author, Title)
-    my @s_all = $dbp->search_table( $tbl, 'Arçelik' );
+    my @s_all = $adb->search_table( $tbl, 'Arçelik' );
     is( scalar @s_all, 3, "Initial search 'Arçelik' across blocks [2,3,4,9] matches all 3 records" );
     is_deeply( [ sort { $a <=> $b } map { $_->[0] } @s_all ], [ 1, 2, 3 ],
         "Matched IDs are [1, 2, 3]" );
 
     # 2. Dynamically change search_block at runtime to only Title (4) and Barcode (9) (e.g. POS scanner panel)
-    my $attr_ok = $dbp->table_attr( $tbl, { search_block => [ 4, 9 ] } );
+    my $attr_ok = $adb->table_attr( $tbl, { search_block => [ 4, 9 ] } );
     ok( $attr_ok, "table_attr successfully updated schema in-memory" );
 
     # Now searching "Arçelik" should ONLY match Record 3 (where it is in Title)
-    my @s_narrowed = $dbp->search_table( $tbl, 'Arçelik' );
+    my @s_narrowed = $adb->search_table( $tbl, 'Arçelik' );
     is( scalar @s_narrowed, 1, "Runtime narrowed search 'Arçelik' matches only 1 record" );
     is( $s_narrowed[0]->[0], 3, "Matched ID is 3 (Title match)" );
 
     # Searching barcode "8690001" matches Record 1
-    my @s_barcode = $dbp->search_table( $tbl, '8690001' );
+    my @s_barcode = $adb->search_table( $tbl, '8690001' );
     is( scalar @s_barcode, 1, "Barcode search '8690001' matches record 1" );
 };
 

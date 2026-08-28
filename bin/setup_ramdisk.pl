@@ -113,7 +113,7 @@ if ($opt_start) {
         }
 
         # 3. Create subfolders on RAM drive
-        foreach my $sub (qw(tables conf scheme lock pids)) {
+        foreach my $sub (qw(tables conf schema lock pids)) {
             my $ram_sub = File::Spec->catdir( "$opt_drive\\", $sub );
             mkdir $ram_sub unless -d $ram_sub;
         }
@@ -130,7 +130,7 @@ if ($opt_start) {
         print "  Cache Root: $cache_dir -> $opt_drive\\\n";
         print "  ├── tables/  (DB & Index cache)\n";
         print "  ├── conf/    (Compiled config cache)\n";
-        print "  ├── scheme/  (Table & DBase schema cache)\n";
+        print "  ├── schema/  (Table & DBase schema cache)\n";
         print "  ├── lock/    (Flock lock files)\n";
         print "  └── pids/    (Process & mutex files)\n\n";
     }
@@ -142,7 +142,7 @@ if ($opt_start) {
         system("mount -t tmpfs -o size=$opt_size,mode=0777 tmpfs \"$cache_dir\"") == 0
           or die "[ERROR] Failed to mount tmpfs on $cache_dir: $!\n";
 
-        foreach my $sub (qw(tables conf scheme lock pids)) {
+        foreach my $sub (qw(tables conf schema lock pids)) {
             my $tmp_sub = File::Spec->catdir( $cache_dir, $sub );
             mkdir $tmp_sub unless -d $tmp_sub;
         }
@@ -151,7 +151,7 @@ if ($opt_start) {
         print "  Cache Root: $cache_dir ($opt_size)\n";
         print "  ├── tables/  (DB & Index cache)\n";
         print "  ├── conf/    (Compiled config cache)\n";
-        print "  ├── scheme/  (Table & DBase schema cache)\n";
+        print "  ├── schema/  (Table & DBase schema cache)\n";
         print "  ├── lock/    (Flock lock files)\n";
         print "  └── pids/    (Process & mutex files)\n\n";
     }
@@ -166,7 +166,7 @@ if ($opt_stop) {
         if ( -d $cache_dir ) {
             system("cmd /c rmdir \"$cache_dir\" >nul 2>&1");
             mkdir $cache_dir;
-            foreach my $sub (qw(tables conf scheme lock pids)) {
+            foreach my $sub (qw(tables conf schema lock pids)) {
                 my $sub_dir = File::Spec->catdir( $cache_dir, $sub );
                 mkdir $sub_dir;
             }

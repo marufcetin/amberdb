@@ -1,5 +1,37 @@
 Revision history for AmberDB
 
+5.21.0  2026-08-28
+        - Standardized instance variable naming across codebase, test suites, and documentation to $adb (AmberDB Handle):
+          * Introduced $adb->config() method supporting scalar get, defensive copy bulk get, and side-effect hook execution (locale reloading, path cache invalidation).
+          * Introduced $adb->path() method for standardized path retrieval and modification across core modules and scripts.
+          * Enhanced $adb->table_attr() with unified getter/setter and automatic path refresh on schema changes (year, section, lang).
+          * Protected $adb->table_info() by returning shallow copies to prevent external reference leaking and unauthorized in-memory state mutations.
+          * Refactored all internal core modules (lib/AmberDB.pm, lib/AmberDB/Base.pm, lib/AmberDB/Tools.pm, lib/AmberDB/Transact.pm, lib/AmberDB/Cache.pm, lib/AmberDB/Index/Junk.pm) to interact strictly through accessor methods ($adb->config, $adb->path, $adb->table_attr, $adb->table_info) eliminating raw hash accesses.
+          * Enforced restricted hash key access via Hash::Util::lock_keys with private internal naming (_cfg, _path, _table, _dbase, _cache, _db, _txn) and locked container references (Hash::Util::lock_value) against typo/unauthorized overwrites.
+          * Added comprehensive unit test suite t/amberdb_encapsulation.t covering all 10 encapsulation scenarios.
+        - [MIGRATION NOTICE / BREAKING CHANGE] Standardized schema terminology across the entire codebase and directory layout:
+          * UPGRADE ACTION REQUIRED: Existing projects must rename their physical 'dbstore/scheme/' directory to 'dbstore/schema/'.
+          * Updated RAM-disk setup scripts (setup_ramdisk.sh, setup_ramdisk.ps1, setup_ramdisk.pl, setup_ramdisk.bat) to mount 'schema/'.
+        - Upgraded transaction engine specification to full ACID-Compliance with Strict Two-Phase Locking (Strict 2PL):
+          * Enforced Lock-Before-Write and Lock-Before-Read ordering across insert_id, modify_id, and delete_id for true serializable isolation.
+          * Introduced 'no_transact => 1' schema attribute and table_attr() support to exempt auxiliary tables from abort cascades while preserving LIFO rollback consistency.
+        - Added comprehensive ACID architectural guarantees section to documentation (README.md, Turkish and English User Guides).
+        - Clarified architectural distinction between high-throughput batch ETL imports and atomic business transactions.
+        - Standardized file open error diagnostics and OS-level reporting ($!) across all core modules:
+          * Added explicit OS error reporting ($!) to all open and tie failures in AmberDB, Base, Cache, Transact, and Tools.
+          * Replaced silent schema open failure in AmberDB::Base::table_write with diagnostic cluck and graceful return.
+          * Improved audit log error handling in AmberDB::auth_insert with cluck and record skipping.
+        - Redesigned 2-Pillar Disaster Recovery and Native Backup Architecture:
+          * Upgraded recs_back to continuous chronological time-series stream in 'backup/YYYY/YYYY-MM-DD.csv' eliminating folder clutter and ensuring zero-data-loss logging.
+          * Added Tools->dump() for creating portable, compressed '.amberdb' archives packaging schemas (schema/*.table, schema/*.dbase), authoritative data files (tables/*.db, tables/*.del, tables/*.aut, tables/*.cnt, tables/*_*.str), and cryptographic SHA-256 integrity manifests (excluding derived indexes).
+          * Preserved native physical directory layout (schema/ and tables/) in .amberdb archives for 1-to-1 extraction and portability.
+          * Added Tools->restore() with SHA-256 checksum verification, non-empty database safety checks, and automated deterministic binary index reconstruction via set_index.
+          * Enhanced Tools->all_tables() with dual scalar/list context (grouped hashref vs. flat list) and automated 4-digit year directory discovery (e.g. 2024/, 2025/, 2026/).
+          * Upgraded 'bin/convert_dbstore.pl' table discovery and added side-file reporting for .str string dictionaries alongside .del, .aut, and .cnt.
+          * Introduced CLI utility 'bin/amberdb_backup.pl' for command-line database dump and disaster recovery operations.
+          * Added comprehensive unit test suite t/amberdb_backup.t covering WAL streaming, .amberdb archiving, .dbase/.str preservation, and full database restore.
+        - Updated POD documentation across AmberDB, AmberDB::Transact, and AmberDB::Tools modules.
+
 5.02    2026-08-25
         - Initial public release prepared for CPAN and GitHub.
         - High-performance Berkeley DB (DB_File) flat-file database engine.
@@ -7,7 +39,7 @@ Revision history for AmberDB
         - High-speed index-assisted full-text search with phonetic and language normalization.
         - Tiered indexing (Active, Junk/Archived, and Hybrid AB/BA query modes).
         - Multi-dimensional Columnar Facet indexing (.fac) with high-efficiency bitsets.
-        - ACID-like undo-journal transaction engine (transact_start, transact_end, transact_rollback) with automatic LIFO rollback.
+        - Undo-journal transaction engine (transact_start, transact_end, transact_rollback) with automatic LIFO rollback.
         - Multi-granularity concurrency control (table-level and record-level flock).
         - Multilingual locale engine supporting 10 languages (en, tr, de, fr, es, ja, ru, ar, az) with Turkish dotless/dotted 'i' rules, case folding, and number/currency formatting.
         - Cross-platform RAM-Disk helper and binary index converter CLI tools.

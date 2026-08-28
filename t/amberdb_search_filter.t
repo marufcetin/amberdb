@@ -24,11 +24,11 @@ my $table_info = {
     ],
 };
 
-my $dbp = AmberDB->new(
+my $adb = AmberDB->new(
     path => { dbase_dir => $tmp },
     cfg  => { language  => 'tr' },
 );
-$dbp->{_table}->{'test_product'} = $table_info;
+$adb->table_attr( 'test_product', $table_info );
 
 # Insert sample records:
 # [ ID, Code (blk 1), Title (blk 2), Desc (blk 3), Category (blk 4), Price (blk 5), Supplier/Field6 (blk 6) ]
@@ -43,17 +43,17 @@ my @records = (
 );
 
 for my $r (@records) {
-    $dbp->insert_id( 'test_product', $r->[0], @$r[ 1 .. $#$r ] );
+    $adb->insert_id( 'test_product', $r->[0], @$r[ 1 .. $#$r ] );
 }
 
 subtest 'Basic Search Without Filter' => sub {
     plan tests => 3;
 
-    my @res = $dbp->search_table( 'test_product', 'kulaklik' );
+    my @res = $adb->search_table( 'test_product', 'kulaklik' );
     # IDs 1, 2, 5, 6 should match "kulaklik"
     is( scalar @res, 4, '4 records match "kulaklik"' );
 
-    my ( $count, @paged ) = $dbp->search_table( 'test_product', 'kulaklik', start => 0, limit => 2 );
+    my ( $count, @paged ) = $adb->search_table( 'test_product', 'kulaklik', start => 0, limit => 2 );
     is( $count, 4, 'Total count is 4' );
     is( scalar @paged, 2, 'Paged limit 2 returns 2 records' );
 };
@@ -62,7 +62,7 @@ subtest 'Search with Filter: field => 6, value => 12' => sub {
     plan tests => 5;
 
     # Searching "kulaklik" (IDs 1, 2, 5, 6) filtered by field 6 = 12 (IDs 1, 2, 6; ID 5 is brand 14)
-    my ( $total, @search ) = $dbp->search_table(
+    my ( $total, @search ) = $adb->search_table(
         'test_product', 'kulaklik',
         start  => 0,
         limit  => 20,
@@ -76,7 +76,7 @@ subtest 'Search with Filter: field => 6, value => 12' => sub {
     is_deeply( [ sort { $a <=> $b } @ids ], [ 1, 2, 6 ], 'IDs match 1, 2, 6 (field 6 = 12)' );
 
     # Filter with no matches
-    my ( $zero_cnt, @zero_res ) = $dbp->search_table(
+    my ( $zero_cnt, @zero_res ) = $adb->search_table(
         'test_product', 'hoparlor',
         start  => 0,
         limit  => 10,
@@ -90,7 +90,7 @@ subtest 'Search with Alternative Filter Syntaxes' => sub {
     plan tests => 4;
 
     # Hash syntax { 6 => 12 }
-    my ( $t1, @s1 ) = $dbp->search_table(
+    my ( $t1, @s1 ) = $adb->search_table(
         'test_product', 'kulaklik',
         start  => 0,
         limit  => 10,
@@ -99,7 +99,7 @@ subtest 'Search with Alternative Filter Syntaxes' => sub {
     is( $t1, 3, 'Hash syntax { 6 => 12 } returns 3' );
 
     # Array syntax [6, 12]
-    my ( $t2, @s2 ) = $dbp->search_table(
+    my ( $t2, @s2 ) = $adb->search_table(
         'test_product', 'kulaklik',
         start  => 0,
         limit  => 10,
@@ -108,7 +108,7 @@ subtest 'Search with Alternative Filter Syntaxes' => sub {
     is( $t2, 3, 'Array syntax [6, 12] returns 3' );
 
     # Multi-value filter { field => 6, value => [12, 14] } -> all 4 kulaklik match
-    my ( $t3, @s3 ) = $dbp->search_table(
+    my ( $t3, @s3 ) = $adb->search_table(
         'test_product', 'kulaklik',
         start  => 0,
         limit  => 10,
@@ -117,7 +117,7 @@ subtest 'Search with Alternative Filter Syntaxes' => sub {
     is( $t3, 4, 'Multi-value filter [12, 14] returns all 4 records' );
 
     # Top-level field => 6, value => 12
-    my ( $t4, @s4 ) = $dbp->search_table(
+    my ( $t4, @s4 ) = $adb->search_table(
         'test_product', 'kulaklik',
         start => 0,
         limit => 10,
@@ -132,7 +132,7 @@ subtest 'Search with Filter and Sort' => sub {
 
     # Sort by block 5 (Price): [1=>150, 2=>120, 6=>400]
     # sort => 5 (descending price: 6 (400), 1 (150), 2 (120))
-    my ( $t_desc, @s_desc ) = $dbp->search_table(
+    my ( $t_desc, @s_desc ) = $adb->search_table(
         'test_product', 'kulaklik',
         start  => 0,
         limit  => 20,
@@ -143,7 +143,7 @@ subtest 'Search with Filter and Sort' => sub {
     is_deeply( [ map { $_->[0] } @s_desc ], [ 6, 1, 2 ], 'Sort block 5 desc: 6, 1, 2' );
 
     # sort => -5 (ascending price: 2 (120), 1 (150), 6 (400))
-    my ( $t_asc, @s_asc ) = $dbp->search_table(
+    my ( $t_asc, @s_asc ) = $adb->search_table(
         'test_product', 'kulaklik',
         start  => 0,
         limit  => 20,
@@ -154,7 +154,7 @@ subtest 'Search with Filter and Sort' => sub {
     is_deeply( [ map { $_->[0] } @s_asc ], [ 2, 1, 6 ], 'Sort block 5 asc (sort => -5): 2, 1, 6' );
 
     # Combined sort + pagination: start=1, limit=1 on asc -> item 1 (150)
-    my ( $t_page, @s_page ) = $dbp->search_table(
+    my ( $t_page, @s_page ) = $adb->search_table(
         'test_product', 'kulaklik',
         start  => 1,
         limit  => 1,
@@ -170,13 +170,13 @@ subtest 'Unindexed Table Search with Filter' => sub {
     my $unindexed_info = {
         record_index => 0,
     };
-    $dbp->{_table}->{'unindexed_product'} = $unindexed_info;
+    $adb->table_attr( 'unindexed_product', $unindexed_info );
 
     for my $r (@records) {
-        $dbp->insert_id( 'unindexed_product', $r->[0], @$r[ 1 .. $#$r ] );
+        $adb->insert_id( 'unindexed_product', $r->[0], @$r[ 1 .. $#$r ] );
     }
 
-    my ( $tot, @res ) = $dbp->search_table(
+    my ( $tot, @res ) = $adb->search_table(
         'unindexed_product', 'kulaklik',
         start  => 0,
         limit  => 20,
@@ -187,7 +187,7 @@ subtest 'Unindexed Table Search with Filter' => sub {
     is_deeply( [ sort { $a <=> $b } @ids ], [ 1, 2, 6 ], 'Unindexed matches IDs 1, 2, 6' );
 
     # keys_only option
-    my ( $cnt_k, @keys ) = $dbp->search_table(
+    my ( $cnt_k, @keys ) = $adb->search_table(
         'unindexed_product', 'kulaklik',
         start     => 0,
         limit     => 20,

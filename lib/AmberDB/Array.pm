@@ -4,7 +4,7 @@ use 5.016;
 use warnings;
 use Carp qw(croak cluck);
 
-our $VERSION = '5.02';
+our $VERSION = '5.21.0';
 my $CREATED = '2018-02-23';
 
 # TODO
@@ -260,7 +260,7 @@ sub array_size {
     return ( ( $max_line - 1 ), ( $max_blok - 1 ) );
 }
 
-# my @picked = $dbp->array_pick($indexes, @record);
+# my @picked = $adb->array_pick($indexes, @record);
 # takes blocks at given index list to build a new list.
 # ------------------------------------------------
 sub array_pick {
@@ -273,7 +273,7 @@ sub array_pick {
     return map { $record[$_] } @$indexes;
 }
 
-# my $array2 = $dbp->deep_copy($array);
+# my $array2 = $adb->deep_copy($array);
 # ------------------------------------------------
 sub deep_copy {
     my ( $self, $src ) = @_;
@@ -397,47 +397,166 @@ __END__
 
 =head1 NAME
 
-AmberDB::Array - Array and matrix manipulation utilities
+AmberDB::Array - Array, matrix manipulation, and set operations utility
 
 =head1 SYNOPSIS
 
+  # 1. Direct usage via AmberDB instance ($adb inherits AmberDB::Array):
+  my @unique     = $adb->array_nodup(@raw_list);
+  my $common_ids = $adb->array_crop($list1, $list2, $list3);
+  my @sorted     = $adb->array_sort('num', 'desc', 0, @records);
+  my $cloned     = $adb->deep_copy($nested_data);
+
+  # 2. Standalone usage:
   use AmberDB::Array;
   my $array_util = AmberDB::Array->new();
-  my $intersection = $array_util->array_crop($arr1, $arr2);
-  my @sorted = $array_util->array_sort('num', 'desc', 0, @records);
+  my @unique     = $array_util->array_nodup(@raw_list);
 
 =head1 DESCRIPTION
 
-C<AmberDB::Array> provides array operations including deduplication, intersection, difference, matrix transposition, sorting, deep copying, and element shuffling.
+C<AmberDB::Array> provides a rich set of utility methods for array manipulation, set operations (union, intersection, difference), matrix transformations, filtering, multi-dimensional array sorting, and deep copying.
+
+B<Inheritance Note:> C<AmberDB> inherits from C<AmberDB::Array> via C<use parent>. All methods documented below can be invoked directly on any C<$adb> instance (e.g. C<$adb-E<gt>array_nodup(...)>), as well as on standalone C<AmberDB::Array> objects.
 
 =head1 METHODS
 
-=head2 array_nodup(@array)
+=head2 array_nodup(@list)
 
-Removes duplicates while preserving order.
+Removes duplicate elements from C<@list> while strictly preserving original insertion order.
+
+  my @tags = $adb->array_nodup("perl", "db", "perl", "nosql", "db");
+  # => ("perl", "db", "nosql")
 
 =head2 array_crop($arr1, $arr2, ...)
 
-Returns intersection of array references.
+Computes the mathematical intersection of two or more array references. Returns an array reference containing only elements present in B<all> provided lists.
+
+  my $list1 = [ "apple", "banana", "cherry" ];
+  my $list2 = [ "banana", "cherry", "date" ];
+  my $common = $adb->array_crop($list1, $list2);
+  # => [ "banana", "cherry" ]
 
 =head2 array_add($arr1, $arr2, ...)
 
-Merges array references without duplicates.
+Merges multiple array references into a single unified array reference without duplicates (union), preserving appearance order.
+
+  my $merged = $adb->array_add([ 1, 2, 3 ], [ 3, 4, 5 ], [ 5, 6 ]);
+  # => [ 1, 2, 3, 4, 5, 6 ]
 
 =head2 array_punch($primary_arr, @other_arrs)
 
-Subtracts items in other arrays from primary array.
+Subtracts all elements found in subsequent array references (C<@other_arrs>) from the primary array reference (C<$primary_arr>). Returns an array of remaining elements with duplicates removed.
 
-=head2 array_sort($type, $direct, $field, @records)
+  my $primary = [ "a", "b", "c", "d", "e" ];
+  my $exclude = [ "b", "d" ];
+  my @remaining = $adb->array_punch($primary, $exclude);
+  # => ("a", "c", "e")
 
-Sorts a list of scalars or list of array references.
-C<$type> can be C<'num'> or C<'ascii'> (auto-detected if omitted).
-C<$direct> is C<0>/C<'asc'> (ascending) or C<1>/C<'desc'> (descending).
-C<$field> is the sub-element index when sorting array references. If C<$field = 0>, compares C<$a-E<gt>[0]> and C<$b-E<gt>[0]>.
+=head2 array_substr($primary_arr, @other_arrs)
+
+Removes elements of subsequent array references from C<$primary_arr>, returning an array reference of the difference. Unlike C<array_punch>, preserves duplicates within the primary list if not present in the subtractors.
+
+  my $diff = $adb->array_substr([ "a", "b", "c", "a" ], [ "b" ]);
+  # => [ "a", "c", "a" ]
+
+=head2 array_filter($predicate, @arrays)
+
+Filters an array using a C<CODE> reference predicate. Executes fast and safe in-memory filtering without eval overhead.
+
+  my @evens = $adb->array_filter(sub { $_[0] % 2 == 0 }, 1, 2, 3, 4, 5, 6);
+  # => (2, 4, 6)
+
+=head2 array_substrno($arraydata, @indices_to_remove)
+
+Removes elements at specified 0-based indices from an array reference.
+
+  my $data = [ "first", "second", "third", "fourth" ];
+  my $sub  = $adb->array_substrno($data, 1, 3);
+  # => [ "first", "third" ]
+
+=head2 array_compare($arr1, $arr2)
+
+Performs an element-by-element string comparison between two array references. Returns C<1> if both arrays are identical in length and values, C<0> otherwise.
+
+  my $same = $adb->array_compare([ 1, "test" ], [ 1, "test" ]); # 1
+  my $diff = $adb->array_compare([ 1, "test" ], [ 2, "test" ]); # 0
+
+=head2 array_sublist($chunk_size, @records)
+
+Splits a flat list into an array of sub-lists (chunks), each containing C<$chunk_size> items (valid chunk sizes: 2, 3, 4, 6, 12; default is 2).
+
+  my @matrix = $adb->array_sublist(2, "a", "b", "c", "d");
+  # => ( ["a", "b"], ["c", "d"] )
+
+=head2 array_size(@lines)
+
+Calculates the dimensions of a list of array references (matrix). Returns a 2-element list: C<($max_row_index, $max_column_index)>.
+
+  my ($max_row, $max_col) = $adb->array_size( [1, 2, 3], [4, 5] );
+  # => (1, 2)  # 2 rows (0..1), 3 columns (0..2)
+
+=head2 array_pick(\@indexes, @record)
+
+Extracts and returns only the fields at the given 0-based index positions from C<@record>.
+
+  my @selected = $adb->array_pick([ 0, 2 ], "ID101", "SecretKey", "PublicTitle");
+  # => ("ID101", "PublicTitle")
 
 =head2 deep_copy($data)
 
-Performs deep copy of array/hash references.
+Recursively clones nested Perl data structures (hash references, array references, and scalar values) to produce an independent copy.
+
+  my $copy = $adb->deep_copy({ user => { roles => [ "admin", "editor" ] } });
+
+=head2 array_shuffle(@array)
+
+Shuffles the order of elements randomly using the Fisher-Yates algorithm and returns the new list.
+
+  my @randomized = $adb->array_shuffle(1, 2, 3, 4, 5);
+
+=head2 inverse_matrix(@lines)
+
+Transposes a two-dimensional matrix (swaps rows and columns).
+
+  my @transposed = $adb->inverse_matrix(
+      [ "r1c1", "r1c2" ],
+      [ "r2c1", "r2c2" ]
+  );
+  # => ( [ "r1c1", "r2c1" ], [ "r1c2", "r2c2" ] )
+
+=head2 array_sort($type, $direct, $field, @records)
+
+Versatile array and matrix sorting engine. Supports scalar lists as well as array-of-arrays (AoA) records.
+
+=over 4
+
+=item * C<$type>: C<'num'> (numeric C<E<lt>=E<gt>>) or C<'ascii'> (string C<cmp>). Set to C<undef> or C<'auto'> for automatic detection.
+
+=item * C<$direct>: C<0>, C<'asc'>, or C<undef> for ascending; C<1>, C<'desc'>, C<'reverse'>, or C<'-'> for descending.
+
+=item * C<$field>: Column/block index (0-based) when sorting array references. If sorting scalars, pass C<undef>.
+
+=item * C<@records>: List of scalars or array references to sort (can also be passed as a single C<\@records> arrayref).
+
+=back
+
+Context-aware: Returns a list in list context or an array reference in scalar context.
+
+  # 1. Simple numeric descending sort
+  my @sorted_nums = $adb->array_sort('num', 'desc', undef, 10, 5, 20, 1);
+  # => (20, 10, 5, 1)
+
+  # 2. Sorting records by column index 1 ascending
+  my @records = (
+      [ 101, "Zebra", 50 ],
+      [ 102, "Apple", 20 ],
+      [ 103, "Mango", 80 ]
+  );
+  my @by_name = $adb->array_sort('ascii', 'asc', 1, @records);
+  # => ([102, "Apple", 20], [103, "Mango", 80], [101, "Zebra", 50])
+
+  # 3. Sorting records by column index 2 numeric descending
+  my @by_price = $adb->array_sort('num', 'desc', 2, @records);
 
 =head1 AUTHOR
 

@@ -5,7 +5,7 @@ use warnings;
 use Carp qw(croak cluck);
 use parent 'AmberDB::Locale';
 
-our $VERSION = '5.02';
+our $VERSION = '5.21.0';
 my $CREATED = '2017-12-31';
 
 # Constructor...
@@ -308,47 +308,136 @@ __END__
 
 =head1 NAME
 
-AmberDB::String - String manipulation, HTML conversion, and text sanitization utility
+AmberDB::String - String manipulation, HTML conversion, content detection, and sanitization utility
 
 =head1 SYNOPSIS
 
+  # 1. Direct usage via AmberDB instance ($adb inherits AmberDB::String):
+  my $short   = $adb->sub_str($long_text, 50);
+  my $clean   = $adb->trim_space($raw_text, 1); # flatten newlines
+  my $html    = $adb->text2html($plain_text);
+  my $text    = $adb->html2text($html_content);
+  my $type    = $adb->what_isthis($input_str);  # "email", "phone", "tcno", etc.
+
+  # 2. Standalone usage:
   use AmberDB::String;
   my $str_util = AmberDB::String->new();
-
-  my $truncated = $str_util->sub_str($long_text, 50);
-  my $html      = $str_util->text2html($plain_text);
-  my $clean     = $str_util->html2text($html_content);
+  my $short    = $str_util->sub_str($long_text, 50);
 
 =head1 DESCRIPTION
 
-C<AmberDB::String> inherits from C<AmberDB::Locale> and provides utility methods for string
-truncation, HTML tag stripping, entity escaping, and bidirectional conversion between plain text and HTML.
+C<AmberDB::String> provides utility methods for string truncation with word boundary preservation, HTML tag stripping, HTML/entity escaping, bidirectional plain-text/HTML conversion, content type classification (e.g. email, phone, TC identity number, barcodes), and code generation.
+
+B<Inheritance Note:> C<AmberDB> inherits from C<AmberDB::String> (which in turn inherits from C<AmberDB::Locale>). All methods documented below can be invoked directly on any C<$adb> instance (e.g. C<$adb-E<gt>sub_str(...)>), as well as on standalone C<AmberDB::String> objects.
 
 =head1 METHODS
 
-=head2 new()
-
-Constructor for C<AmberDB::String>.
-
 =head2 sub_str($string, $length)
 
-Truncates a string to specified length, ending with " ...".
+Truncates C<$string> to C<$length> characters without breaking words in the middle, appending C<" ..."> to indicate truncation.
 
-=head2 trim_space($string)
+  my $preview = $adb->sub_str("High performance database engine for Perl", 25);
+  # => "High performance ..."
 
-Removes leading, trailing, and redundant internal whitespace characters.
+=head2 short_title($title, [$limit])
+
+Generates an ASCII-clean, sanitized short title suitable for single-line headers or compact UI labels (default limit: 32 chars, minimum: 6 chars). Removes HTML tags and special punctuation before truncating at word boundaries.
+
+  my $title = $adb->short_title("Özel Kampanya & İndirimli Ürünler Listesi", 24);
+  # => "Ozel Kampanya ..."
+
+=head2 truncate_text($text, $length)
+
+Strips HTML tags, collapses whitespace via C<trim_space>, and truncates text to C<$length> characters (minimum length: 8 chars), ending cleanly with C<" ..."> at the last complete word boundary.
+
+  my $summary = $adb->truncate_text("<p>Detaylı <b>açıklama</b> metni burada yer alır.</p>", 20);
+  # => "Detayli aciklama ..."
+
+=head2 trim_space($string, [$flatten])
+
+Cleans redundant whitespace characters from C<$string>.
+
+=over 4
+
+=item * B<Standard Mode (C<$flatten = 0> or omitted):> Strips leading/trailing spaces and normalizes multiple horizontal spaces, tabs, and newlines while preserving multiline structure.
+
+=item * B<Flatten Mode (C<$flatten = 1>):> Collapses all whitespace, carriage returns, newlines, and tabs into a single flat space, tightening spaces around commas and semicolons. Ideal for single-line database field storage.
+
+=back
+
+  my $flat = $adb->trim_space("  Line 1 \n\n   Line 2  ;  Value  ", 1);
+  # => "Line 1 Line 2;Value"
 
 =head2 remove_tags($data)
 
-Strips HTML tags while preserving line breaks.
+Removes HTML tags from C<$data> while converting paragraph (C<E<lt>pE<gt>>), division (C<E<lt>divE<gt>>), and line break (C<E<lt>brE<gt>>) tags into clean newline characters (C<\n>).
+
+  my $plain = $adb->remove_tags("<p>Hello<br/>World</p>");
+  # => "Hello\nWorld"
 
 =head2 text2html($text)
 
-Converts plain text to HTML with paragraph tags and line breaks.
+Converts plain text into structured HTML. Escapes unsafe characters (C<&>, C<E<lt>>, C<E<gt>>) for XSS protection, converts double newlines into C<E<lt>pE<gt>...E<lt>/pE<gt>> paragraphs, and converts single newlines into C<E<lt>brE<gt>> tags. If input already contains HTML block tags, it is returned intact.
+
+  my $html = $adb->text2html("First paragraph.\n\nSecond line 1\nSecond line 2");
+  # => "<p>First paragraph.</p>\n<p>Second line 1<br>\nSecond line 2</p>"
 
 =head2 html2text($html)
 
-Converts HTML formatted content back into plain text.
+Converts HTML formatted content back into plain text. Strips C<E<lt>scriptE<gt>> and C<E<lt>styleE<gt>> blocks completely, converts headers and block tags to appropriate line breaks, formats list items with bullet points (C<- >), decodes common HTML entities, and collapses excessive blank lines.
+
+  my $text = $adb->html2text("<h2>Başlık</h2><p>Paragraf 1</p><ul><li>Madde 1</li><li>Madde 2</li></ul>");
+  # => "Başlık\n\nParagraf 1\n\n- Madde 1\n- Madde 2"
+
+=head2 html_ascode($string) / code_ashtml($string)
+
+Encodes sensitive characters (C<&>, C<">, C<$>, C<E<lt>>, C<E<gt>>, C<@>) into numeric HTML entities (e.g. C<&#38;>, C<&#60;>, C<&#62;>) to prevent template interpolation or HTML execution while displaying raw source code.
+
+  my $safe_code = $adb->html_ascode('my $val = $obj->get("key");');
+  # => 'my &#36;val = &#36;obj-&#62;get(&#34;key&#34;);'
+
+=head2 what_isthis($string)
+
+Inspects C<$string> and automatically determines its logical data type according to pattern rules:
+
+=over 4
+
+=item * C<'email'> — Valid email address pattern.
+
+=item * C<'gsm'> — Mobile phone numbers (e.g. C<+905xxxxxxxxx>, C<05xxxxxxxxx>).
+
+=item * C<'phone'> — Landline phone numbers.
+
+=item * C<'tcno'> — 11-digit Turkish Republic Citizen ID.
+
+=item * C<'barcode'> — 13-digit EAN/UPC barcode numbers (starting with 8 or 9).
+
+=item * C<'number'> — Pure positive integer numbers.
+
+=item * C<'domain'> — Web domain name pattern (e.g. C<example.com>).
+
+=item * C<'ascii'> — Alphanumeric ASCII string without spaces.
+
+=item * C<'letter'> — Pure alphabetical letters (locale-aware).
+
+=item * C<'space'> — Whitespace-only string.
+
+=item * C<'none'> — Undefined or empty string.
+
+=item * C<'other'> — Miscellaneous text containing symbols/punctuation.
+
+=back
+
+  my $type = $adb->what_isthis("user@example.com"); # "email"
+  my $type = $adb->what_isthis("05321234567");      # "gsm"
+  my $type = $adb->what_isthis("12345678901");      # "tcno"
+
+=head2 str_code($name)
+
+Generates an 8-character, uppercase, space-padded ASCII code from the first word of C<$name>. Useful for generating short deterministic identifier keys.
+
+  my $code = $adb->str_code("Elektronik Ürünler");
+  # => "ELEKTRON"
 
 =head1 AUTHOR
 

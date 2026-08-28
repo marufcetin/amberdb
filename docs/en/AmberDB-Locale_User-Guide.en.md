@@ -277,36 +277,46 @@ Strips all foreign or special characters not matching the language's `alphabet_c
 
 Core morphological and phonetic analysis methods powering `AmberDB` full-text search engine:
 
-#### `normalize_word($word)`
+#### `normalize_word($word [, $mode_write])`
 
 Normalizes a word phonetically and morphologically for search indexing and query matching:
 
 ```perl
 my $tr = AmberDB::Locale->new(language => "tr");
 
-# 1. Apostrophe / suffix parsing
+# 1. Query mode (default, mode_write = 0): Strips suffixes / clitics
 $tr->normalize_word("Türkiye'nin"); # "turkiye" (apostrophe suffix 'nin' stripped as stop-word)
+$tr->normalize_word("Türkiye'de");  # "turkiye"
 
-# 2. Circumflex / accent normalization
+# 2. Write mode (mode_write = 1): Generates both root and joined compound for indexing
+$tr->normalize_word("Türkiye'de", 1); # "turkiye turkiyede"
+
+# 3. Circumflex / accent normalization
 $tr->normalize_word("kârın");       # "karin"
 $tr->normalize_word("ÂLÎM");        # "alim"
 
-# 3. Word-final consonant devoicing / phonetic assimilation
+# 4. Word-final consonant devoicing / phonetic assimilation
 $tr->normalize_word("tevhid");      # "tevhit"  (d$ => t)
 $tr->normalize_word("gazab");       # "gazap"   (b$ => p)
 $tr->normalize_word("mehmed");      # "mehmet"  (d$ => t)
 ```
 
-#### `search_pattern($query)` & `search_regex($query)`
+#### `search_pattern($query)`
 
-Compiles multi-lingual, flexible phonetic regex query patterns:
+Converts a search query string into a locale-aware regex pattern matching regional character variants:
 
 ```perl
 my $pattern = $tr->search_pattern("Türkiye");
-# Produces regex token pattern matching Turkish and ASCII variants
+# Produces regex token pattern matching Turkish and ASCII variants (e.g. "t[uü]rk[iıİI]y[eE]")
+```
 
-my $regex = $tr->search_regex("wireless headphones");
-# Returns compiled qr// regex
+#### `search_regex($string, $pattern)`
+
+Performs a case-insensitive, locale-aware regex match of `$pattern` inside target `$string`. Returns `1` on match, `0` otherwise:
+
+```perl
+my $found = $tr->search_regex("İstanbul Boğazı", "istanbul"); # 1
+my $match = $tr->search_regex("İzmir Kordon", $pattern);       # 1
 ```
 
 ---
@@ -327,7 +337,7 @@ Three stages:
 
 ---
 
-### 5.6 UTF-8 Safe Substring
+### 5.8 UTF-8 Safe Substring
 
 #### `substring($string, [$offset], $length)`
 
@@ -345,7 +355,7 @@ $tr->substring($raw, 0, 5);            # "Şanlı" (correctly re-encoded)
 
 ---
 
-### 5.7 Date/Time Operations
+### 5.9 Date/Time Operations
 
 #### `format_date($time [, $pattern_or_style])`
 
@@ -397,7 +407,7 @@ my $h     = $tr->parse_date("09.08.2026", hash => 1);
 
 ---
 
-### 5.8 Number and Currency Formatting
+### 5.10 Number and Currency Formatting
 
 #### `format_number($num [, %opts])`
 
@@ -440,7 +450,7 @@ $de->format_currency(1234.50, 'EUR');             # "1.234,50 €"
 
 ---
 
-### 5.9 Plural Rules (Pluralization)
+### 5.11 Plural Rules (Pluralization)
 
 #### `plural($count, \%forms)`
 
@@ -479,7 +489,7 @@ one{n%10==1&&n%100!=11}few{n%10>=2&&n%10<=4&&(n%100<10||n%100>=20)}many{...}othe
 
 ---
 
-### 5.10 Other Accessors
+### 5.12 Other Accessors
 
 ```perl
 $lang->language();   # "tr" — active language tag

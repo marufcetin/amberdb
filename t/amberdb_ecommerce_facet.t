@@ -11,51 +11,51 @@ use lib 'lib';
 use AmberDB;
 
 my $tmpdir = tempdir( CLEANUP => 1 );
-my $dbp = AmberDB->new(
+my $adb = AmberDB->new(
     path => { dbase_dir => $tmpdir },
     cfg  => { simple => 0 }
 );
 
 # 1. Setup Dimension Tables (RDBM)
-$dbp->{_table}->{catalog_category} = {
+$adb->table_attr( 'catalog_category', {
     record_index => 1,
     id_type      => 'num',
     blocks       => [
         { id => "id",   type => "auto_id" },
         { id => "name", type => "text" },
     ]
-};
-$dbp->insert_id( 'catalog_category', 1, 'Roman' );
-$dbp->insert_id( 'catalog_category', 2, 'Tarih' );
-$dbp->insert_id( 'catalog_category', 3, 'Bilim Kurgu' );
+} );
+$adb->insert_id( 'catalog_category', 1, 'Roman' );
+$adb->insert_id( 'catalog_category', 2, 'Tarih' );
+$adb->insert_id( 'catalog_category', 3, 'Bilim Kurgu' );
 
-$dbp->{_table}->{catalog_producer} = {
+$adb->table_attr( 'catalog_producer', {
     record_index => 1,
     id_type      => 'num',
     blocks       => [
         { id => "id",   type => "auto_id" },
         { id => "name", type => "text" },
     ]
-};
-$dbp->insert_id( 'catalog_producer', 10, 'Can Yayınları' );
-$dbp->insert_id( 'catalog_producer', 20, 'İş Bankası Kültür Yayınları' );
-$dbp->insert_id( 'catalog_producer', 30, 'İthaki Yayınları' );
+} );
+$adb->insert_id( 'catalog_producer', 10, 'Can Yayınları' );
+$adb->insert_id( 'catalog_producer', 20, 'İş Bankası Kültür Yayınları' );
+$adb->insert_id( 'catalog_producer', 30, 'İthaki Yayınları' );
 
-$dbp->{_table}->{catalog_contributor} = {
+$adb->table_attr( 'catalog_contributor', {
     record_index => 1,
     id_type      => 'num',
     blocks       => [
         { id => "id",   type => "auto_id" },
         { id => "name", type => "text" },
     ]
-};
-$dbp->insert_id( 'catalog_contributor', 100, 'Mustafa Kemal Atatürk' );
-$dbp->insert_id( 'catalog_contributor', 200, 'Franz Kafka' );
-$dbp->insert_id( 'catalog_contributor', 300, 'Frank Herbert' );
-$dbp->insert_id( 'catalog_contributor', 400, 'Dostoyevski' );
+} );
+$adb->insert_id( 'catalog_contributor', 100, 'Mustafa Kemal Atatürk' );
+$adb->insert_id( 'catalog_contributor', 200, 'Franz Kafka' );
+$adb->insert_id( 'catalog_contributor', 300, 'Frank Herbert' );
+$adb->insert_id( 'catalog_contributor', 400, 'Dostoyevski' );
 
 # 2. Setup Main Product Table with Facets, Search, Junk and RDBM
-$dbp->{_table}->{catalog_product} = {
+$adb->table_attr( 'catalog_product', {
     record_index => 1,
     use_junk     => 1,
     use_facet    => 1,
@@ -79,7 +79,7 @@ $dbp->{_table}->{catalog_product} = {
         { id => "status", type => "option" },                                   # 6 (1:Aktif, 0:Pasif)
         { id => "price",  type => "text" },                                     # 7 (Fiyat)
     ]
-};
+} );
 
 # 3. Ingest Test Catalog
 # Record: [ id, cat, pub, auth, title, format, status, price ]
@@ -95,16 +95,16 @@ my @products = (
     [ 9, 3, 30, 300, 'Dune Çocukları (Pasif)', 'Karton', 0, 140.00 ], # JUNK / Inactive
 );
 
-$dbp->insert_list( 'catalog_product', @products );
+$adb->insert_list( 'catalog_product', @products );
 
 # ---------------------------------------------------------------------------
 subtest '1. Initial Unfiltered Facet Menu & Label Resolution' => sub {
     plan tests => 8;
 
-    my $menu = $dbp->facet_menu(
+    my $menu = $adb->facet_menu(
         'catalog_product',
         {}, # No filter selected
-        $dbp->{_table}->{catalog_product}->{facet_block},
+        $adb->table_attr('catalog_product', 'facet_block'),
         { sort => 'count' }
     );
 
@@ -133,10 +133,10 @@ subtest '2. Single Dimension Filtering & Cross-Filter Counts (Disjunctive Faceti
     plan tests => 6;
 
     # Filter: Category = Roman (cat: 1)
-    my $menu = $dbp->facet_menu(
+    my $menu = $adb->facet_menu(
         'catalog_product',
         { 1 => 1 }, # Category = 1 (Roman)
-        $dbp->{_table}->{catalog_product}->{facet_block},
+        $adb->table_attr('catalog_product', 'facet_block'),
         { sort => 'count' }
     );
 
@@ -164,10 +164,10 @@ subtest '3. Multi-Dimension Filtering (Category + Publisher + Format)' => sub {
     plan tests => 4;
 
     # Filter: Category = Roman (1) AND Publisher = Can Yayınları (10) AND Format = Ciltli (in .str format is resolved)
-    my $menu = $dbp->facet_menu(
+    my $menu = $adb->facet_menu(
         'catalog_product',
         { 1 => 1, 2 => 10, 5 => 'Ciltli' },
-        $dbp->{_table}->{catalog_product}->{facet_block},
+        $adb->table_attr('catalog_product', 'facet_block'),
         { sort => 'count' }
     );
 
@@ -185,14 +185,14 @@ subtest '4. Faceted Navigation over Full-Text Search Results (base_ids)' => sub 
     plan tests => 4;
 
     # Search keyword "Dune" (should match IDs 7, 8; ID 9 is junk)
-    my @hit_ids = $dbp->search_table( 'catalog_product', 'Dune', keys_only => 1, jnktype => 'A' );
+    my @hit_ids = $adb->search_table( 'catalog_product', 'Dune', keys_only => 1, jnktype => 'A' );
     is( scalar(@hit_ids), 2, "Search found 2 active Dune books" );
 
     # Apply facet menu over search hits
-    my $menu = $dbp->facet_menu(
+    my $menu = $adb->facet_menu(
         'catalog_product',
         {},
-        $dbp->{_table}->{catalog_product}->{facet_block},
+        $adb->table_attr('catalog_product', 'facet_block'),
         { base_ids => \@hit_ids }
     );
 
@@ -221,10 +221,10 @@ subtest '5. Dynamic Price Range (Min/Max Slider) & Facet Integration' => sub {
     my $max_price = 200.00;
 
     # Read active products price column to get matching IDs
-    my ( undef, @all_active_ids ) = $dbp->index_get( $dbp->table_path('catalog_product') . ".inx", "keys" );
+    my ( undef, @all_active_ids ) = $adb->index_get( $adb->table_path('catalog_product') . ".inx", "keys" );
     my @price_matched_ids;
     for my $id (@all_active_ids) {
-        my @row = $dbp->read_id( 'catalog_product', $id );
+        my @row = $adb->read_id( 'catalog_product', $id );
         my $price = $row[7] + 0;
         if ( $price >= $min_price && $price <= $max_price ) {
             push @price_matched_ids, $id;
@@ -234,10 +234,10 @@ subtest '5. Dynamic Price Range (Min/Max Slider) & Facet Integration' => sub {
     is_deeply( [ sort { $a <=> $b } @price_matched_ids ], [ 2, 3, 8 ], "Price range [100 - 200] matches IDs 2, 3, 8" );
 
     # Generate Facet menu constrained by the dynamic price slider (base_ids)
-    my $menu = $dbp->facet_menu(
+    my $menu = $adb->facet_menu(
         'catalog_product',
         {},
-        $dbp->{_table}->{catalog_product}->{facet_block},
+        $adb->table_attr('catalog_product', 'facet_block'),
         { base_ids => \@price_matched_ids }
     );
 

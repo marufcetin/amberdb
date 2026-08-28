@@ -4,13 +4,13 @@ use 5.016;
 use warnings;
 use Carp qw(croak cluck);
 
-our $VERSION = '5.02';
+our $VERSION = '5.21.0';
 
 # =====================================================================
 # OPERATOR AND FIELD RESOLUTION HELPERS (Shared across Index modules)
 # =====================================================================
 
-# $dbp->_cmp_op($a, $op, $b);
+# $adb->_cmp_op($a, $op, $b);
 # ------------------------------------------------
 sub _cmp_op {
 
@@ -27,7 +27,7 @@ sub _cmp_op {
     return 0;
 }
 
-# $dbp->_resolve_field_value($table_info, \@record, $field_spec);
+# $adb->_resolve_field_value($table_info, \@record, $field_spec);
 # ------------------------------------------------
 sub _resolve_field_value {
 
@@ -73,7 +73,7 @@ sub _resolve_field_value {
     return $record->[$field_spec] // '';
 }
 
-# my @vals = $dbp->field_to_list($value, $mode, $table_path, $table_info, $blk);
+# my @vals = $adb->field_to_list($value, $mode, $table_path, $table_info, $blk);
 # Converts ARRAY ref, comma/semicolon delimited string or single value to a normalized list.
 # In 'write' mode, registers text strings into .str with auto-incrementing lastid, or validates rdbm.
 # In 'read' mode, resolves existing string IDs from .str without creating new entries.
@@ -217,7 +217,7 @@ sub field_to_list {
     return @result;
 }
 
-# my $bool = $dbp->is_rdbm_block($table_info, $blk);
+# my $bool = $adb->is_rdbm_block($table_info, $blk);
 # ------------------------------------------------
 sub is_rdbm_block {
     my ( $self, $table_info, $blk ) = @_;
@@ -251,9 +251,9 @@ sub repeat_fields {
     return @record;
 }
 
-# $dbp->match_add($table_path, $table_info, \@records);
-# $dbp->match_del($table_path, $table_info, \@records);
-# $dbp->match_modify($table_path, $table_info, \@pairs);
+# $adb->match_add($table_path, $table_info, \@records);
+# $adb->match_del($table_path, $table_info, \@records);
+# $adb->match_modify($table_path, $table_info, \@pairs);
 # records = [ [$rid, @data...], ... ]
 # pairs   = [ [$rid, \@old_rec, \@new_rec], ... ]
 # ------------------------------------------------
@@ -655,8 +655,8 @@ sub records_del {
     }
 }
 
-# my $rw_link = $dbp->set_seourl($table, $record);
-# my $rw_link = $dbp->set_seourl($table, $record, 1);
+# my $rw_link = $adb->set_seourl($table, $record);
+# my $rw_link = $adb->set_seourl($table, $record, 1);
 # ------------------------------------------------
 sub set_seourl {
 
@@ -743,8 +743,8 @@ sub set_seourl {
     return $rw_link;
 }
 
-# my ($links) = $dbp->get_seourl($table, 0, @records_ids);
-# my ($links) = $dbp->get_seourl($table, 1, @records_ids);
+# my ($links) = $adb->get_seourl($table, 0, @records_ids);
+# my ($links) = $adb->get_seourl($table, 1, @records_ids);
 # ------------------------------------------------
 sub get_seourl {
 
@@ -958,7 +958,7 @@ sub sort_del {
     }
 }
 
-# $dbp->normalize_sort_key($value, $type, $len)
+# $adb->normalize_sort_key($value, $type, $len)
 # ------------------------------------------------
 sub normalize_sort_key {
     my ( $self, $value, $type, $len ) = @_;
@@ -1005,7 +1005,7 @@ sub normalize_sort_key {
     }
 }
 
-# $dbp->sort_by_block($tableid, \@rids, $sort_opt)
+# $adb->sort_by_block($tableid, \@rids, $sort_opt)
 # $norm_opt = $self->normalize_sort_opt($sort_arg);
 # Normalizes sorting options:
 #   sort => { blk => 2 }                 -> Default: sondan başa (desc: Z->A / 99->0)
@@ -1064,7 +1064,7 @@ sub normalize_sort_opt {
     };
 }
 
-# $dbp->sort_by_block($tableid, \@rids, $sort_opt)
+# $adb->sort_by_block($tableid, \@rids, $sort_opt)
 # ------------------------------------------------
 sub sort_by_block {
     my ( $self, $tableid, $ids_ref, $s_opt ) = @_;
@@ -1078,7 +1078,7 @@ sub sort_by_block {
 
     # If target block is ID (block 0 or 'id'), sort by primary key ID via array_sort
     if ( !$blk || $blk eq '0' || $blk eq 'id' ) {
-        my $id_type = $tableid ? ( $self->{_table}->{$tableid}->{id_type} // 'num' ) : 'num';
+        my $id_type = $tableid ? ( $self->table_attr( $tableid, 'id_type' ) // 'num' ) : 'num';
         return $self->array_sort( $id_type, $dir, undef, @$ids_ref );
     }
 
@@ -1116,7 +1116,7 @@ sub sort_by_block {
     return $self->db_sortid( $tableid, @$ids_ref );
 }
 
-# $dbp->sort_by_block_records($tableid, \@records, $sort_opt)
+# $adb->sort_by_block_records($tableid, \@records, $sort_opt)
 # ------------------------------------------------
 sub sort_by_block_records {
     my ( $self, $tableid, $recs_ref, $s_opt ) = @_;
@@ -1151,82 +1151,96 @@ __END__
 
 =head1 NAME
 
-AmberDB::Index - Indexing and URL Rewrite Engine for AmberDB
+AmberDB::Index - Inverted search, exact field match, binary sort, and SEO URL rewrite indexing engine
 
 =head1 SYNOPSIS
 
-  use parent qw(
-      ...
-      AmberDB::Index
-      ...
-  );
+  # Indexing methods are called directly on the AmberDB instance ($adb):
 
-  # Facet indexing
-  $dbp->facet_add($table_path, $table_info, \@records);
-  $dbp->facet_modify($table_path, $table_info, \@pairs);
-  $dbp->facet_del($table_path, $table_info, \@records);
+  # 1. SEO URL Slug generation and reverse lookup (.rwt)
+  my $slug     = $adb->set_seourl("catalog_product", $record_ref, 1);
+  my $slug_map = $adb->get_seourl("catalog_product", 0, 101, 102);
 
-  # Field matching index (.fld)
-  $dbp->match_add($table_path, $table_info, \@records);
-  $dbp->match_modify($table_path, $table_info, \@pairs);
-  $dbp->match_del($table_path, $table_info, \@records);
+  # 2. Normalization of array or delimited values into clean lists and .str IDs
+  my @str_ids  = $adb->field_to_list($raw_val, 'write', $table_path, $table_info, $blk);
 
-  # Full-text search index (.src)
-  $dbp->search_add($table_path, $table_info, $tableid, \@records);
-  $dbp->search_modify($table_path, $table_info, $tableid, \@pairs);
-  $dbp->search_del($table_path, $table_info, $tableid, \@records);
-
-  # Record primary index (.inx)
-  $dbp->records_add($table_path, $table_info, $tableid, \@new_rids);
-  $dbp->records_del($table_path, $table_info, \@del_rids);
-
-  # SEO URL rewrite mapping (.rwt)
-  my $slug  = $dbp->set_seourl($table, $record, $write);
-  my $links = $dbp->get_seourl($table, $type, @records_ids);
+  # 3. Monotonic sort key generation for fixed-width sorting (.srt)
+  my $key      = $adb->normalize_sort_key("1250.50", "num");
 
 =head1 DESCRIPTION
 
-C<AmberDB::Index> provides flat-file database indexing and SEO URL rewriting mechanisms for C<AmberDB>.
-It manages inverted search indexes (C<.src>), field match indexes (C<.fld>),
-primary key listing indexes (C<.inx>), and bidirectional URL rewrite maps (C<.rwt>).
-Facet filtering indexes (C<.fac>) and menu generation are handled by C<AmberDB::Index::Facet>.
+C<AmberDB::Index> manages flat-file inverted search indexes (C<.src>), exact field matching indexes (C<.fld>), primary key lists (C<.inx>), binary pre-sorted record indexes (C<.srt>), and bidirectional SEO URL rewrite dictionaries (C<.rwt>).
+
+Facet forward indexing (C<.fac>) is handled by C<AmberDB::Index::Facet>, and dual-tier cold record indexing (C<.jinx>, C<.jfld>, C<.jsrc>) is managed by C<AmberDB::Index::Junk>.
+
+B<Inheritance Note:> C<AmberDB> inherits from C<AmberDB::Index> via C<use parent>. All indexing methods can be called directly on C<$adb>.
 
 =head1 METHODS
 
-=head2 field_to_list($value)
+=head2 field_to_list($value, [$mode], [$table_path], [$table_info], [$blk])
 
-Converts ARRAY references, comma/semicolon delimited strings, or scalar values into a list of items.
+Converts ARRAY references, comma/semicolon-delimited strings, or single scalars into a normalized list of trimmed values.
+=over 4
+=item * In C<'write'> mode: Registers text values into the per-block string dictionary (C<_${blk}.str>) with auto-incrementing numeric IDs (or validates foreign key IDs for RDBM fields).
+=item * In C<'read'> mode: Resolves existing string IDs from C<_${blk}.str> without creating new dictionary entries.
+=back
+
+  my @ids = $adb->field_to_list("Red, Blue, Green", 'write', $path, $info, 3);
+
+=head2 normalize_sort_key($value, $type, [$length])
+
+Normalizes an input value into a fixed-width byte key for fast monotonic sorting in binary C<.srt> files:
+=over 4
+=item * B<num / decimal>: Adds a C<1e12> (1,000,000,000,000) offset for signed float/integer monotonic sorting (C<%020.6f> format).
+=item * B<string / ascii>: Converts to ASCII, removes punctuation, truncates to 8 bytes (or C<$length>), and pads with spaces.
+=item * B<date>: Converts date expressions to 14-character C<YYYYMMDDHHMMSS> timestamps.
+=back
+
+  my $sort_key = $adb->normalize_sort_key("249.90", "num");
+
+=head2 set_seourl($table_id, $record, [$write_mode])
+
+Generates a URL-friendly ASCII slug from designated schema title blocks and registers bidirectional mapping in C<_0.rwt> (Record ID -E<gt> Slug) and C<_1.rwt> (Slug -E<gt> Record ID).
+
+  my $slug = $adb->set_seourl("catalog_product", \@record, 1);
+  # => "kablosuz-bluetooth-kulaklik"
+
+=head2 get_seourl($table_id, [$type], @record_or_slug_ids)
+
+Resolves SEO URL slugs or reverse-maps slugs back to record IDs.
+=over 4
+=item * C<$type = 0>: Returns C<{ record_id =E<gt> slug }> (default, reads C<_0.rwt>).
+=item * C<$type = 1>: Returns C<{ slug =E<gt> record_id }> (reads C<_1.rwt>).
+=back
+
+  my $urls = $adb->get_seourl("catalog_product", 0, 101, 102);
+  # => { 101 => "kablosuz-kulaklik", 102 => "akilli-saat" }
+
+=head2 is_rdbm_block($table_info, $blk)
+
+Returns C<1> if the specified schema block is configured as a relational foreign key (RDBM), C<0> otherwise.
+
+  my $is_fk = $adb->is_rdbm_block($schema, 2);
 
 =head2 repeat_fields($table_info, @record)
 
-Consolidates repeated fields defined in C<$table_info-E<gt>{repeat_ids}> into a comma-separated value.
+Consolidates dynamic repeat columns (defined in C<$table_info-E<gt>{repeat_ids}> and C<repeat_start>) into a single comma-separated value.
 
-=head2 match_add / match_modify / match_del
+=head2 Low-Level Index Maintenance Methods
 
-Manages field-level exact match index files (C<.fld>).
+These methods are called automatically by AmberDB during CRUD operations (C<insert_id>, C<modify_id>, C<delete_id>):
 
-=head2 search_add / search_modify / search_del
+=over 4
 
-Manages full-text search word inverted index files (C<.src>).
+=item * C<records_add / records_del> — Updates C<keys>, C<count>, and C<lastid> in primary C<.inx> files.
 
-=head2 records_add / records_del
+=item * C<match_add / match_modify / match_del> — Manages exact-match inverted index files (C<_${blk}.fld>).
 
-Updates C<keys>, C<count>, and C<lastid> in C<.inx> primary index files.
+=item * C<search_add / search_modify / search_del> — Manages full-text keyword search index files (C<_${blk}.src>).
 
-=head2 sort_add / sort_modify / sort_del
+=item * C<sort_add / sort_modify / sort_del> — Manages binary pre-sorted record index files (C<_${blk}.srt>).
 
-Manages binary pre-sorted record index files (C<.srt>) configured in C<$table_info-E<gt>{sort_block}>.
-
-=head2 normalize_sort_key($value, $type, $len)
-
-Normalizes a block value into a fixed-width sort key:
-- B<num / decimal>: Adds C<1e12> (1,000,000,000,000) offset for signed float/integer monotonic sorting (C<%020.6f>).
-- B<string>: Converts to ASCII, removes non-alphanumeric characters, truncates to 8 bytes (or custom C<$len>), and pads with spaces.
-- B<date>: Converts to 14-character C<YYYYMMDDHHMMSS> timestamps.
-
-=head2 set_seourl / get_seourl
-
-Generates, stores, and resolves ASCII-clean SEO URL rewrite slugs in C<_0.rwt> and C<_1.rwt> maps.
+=back
 
 =head1 AUTHOR
 

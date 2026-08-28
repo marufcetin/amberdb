@@ -6,7 +6,7 @@ use Carp qw(croak cluck);
 use Encode;         # Encoding management if needed
 use Time::Local;    # Core module for time operations
 
-our $VERSION = '5.02';
+our $VERSION = '5.21.0';
 my $CREATED = '2008-02-07';
 
 # Default English Month Names
@@ -499,58 +499,164 @@ __END__
 
 =head1 NAME
 
-AmberDB::Date - Date manipulation, formatting, and date ID utility
+AmberDB::Date - Date manipulation, chronological ID generation, range calculation, and formatting utility
 
 =head1 SYNOPSIS
 
+  # 1. Direct usage via AmberDB instance ($adb inherits AmberDB::Date):
+  my $today_id   = $adb->day_id;                   # "20260828"
+  my $now_sec_id = $adb->second_id;                # "20260828143015"
+  my $date_id    = $adb->str2dateid('2026-08-28'); # "20260828"
+  my $human_str  = $adb->dateid2str('20260828');   # "28/08/2026"
+  my @days       = $adb->day_range('20260101', '20260131');
+  my $past_id    = $adb->offset2date('-7D');       # Date ID 7 days ago
+
+  # 2. Standalone usage:
   use AmberDB::Date;
   my $date = AmberDB::Date->new();
-  my $date_hash = $date->get_date();
-  my $date_id   = $date->str2dateid('2023-10-01');
-  my $str       = $date->dateid2str('20231001');
+  my $curr_day = $date->day_id;
 
 =head1 DESCRIPTION
 
-C<AmberDB::Date> provides methods for date parsing, ID conversions (YYYYMMDDHHMMSS),
-date range generation, offset calculations, and localized date string formatting.
+C<AmberDB::Date> provides methods for date parsing, compact chronological date ID conversions (fixed-width numeric format C<YYYYMMDDHHMMSS>), range calculations, relative offset dates (e.g. C<"-2D">, C<"1M">), ISO week numbers, and localized date string formatting.
+
+B<Inheritance Note:> C<AmberDB> inherits from C<AmberDB::Date> via C<use parent>. All methods and timestamp accessors documented below can be invoked directly on any C<$adb> instance (e.g. C<$adb-E<gt>day_id>), as well as on standalone C<AmberDB::Date> objects.
+
+=head1 CONSTRUCTOR
+
+=head2 new([%options | $hashref])
+
+Creates and returns a new C<AmberDB::Date> instance initialized with the current timestamp (or a custom timestamp passed via C<time =E<gt> $epoch>).
+
+  my $date = AmberDB::Date->new();
+  my $custom_date = AmberDB::Date->new(time => 1700000000);
+
+=head1 DATE ACCESSORS (GETTERS)
+
+All accessor methods return the formatted component for the instance's active timestamp. Optionally, passing an explicit Unix timestamp (C<$epoch>) calculates the value for that specific time on the fly.
+
+=head2 day_id([$epoch])
+
+Returns the 8-digit numeric date ID (C<YYYYMMDD>).
+
+  my $id = $adb->day_id; # e.g. "20260828"
+
+=head2 second_id([$epoch])
+
+Returns the 14-digit full timestamp ID (C<YYYYMMDDHHMMSS>).
+
+  my $id = $adb->second_id; # e.g. "20260828143015"
+
+=head2 minute_id([$epoch]) / hour_id([$epoch]) / month_id([$epoch])
+
+Returns the corresponding numeric ID:
+
+=over 4
+
+=item * C<month_id>: 6 digits (C<YYYYMM>)
+
+=item * C<hour_id>: 10 digits (C<YYYYMMDDHH>)
+
+=item * C<minute_id>: 12 digits (C<YYYYMMDDHHMM>)
+
+=back
+
+=head2 year([$epoch]) / month([$epoch]) / day([$epoch])
+
+Returns 4-digit year, 2-digit zero-padded month (C<01..12>), or 2-digit day (C<01..31>).
+
+=head2 hour([$epoch]) / minute([$epoch]) / second([$epoch])
+
+Returns 2-digit zero-padded hour (C<00..23>), minute (C<00..59>), or second (C<00..59>).
+
+=head2 str([$epoch]) / short([$epoch]) / only_time([$epoch])
+
+=over 4
+
+=item * C<short>: Returns C<"DD/MM/YYYY"> format.
+
+=item * C<only_time>: Returns C<"HH:MM:SS"> format.
+
+=item * C<str>: Returns combined C<"DD/MM/YYYY - HH:MM:SS"> format.
+
+=back
+
+=head2 epoch()
+
+Returns the underlying Unix epoch timestamp (integer seconds).
+
+=head2 monthname([$epoch]) / dayname([$epoch])
+
+Returns the localized full month name (e.g. C<"January">, C<"Ağustos">) or day name (e.g. C<"Friday">, C<"Cuma">).
 
 =head1 METHODS
 
-=head2 new([\%options])
-
-Constructor for C<AmberDB::Date>. Optionally accepts custom month/day name arrays.
-
 =head2 get_date([$timestamp])
 
-Returns detailed date component hash for current or given timestamp.
+Generates and returns a blessed C<AmberDB::Date> hash containing all parsed date components (year, month, day, hour, minute, second, daynumber, monthname, dayname, IDs, and formatted strings).
+
+  my $d = $adb->get_date(time());
+  print $d->{day_id}, " - ", $d->{monthname};
 
 =head2 str2dateid($datestr)
 
-Converts date strings into numeric date IDs.
+Parses human-readable date strings (e.g. C<"28/08/2026">, C<"2026-08-28">, C<"28.08.2026 14:30">) into a compact numeric date ID (C<YYYYMMDD> or C<YYYYMMDDHHMMSS>).
+
+  my $id = $adb->str2dateid("2026-08-28");          # "20260828"
+  my $id = $adb->str2dateid("28/08/2026 14:30:00"); # "20260828143000"
 
 =head2 dateid2str($dateid)
 
-Converts numeric date IDs back into human readable strings.
+Converts a numeric date ID back into a formatted human-readable string based on its digit length:
+
+=over 4
+
+=item * 14 digits (C<YYYYMMDDHHMMSS>) -E<gt> C<"DD/MM/YYYY - HH:MM:SS">
+
+=item * 12 digits (C<YYYYMMDDHHMM>) -E<gt> C<"DD/MM/YYYY - HH:MM">
+
+=item * 8 digits (C<YYYYMMDD>) -E<gt> C<"DD/MM/YYYY">
+
+=item * 6 digits (C<YYYYMM>) -E<gt> C<"MonthName YYYY">
+
+=back
+
+  my $str = $adb->dateid2str("20260828");         # "28/08/2026"
+  my $str = $adb->dateid2str("20260828143015");   # "28/08/2026 - 14:30:15"
 
 =head2 time2str([$timestamp])
 
-Formats epoch time to HTTP/email compatible date string.
+Formats a Unix epoch timestamp into an HTTP / RFC 1123 compliant date string suitable for HTTP headers and email timestamps.
+
+  my $http_date = $adb->time2str(time());
+  # => "Fri, 28 Aug 2026 11:30:00 GMT"
 
 =head2 day_range($start_dateid, $end_dateid)
 
-Generates list of day IDs within given date range.
+Generates a chronological list of 8-digit date IDs (C<YYYYMMDD>) between C<$start_dateid> and C<$end_dateid> inclusive, handling leap years and multi-year spans accurately.
+
+  my @days = $adb->day_range("20260226", "20260302");
+  # => ("20260226", "20260227", "20260228", "20260301", "20260302")
 
 =head2 dateid2week($dateid)
 
-Calculates ISO week number and day index for date ID.
+Calculates the ISO 8601 week number and day index for a given date ID. In list context, returns C<($week_number, $weekday_index, $day_of_year)>.
+
+  my $week = $adb->dateid2week("20260828"); # e.g. 35
 
 =head2 offset2date($offset_string)
 
-Calculates new date ID based on relative offset (e.g. "-2D", "1M").
+Calculates a new 8-digit date ID (C<YYYYMMDD>) relative to the current timestamp using offset syntax (e.g. C<"-2D"> for 2 days ago, C<"10D"> for 10 days later, C<"1M"> for 1 month later, C<"-1Y"> for 1 year ago).
+
+  my $yesterday = $adb->offset2date("-1D");
+  my $next_week = $adb->offset2date("7D");
 
 =head2 MonthDaysInYear([$year_offset])
 
-Returns month index and days per month list for offset year.
+Returns the 0-indexed month index and a 12-element list containing the number of days in each month for the specified year offset (default is current year, C<0>). Handles leap years.
+
+  my ($current_mon, @days_in_months) = $adb->MonthDaysInYear();
+  # @days_in_months = (31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
 
 =head1 AUTHOR
 

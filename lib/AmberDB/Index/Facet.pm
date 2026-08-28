@@ -4,9 +4,9 @@ use 5.016;
 use warnings;
 use Carp qw(croak cluck);
 
-our $VERSION = '5.02';
+our $VERSION = '5.21.0';
 
-# $dbp->facet_rules($table_info, @record);
+# $adb->facet_rules($table_info, @record);
 # ------------------------------------------------
 sub facet_rules {
 
@@ -30,7 +30,7 @@ sub facet_rules {
 # İNDEKSLEME (.fac CRUD) FONKSİYONLARI (Yalnızca Aktif Kayıtlar)
 # =====================================================================
 
-# $dbp->facet_add($table_path, $table_info, \@records);
+# $adb->facet_add($table_path, $table_info, \@records);
 # records = [ [$rid, @data...], ... ]  — $rid index 0'da
 # ------------------------------------------------
 sub facet_add {
@@ -82,7 +82,7 @@ sub facet_add {
     }
 }
 
-# $dbp->facet_modify($table_path, $table_info, \@pairs);
+# $adb->facet_modify($table_path, $table_info, \@pairs);
 # pairs = [ [$rid, \@old_rec, \@new_rec], ... ]
 # ------------------------------------------------
 sub facet_modify {
@@ -206,7 +206,7 @@ sub facet_modify {
     return 1;
 }
 
-# $dbp->facet_del($table_path, $table_info, \@records);
+# $adb->facet_del($table_path, $table_info, \@records);
 # ------------------------------------------------
 sub facet_del {
 
@@ -250,7 +250,7 @@ sub facet_del {
 # SORGULAMA VE SAYIM FONKSİYONLARI
 # =====================================================================
 
-# $hashref = $dbp->field_fltkeys($tableid, \%options);
+# $hashref = $adb->field_fltkeys($tableid, \%options);
 # options: target_block => 2, base_ids => \@subset, filter => { 1 => 5, 3 => [10,12] }
 # ------------------------------------------------
 sub field_fltkeys {
@@ -319,10 +319,9 @@ sub field_fltkeys {
     if ( -e $blk_fac ) {
         my $str_path = "${table_path}_${target_block}.str";
         my $has_str  = -e $str_path;
-        my $res      = $self->recs_get( $blk_fac, map { $self->utf_encode("$_") } @base_ids );
+        my $res      = $self->recs_get( $blk_fac, @base_ids );
         for my $id (@base_ids) {
-            my $k = $self->utf_encode("$id");
-            my $raw = $res ? $res->{$k} : undef;
+            my $raw = $res ? $res->{$id} : undef;
             next unless defined $raw && $raw ne '';
             my @vals = ( index( $raw, "\t" ) == -1 ) ? ($raw) : split /\t/, $raw;
             for my $v (@vals) {
@@ -339,7 +338,7 @@ sub field_fltkeys {
 }
 
 # Returns count map for multiple blocks in a single pass.
-# my $all = $dbp->field_allfltkeys("tableid", \@blk_list, \@base_scope);
+# my $all = $adb->field_allfltkeys("tableid", \@blk_list, \@base_scope);
 # Returns: { blk => { val => count }, ... }
 # ------------------------------------------------
 sub field_allfltkeys {
@@ -371,10 +370,9 @@ sub field_allfltkeys {
         my $has_str  = -e $str_path;
 
         if (@scan_ids) {
-            my $res = $self->recs_get( $blk_fac, map { $self->utf_encode("$_") } @scan_ids );
+            my $res = $self->recs_get( $blk_fac, @scan_ids );
             for my $id (@scan_ids) {
-                my $k = $self->utf_encode("$id");
-                my $raw = $res ? $res->{$k} : undef;
+                my $raw = $res ? $res->{$id} : undef;
                 next unless defined $raw && $raw ne '';
                 my @vals = ( index( $raw, "\t" ) == -1 ) ? ($raw) : split /\t/, $raw;
                 for my $v (@vals) {
@@ -409,7 +407,7 @@ sub field_allfltkeys {
 }
 
 # Generates schema-driven facet menu structure and performs active filtering.
-# my $result = $dbp->facet_menu($tableid, \%selected, \@facet_defs, \%opts);
+# my $result = $adb->facet_menu($tableid, \%selected, \@facet_defs, \%opts);
 # ------------------------------------------------
 sub facet_menu {
 
@@ -646,111 +644,90 @@ sub facet_menu {
 
 =head1 NAME
 
-AmberDB::Index::Facet - High-Performance Columnar Facet Indexing, Disjunctive Counting, and Menu Generation for AmberDB
+AmberDB::Index::Facet - Column-oriented facet indexing, disjunctive counting, and navigation menu generator
 
 =head1 SYNOPSIS
 
-  # Schema definition in your .table file:
-  {
-      name         => "Özellikler ve Nitelikler",
-      use_facet    => 1,
-      use_junk     => 1,
-      junk_rules   => [
-          [ 5, "ne", 1 ],                      # Out-of-sale products are excluded from facet
-          [ "2->14", "ne", 1 ],                 # Inactive manufacturer products are excluded
-      ],
-      facet_block  => [
-          { blk => 1, id => "cat",    label => "Kategori",     table => "catalog_category",    name_idx => 2 },
-          { blk => 2, id => "firm",   label => "Firma",        table => "catalog_producer",    name_idx => 2, filter_block => [ 14, "eq", 1 ] },
-          { blk => 3, id => "auth",   label => "Yazar",        table => "catalog_contributor", name_idx => 2 },
-          { blk => 4, id => "price",  label => "Fiyat Dilimi" },
-          { blk => 5, id => "status", label => "Satış Durumu", required => 1 },
-      ],
-  }
+  # Querying from AmberDB instance ($adb inherits AmberDB::Index::Facet):
 
-  # Querying from AmberDB ($dbp inherits AmberDB::Index::Facet):
+  # 1. Generate full-catalog or filtered facet menu with disjunctive counts:
+  my $menu_data = $adb->facet_menu(
+      "catalog_product",
+      { 1 => "5", 2 => [ "12", "14" ] }, # %selected_filters
+      \@facet_block_definitions,
+      { sort => 'count', top => 10 }      # %options
+  );
 
-  # 1. Standard full-catalog or filtered facet menu:
-  my $menu_data = $dbp->facet_menu("catalog_attributes", \%selected, \@facet_defs, \%opts);
-
-  # 2. Dynamic Scope facet menu (e.g. within search results or category scope):
-  my $search_facets = $dbp->facet_menu(
-      "catalog_attributes",
+  # 2. Dynamic Scoped facet menu (e.g. within search results or category scope):
+  my $search_facets = $adb->facet_menu(
+      "catalog_product",
       \%selected,
       \@facet_defs,
       { base_ids => \@search_result_ids }
   );
 
+  # 3. Direct facet key counts for a single block:
+  my $counts = $adb->field_fltkeys("catalog_product", {
+      target_block => 2,
+      base_ids     => \@active_product_ids,
+  });
+
 =head1 DESCRIPTION
 
-C<AmberDB::Index::Facet> provides a column-oriented forward indexing and disjunctive facet aggregation engine designed for fast faceted navigation across large-scale catalogs.
+C<AmberDB::Index::Facet> provides a high-performance, column-oriented forward indexing and disjunctive facet aggregation engine designed for low-latency faceted navigation across large-scale catalogs.
+
+B<Inheritance Note:> C<AmberDB> inherits from C<AmberDB::Index::Facet> via C<use parent>. All facet query and menu methods documented below are invoked directly on C<$adb>.
 
 =head1 KEY ARCHITECTURAL FEATURES
 
-=head2 1. Columnar Per-Block Storage (C<_${blk}.fac>)
-
-Rather than maintaining a massive monolithic matrix file, facet data is stored in partitioned columnar forward index files: C<${table_path}_${blk}.fac>.
-Each file maps Record ID to packed value IDs (using binary or tab-separated representation), enabling fast single-column sequential scanning and random lookups.
-
-=head2 2. Active-Only Storage Guarantee
-
-Facet index files store B<only currently active records>. Inactive, discontinued, or junk records are automatically filtered out during index creation and mutation via C<facet_rules> (which integrates with C<junk_rules>). This eliminates the overhead of scanning 100K+ historical records when computing facet counts.
-
-=head2 3. Bidirectional String Dictionary (C<_${blk}.str>)
-
-Non-relational string facets (e.g. colors, features) are indexed into a bidirectional C<.str> dictionary with distinct key namespaces:
-
 =over 4
 
-=item * C<s:StringValue> -E<gt> C<NumericID> (Fast write/read conversion)
+=item * B<1. Columnar Per-Block Storage (C<_${blk}.fac>):> Facet data is stored in partitioned columnar forward index files (C<${table_path}_${blk}.fac>). Each file maps Record ID to packed value IDs, enabling fast single-column scans.
 
-=item * C<n:NumericID> -E<gt> C<StringValue> (Fast reverse label resolution)
+=item * B<2. Active-Only Storage Guarantee:> Facet index files store B<only currently active records>. Inactive, discontinued, or out-of-stock records violating C<facet_rules> / C<junk_rules> are excluded during indexing, eliminating the overhead of scanning historical records.
 
-=item * C<lastid> -E<gt> Auto-increment sequence tracker
+=item * B<3. Bidirectional String Dictionary (C<_${blk}.str>):> Text facets (e.g. colors, specifications) map transparently between string labels and compact numeric dictionary IDs.
+
+=item * B<4. Dynamic Scoping (C<base_ids>):> When computing facet counts within search results or subcategories, passing C<base_ids =E<gt> \@ids> bounds the aggregation strictly to matching records.
+
+=item * B<5. Multi-Select Disjunctive Faceting:> Supports multi-selection where checking multiple items within the same filter group uses OR logic (showing counts of remaining options), while combining across different filter groups uses AND logic.
 
 =back
 
-=head2 4. Dynamic Scoping (C<base_ids>)
-
-When faceted menus are displayed on search result pages or narrow category listings, callers pass C<base_ids =E<gt> \@ids>. The engine processes B<only the scoped record IDs>, bypassing entire-database iteration.
-
-=head2 5. Multi-Select Disjunctive Faceting (OR-within-block, AND-across-blocks)
-
-Supports multi-selection where checking multiple items within the same filter group uses OR logic (showing count of remaining options), while combining across different filter groups uses AND logic.
-
 =head1 METHODS
 
-=head2 facet_rules($table_info, @record)
+=head2 facet_menu($tableid, \%selected, \@facet_defs, [\%options])
 
-Evaluates whether a record qualifies for inclusion in facet index files. Automatically delegates to C<!junk_rules> if C<use_junk> is enabled on the table.
+High-level faceted navigation menu generator.
+=over 4
+=item * C<$tableid>: Table name (e.g. C<catalog_product>).
+=item * C<\%selected>: Hash of currently active filter selections: C<{ block_idx =E<gt> $val_or_arr_ref }>.
+=item * C<\@facet_defs>: Array of facet block definitions (or reads directly from table schema C<facet_block> if omitted).
+=item * C<\%options>: Optional parameters:
+  - C<base_ids>: Array reference of record IDs to scope calculation (e.g. search result IDs).
+  - C<sort>: C<'count'> (default, descending count) or C<'label'> / C<'name'> (alphabetical).
+  - C<top>: Limit maximum items returned per facet group (e.g. 10).
+  - C<min_count>: Minimum count required to include an item (default: 1).
+=back
 
-=head2 facet_add($table_path, $table_info, \@records)
+Returns a comprehensive result hash:
+C<{ count =E<gt> $total, ids =E<gt> \@filtered_ids, groups =E<gt> \@groups, active_counts =E<gt> \%counts }>.
 
-Indexes active records into per-block C<_${blk}.fac> files.
-
-=head2 facet_modify($table_path, $table_info, \@pairs)
-
-Handles automated index updates and active/passive transitions during record updates.
-
-=head2 facet_del($table_path, $table_info, \@records)
-
-Removes deleted records from all per-block C<_${blk}.fac> files.
+  my $menu = $adb->facet_menu("catalog_product", \%selected, \@facet_defs);
 
 =head2 field_fltkeys($tableid, \%opts)
 
-Calculates facet key counts for target block directly from active C<_${target_block}.fac>. Automatically translates numeric dictionary IDs to human-readable strings via C<.str>.
+Calculates facet key counts for a target block directly from active C<_${target_block}.fac>. Automatically resolves dictionary string labels.
+
+  my $counts = $adb->field_fltkeys("catalog_product", { target_block => 2, base_ids => \@scoped_ids });
 
 =head2 field_allfltkeys($tableid, \@blk_list, \@base_scope)
 
 Calculates facet key counts across multiple active block files in a single pass.
 
-=head2 facet_menu($tableid, \%selected, \@facet_defs, \%opts)
+=head2 facet_rules($table_info, @record)
 
-High-level menu builder. Performs:
-1. Active filtering intersection via C<field_filter>.
-2. Disjunctive per-group count calculations.
-3. Top-N limiting and sorting (by count or label).
-4. Label resolution via RDBM, bidirectional C<.str>, or schema options.
+Evaluates whether a record qualifies for inclusion in facet index files. Automatically integrates with C<junk_rules>.
 
 =head1 AUTHOR
 

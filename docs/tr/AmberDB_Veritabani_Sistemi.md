@@ -1,6 +1,6 @@
 # AmberDB — Geliştirici Kılavuzu ve Dokümantasyon
 
-> **Sürüm:** 5.02 · **İlk Tasarım:** 2005 · **Son Güncelleme:** 2026  
+> **Sürüm:** 5.21.0 · **İlk Tasarım:** 2005 · **Son Güncelleme:** 2026  
 > **Namespace:** `AmberDB`  
 > **Dahili Modüller:** `Base`, `Index`, `Transact`, `Cache`, `Array`, `String`, `Date`, `Locale`, `Tools`
 
@@ -8,8 +8,8 @@
 
 ## İçindekiler
 
-1. [AmberDB Nedir?](#1-flatdb-nedir)
-2. [AmberDB Neden Kullanılmalıdır? (SQL ve SQLite ile Karşılaştırma)](#2-flatdb-neden-kullanılmalıdır-sql-ve-sqlite-ile-karşılaştırma)
+1. [AmberDB Nedir?](#1-amberdb-nedir)
+2. [AmberDB Neden Kullanılmalıdır? (SQL ve SQLite ile Karşılaştırma)](#2-amberdb-neden-kullanılmalıdır-sql-ve-sqlite-ile-karşılaştırma)
 3. [Sınırlar ve Çekişmeli Konular (Fiziksel Kısıtlar vs. Bilinçli Mimari Tercihler)](#3-sınırlar-ve-çekişmeli-konular-fiziksel-kısıtlar-vs-bilinçli-mimari-tercihler)
 4. [Hızlı Başlangıç](#4-hızlı-başlangıç)
 5. [CRUD İşlemleri (Temel Veri Yönetimi)](#5-crud-işlemleri-temel-veri-yönetimi)
@@ -26,7 +26,7 @@
 16. [Yapılandırma Bayrakları (Flags)](#16-yapılandırma-bayrakları-flags)
 17. [Veri Yapıları, Düşük Seviyeli Tablo ve Akış İşlemleri](#17-veri-yapıları-düşük-seviyeli-tablo-ve-akış-işlemleri)
 18. [Kullanıcı Denetim İzi (Audit) ve Yedekleme](#18-kullanıcı-denetim-izi-audit-ve-yedekleme)
-19. [Bakım ve Onarım Araçları (AmberDB::Tools)](#19-bakım-ve-onarım-araçları-amberflatdbtools)
+19. [Bakım ve Onarım Araçları (AmberDB::Tools)](#19-bakım-ve-onarım-araçları-amberdbtools)
 20. [Dosya Uzantıları Haritası](#20-dosya-uzantıları-haritası)
 21. [Dizin Yapısı](#21-dizin-yapısı)
 22. [Geliştirici Tavsiyeleri ve En İyi Pratikler](#22-geliştirici-tavsiyeleri-ve-en-iyi-pratikler)
@@ -37,7 +37,7 @@
 
 ## 1. AmberDB Nedir?
 
-`AmberDB`, Perl için geliştirilmiş; **şema güdümlü (schema-driven), döküman merkezli (document-oriented), deterministik ikincil indekslemeye (deterministic secondary indexing) ve ACID benzeri işlem (transaction) desteğine sahip** gömülü (embedded) bir veritabanı motorudur.
+`AmberDB`, Perl için geliştirilmiş; **şema güdümlü (schema-driven), döküman merkezli (document-oriented), deterministik ikincil indekslemeye (deterministic secondary indexing), ACID uyumlu işlem (transaction) motoruna ve Strict 2PL kilit desteğine sahip** gömülü (embedded) bir veritabanı motorudur.
 
 Geliştirici açısından AmberDB, harici bir veritabanı sunucusu kurulumu ve bakımı gerektirmeyen; tek bir satır CRUD çağrısıyla tüm ilişkili arama, eşleştirme, facet filtreleme, sıralama ve SEO bağlantılarını senkronize eden bütünleşik bir veri katmanıdır.
 
@@ -86,7 +86,7 @@ my @order = (
     { status => "onaylandi", kargo_kod => "TR12345" } # [4] İç içe sözlük (HASH): Ek bilgiler
 );
 
-$dbp->insert_id("orders", 1001, @order);
+$adb->insert_id("orders", 1001, @order);
 ```
 
 Bu kayıt `.db` dosyasına **tek bir key-value** olarak yazılır ve okunduğunda doğrudan kullanıma hazır Perl referansları olarak döner. JSON sütunları ayrıştırma ya da `JOIN` sorguları yazma yükü tamamen ortadan kalkar.
@@ -99,10 +99,10 @@ Sipariş kaydında ürün listesi Blok 3'te bir ARRAY olarak tutulur. Şemada `m
 
 ```perl
 # 101 nolu ürünü içeren tüm sipariş ID'lerini getirme:
-my @siparis_idleri = $dbp->field_fetch("orders", 3, 101);
+my @siparis_idleri = $adb->field_fetch("orders", 3, 101);
 ```
 
-Bu işlemde motor, `orders_3.fld` dosyasından **tek bir doğrudan anahtar erişimi (direct key lookup)** yaparak `101` anahtarının karşılığındaki tüm sipariş ID'lerini $O(1)$ anahtar arama maliyetiyle doğrudan alır:
+Bu işlemde motor, `orders_3.fld` dosyasından **tek bir doğrudan anahtar erişimi (direct key lookup)** yaparak `101` anahtarının karşılığındaki tüm sipariş ID'lerini doğrudan (indeksli anahtar başına ortalama O(1) arama maliyetiyle) alır:
 ```text
 # orders_3.fld dosyası içinde:
 # 101 => [ 1001, 1005, 1023 ] (Binary RID dizisi)
@@ -126,7 +126,7 @@ AmberDB'de tablonun `.table` şema dosyasında bir kez tanımlarsınız:
 }
 ```
 
-Siz yalnızca `$dbp->insert_id(...)`, `$dbp->modify_id(...)` veya `$dbp->delete_id(...)` çağırırsınız; motor yukarıdaki tüm indeks ve log dosyalarını **tek adımda ve otomatik** günceller.
+Siz yalnızca `$adb->insert_id(...)`, `$adb->modify_id(...)` veya `$adb->delete_id(...)` çağırırsınız; motor yukarıdaki tüm indeks ve log dosyalarını **tek adımda ve otomatik** günceller.
 
 ### 4. Doğrudan Tersine İndeks Erişimi (Sorgu Planlayıcı Yükü Yok)
 SQL'de `SELECT id FROM orders WHERE customer_id = 'A'` sorgusu çalıştırıldığında SQL parser, query optimizer ve execution engine devreye girer.
@@ -165,7 +165,7 @@ Dışarıdan bir kısıtlama gibi algılanabilecek, ancak AmberDB'yi geleneksel 
 
 #### 3. Şemada İndekslenmemiş Alanlarda Anlık (Ad-Hoc) Full-Scan: Eksiklik mi, Performans Güvencesi mi?
 - **Genel Algı:** *"SQL'de istediğim herhangi bir sütuna sorgu atabiliyorum, AmberDB'de şemada indeks tanımlamam gerekiyor."*
-- **Gerçek ve Avantaj:** SQL'de indekssiz kolon sorguları arka planda kontrolsüz **tam tablo taraması (full table scan)** yaparak üretim sunucularının CPU ve disk I/O kaynaklarını tüketir. AmberDB, geliştiriciyi sorgulanacak alanları şemada `match_block` veya `search_block` olarak önceden bildirmeye yönlendirir. Bu sayede indekslenmiş alanlar üzerindeki tüm sorgular, karmaşık sorgu optimizasyonu yükü olmadan doğrudan tekil anahtar aramaları ($O(1)$ direct key seek) üzerinden deterministik ve tahmin edilebilir düşük gecikmeyle çalışır.
+- **Gerçek ve Avantaj:** SQL'de indekssiz kolon sorguları arka planda kontrolsüz **tam tablo taraması (full table scan)** yaparak üretim sunucularının CPU ve disk I/O kaynaklarını tüketir. AmberDB, geliştiriciyi sorgulanacak alanları şemada `match_block` veya `search_block` olarak önceden bildirmeye yönlendirir. Bu sayede indekslenmiş alanlar üzerindeki tüm sorgular, karmaşık sorgu optimizasyonu yükü olmadan doğrudan tekil anahtar aramaları (indeksli anahtar başına ortalama O(1)) üzerinden deterministik ve tahmin edilebilir düşük gecikmeyle çalışır.
 
 #### 4. Toplu (Bulk) Metodlarda Undo Günlüğünün Devre Dışı Olması: Kısıtlama mı, Maksimum I/O Verimi mi?
 - **Genel Algı:** *"`insert_list` ve `modify_list` çağrıları neden otomatik transaction undo günlüğü tutmuyor?"*
@@ -185,7 +185,7 @@ Dışarıdan bir kısıtlama gibi algılanabilecek, ancak AmberDB'yi geleneksel 
 ```perl
 use AmberDB;
 
-my $dbp = AmberDB->new(
+my $adb = AmberDB->new(
     cfg  => { 
         language => "tr",          # Dahili Locale motoru dili ("tr", "en", vb.)
         user     => "admin_maruf", # Log ve denetim kayıtları için kullanıcı adı
@@ -196,27 +196,34 @@ my $dbp = AmberDB->new(
 );
 ```
 
+> [!TIP]
+> **Değişken Adlandırma Standardı (`$adb`):**
+> AmberDB belgelerinde ve örnek kodlarında, Perl ekosisteminin geleneksel `$dbh` (Database Handle) standardına benzer şekilde, **AmberDB nesnesini temsil etmek üzere `$adb` (AmberDB Handle)** değişkeni tercih edilmiştir. Bu zorunlu olmamakla birlikte, SQL veritabanlarıyla (`$dbh`) birlikte çalışan projelerde isim çakışmalarını önlemek ve kod okunabilirliğini artırmak için `$adb` kullanımı önerilir.
+
 ### 4.2 Dizin Konfigürasyonu
 
 AmberDB başlatıldığında kök dizin altında gerekli alt klasörleri otomatik olarak yapılandırır:
 
 ```perl
 # Farklı bir veri dizini belirleme
-$dbp->set_datadir("/var/data/eticaretim/dbstore");
+$adb->set_datadir("/var/data/eticaretim/dbstore");
 ```
 
 | Dizin | Görevi |
 |---|---|
 | `dbstore/tables/` | Kalıcı `.db`, `.inx`, `.fld`, `.src`, `.fac`, `.srt`, `.rwt` veri ve indeks dosyaları |
-| `dbstore/scheme/` | Kalıcı `.table` tablo şemaları ve `.dbase` grup yapılandırma dosyaları |
+| `dbstore/schema/` | Kalıcı `.table` tablo şemaları ve `.dbase` grup yapılandırma dosyaları |
 | `dbstore/conf/` | Kalıcı `.conf` düz metin ayar ve konfigürasyon dosyaları |
 | `dbstore/backup/` | Günlük CSV denetim yedekleri (`dbgun/YYYYMMDD/`) |
 | `dbstore/cache/` | **Birleşik RAM-Disk (ImDisk/tmpfs) Kök Dizini:** |
 | `dbstore/cache/tables/` | `use_cache => 1 & 2` için RAM'e aynalanmış sıcak `.db` ve `.inx` tabloları |
 | `dbstore/cache/conf/` | Derlenmiş hızlı yapılandırma önbelleği (`*.pl` hash referansları) |
-| `dbstore/cache/scheme/` | RAM'de önbelleğe alınmış / derlenmiş tablo şemaları (`*.table`, `*.dbase`) |
+| `dbstore/cache/schema/` | RAM'de önbelleğe alınmış / derlenmiş tablo şemaları (`*.table`, `*.dbase`) |
 | `dbstore/cache/lock/` | Yalnızca RAM'de yaşayan kayıt ve tablo seviyesi `flock` kilitleri (`*.lock`) |
 | `dbstore/cache/pids/` | Yalnızca RAM'de yaşayan süreç kilitleri, login attempt hataları (`*.pid`, `*.error`) |
+
+> [!IMPORTANT]
+> **Sürüm 5.21.0 Geçiş Uyarısı:** Eski projelerden yükseltme yaparken yapmanız gereken tek fiziksel işlem; veritabanı dizininizdeki `dbstore/scheme/` klasörünün adını **`dbstore/schema/`** olarak yeniden adlandırmaktır. Kod ve API tarafındaki tüm çözümlemeleri motor otomatik olarak yönetir.
 
 ---
 
@@ -236,16 +243,16 @@ Birden fazla kategoriye veya birden fazla yazara ait ürünler için ID değerle
 # =========================================================================
 
 # 1. Kategori Tablosu (catalog_category):
-my $kat_bilgisayar = $dbp->insert_id("catalog_category", undef, "Bilgisayar & Bilişim", 1); # ID: 5
-my $kat_ses        = $dbp->insert_id("catalog_category", undef, "Kulaklık & Ses", 1);        # ID: 12
+my $kat_bilgisayar = $adb->insert_id("catalog_category", undef, "Bilgisayar & Bilişim", 1); # ID: 5
+my $kat_ses        = $adb->insert_id("catalog_category", undef, "Kulaklık & Ses", 1);        # ID: 12
 
 # 2. Marka / Üretici Tablosu (catalog_brand):
-my $marka_sony     = $dbp->insert_id("catalog_brand", undef, "Sony", "Japonya");             # ID: 3
-my $marka_apple    = $dbp->insert_id("catalog_brand", undef, "Apple", "ABD");                # ID: 8
+my $marka_sony     = $adb->insert_id("catalog_brand", undef, "Sony", "Japonya");             # ID: 3
+my $marka_apple    = $adb->insert_id("catalog_brand", undef, "Apple", "ABD");                # ID: 8
 
 # 3. Yazar / Tasarımcı Tablosu (catalog_author):
-my $yazar_1        = $dbp->insert_id("catalog_author", undef, "Ahmet Yılmaz", "Akustik Müh.");# ID: 7
-my $yazar_2        = $dbp->insert_id("catalog_author", undef, "Mehmet Öz", "Tasarımcı");     # ID: 9
+my $yazar_1        = $adb->insert_id("catalog_author", undef, "Ahmet Yılmaz", "Akustik Müh.");# ID: 7
+my $yazar_2        = $adb->insert_id("catalog_author", undef, "Mehmet Öz", "Tasarımcı");     # ID: 9
 
 # =========================================================================
 # ADIM 2: Ürün Kaydının (catalog_product) Eklenmesi
@@ -270,11 +277,11 @@ my @urun_bilgileri = (
 );
 
 # İlk parametre tablo adı, ikinci parametre ID (otomatik için undef veya 0)
-my $yeni_id = $dbp->insert_id("catalog_product", undef, @urun_bilgileri);
+my $yeni_id = $adb->insert_id("catalog_product", undef, @urun_bilgileri);
 print "Eklenen ürünün ID'si: $yeni_id\n";
 
 # Belirli bir ID vererek ekleme
-$dbp->insert_id("catalog_product", 5001, @urun_bilgileri);
+$adb->insert_id("catalog_product", 5001, @urun_bilgileri);
 
 # =========================================================================
 # ADIM 3: Çoklu Değer Eşleştirmesi (field_fetch) Nasıl Çalışır?
@@ -282,9 +289,9 @@ $dbp->insert_id("catalog_product", 5001, @urun_bilgileri);
 # AmberDB'nin 'field_to_list' mekanizması virgülle ayrılmış "5,12" ve "7,9" değerlerini
 # otomatik olarak ayrıştırır ve her bir ID'yi catalog_product_1.fld ve catalog_product_3.fld
 # indekslerine bağımsız olarak yazar.
-# Böylece aşağıdaki bağımsız sorguların her ikisi de ürünü tekil indeks aramasıyla ($O(1)$ key lookup) doğrudan bulur:
-my @kat12_urunleri  = $dbp->field_fetch("catalog_product", 1, "12"); # 12 nolu kategorideki ürünler
-my @yazar9_urunleri = $dbp->field_fetch("catalog_product", 3, "9");  # 9 nolu yazarın ürünleri
+# Böylece aşağıdaki bağımsız sorguların her ikisi de ürünü tekil indeks aramasıyla doğrudan bulur:
+my @kat12_urunleri  = $adb->field_fetch("catalog_product", 1, "12"); # 12 nolu kategorideki ürünler
+my @yazar9_urunleri = $adb->field_fetch("catalog_product", 3, "9");  # 9 nolu yazarın ürünleri
 
 # =========================================================================
 # ADIM 4: Toplu Kayıt Ekleme (Bulk Insert)
@@ -296,7 +303,7 @@ my @toplu_urunler = (
     [ undef, "12",   "3", "7,9", "Sony Ses Kartı", "", "", "", "", "4500.00", "1" ],
 );
 
-my $statu = $dbp->insert_list("catalog_product", @toplu_urunler);
+my $statu = $adb->insert_list("catalog_product", @toplu_urunler);
 # $statu döner: { 5002 => 1, 5003 => 1, 5004 => 1 }
 ```
 
@@ -306,7 +313,7 @@ my $statu = $dbp->insert_list("catalog_product", @toplu_urunler);
 # Tekil kayıt güncelleme (ID: 5001)
 $urun_bilgileri[9] = "13499.90"; # Fiyatı güncelle
 $urun_bilgileri[0] = "5,12,18";   # Yeni bir kategori ID'si daha ekle (18: Aksesuar)
-my $ok = $dbp->modify_id("catalog_product", 5001, @urun_bilgileri);
+my $ok = $adb->modify_id("catalog_product", 5001, @urun_bilgileri);
 
 if ($ok) {
     print "Ürün ve tüm ilişkili indeksler başarıyla güncellendi.\n";
@@ -317,17 +324,17 @@ my @guncellenecekler = (
     [ 5002, "5",    "3", "7", "Sony Kulaklık A (Yeni Model)", "", "", "", "", "3200.00", "1" ],
     [ 5003, "5,12", "8", "",  "Apple AirPods Max (Gümüş)",    "", "", "", "", "19500.00", "1" ],
 );
-$dbp->modify_list("catalog_product", @guncellenecekler);
+$adb->modify_list("catalog_product", @guncellenecekler);
 ```
 
 ### 5.3 Kayıt Silme — `delete_id` ve `delete_list`
 
 ```perl
 # Tekil silme
-$dbp->delete_id("catalog_product", 5001);
+$adb->delete_id("catalog_product", 5001);
 
 # Toplu silme
-$dbp->delete_list("catalog_product", 5002, 5003, 5004);
+$adb->delete_list("catalog_product", 5002, 5003, 5004);
 ```
 
 > **Soft-Delete Özelliği:** Eğer tablonun `.table` şemasında `keep_deleted => 1` tanımlıysa, silinen kayıt tamamen yok edilmez; `.del` dosyasına taşınır.
@@ -335,7 +342,7 @@ $dbp->delete_list("catalog_product", 5002, 5003, 5004);
 ### 5.4 Kayıt Okuma — `read_id`
 
 ```perl
-my @kayit = $dbp->read_id("catalog_product", 5001);
+my @kayit = $adb->read_id("catalog_product", 5001);
 
 if (@kayit) {
     my $id          = $kayit[0];  # Kayıt ID'si (Blok 0)
@@ -358,38 +365,38 @@ AmberDB, kayıtları hızlıca listelemek, belirli bloklara göre filtrelemek ve
 
 ```perl
 # 1. Tüm kayıtları varsayılan sırada (en son eklenen ilk - Azalan ID) getirme
-my @tum_kayitlar = $dbp->read_all("catalog_product");
+my @tum_kayitlar = $adb->read_all("catalog_product");
 
 # 2. Sayfalama ile okuma (İlk 20 kayıt)
-my ($toplam, @sayfa1) = $dbp->read_all("catalog_product", 0, 20);
+my ($toplam, @sayfa1) = $adb->read_all("catalog_product", 0, 20);
 print "Toplam kayıt: $toplam, Bu sayfadaki kayıt: " . scalar(@sayfa1) . "\n";
 
 # 3. Blok 4'e (Ürün Adı) göre alfabetik artan sırada okuma
-my ($toplam, @alfabetik) = $dbp->read_all("catalog_product", 0, 20, sort => { blk => 4, reverse => 1 });
+my ($toplam, @alfabetik) = $adb->read_all("catalog_product", 0, 20, sort => { blk => 4, reverse => 1 });
 
 # 4. Blok 10'a (Fiyat) göre azalan (pahalıdan ucuza) sıralama (Kısa Sözdizimi)
-my ($toplam, @pahali_ilk) = $dbp->read_all("catalog_product", 0, 10, sort => 10);
+my ($toplam, @pahali_ilk) = $adb->read_all("catalog_product", 0, 10, sort => 10);
 
 # 5. Blok 10'a (Fiyat) göre artan (ucuzdan pahalıya) sıralama (Negatif Kısa Sözdizimi)
-my ($toplam, @ucuz_ilk) = $dbp->read_all("catalog_product", 0, 10, sort => -10);
+my ($toplam, @ucuz_ilk) = $adb->read_all("catalog_product", 0, 10, sort => -10);
 
 # 6. Sadece Kayıt ID'lerini alma (Bellek tasarrufu için)
-my ($toplam, @id_listesi) = $dbp->read_all("catalog_product", 0, 50, keys_only => 1);
+my ($toplam, @id_listesi) = $adb->read_all("catalog_product", 0, 50, keys_only => 1);
 ```
 
 ### 6.2 `field_fetch` — Blok Eşleştirme İndeksi (.fld) ve Çoklu Değer Araması
 
-Şemada `match_block` olarak belirlenmiş alanlar tekil anahtar araması ($O(1)$ direct key lookup) ile doğrudan getirilir. Kayıtta birden fazla değer virgülle saklansa dahi (`"5,12"` veya `"7,9"`), aranan tekil değer anında eşleşir. İndeks dosyası (`.fld`) olmayan tablolarda sistem otomatik olarak `recs_scan` üzerinden tam tarama yaparak aynı sonuçları şeffafça üretir:
+Şemada `match_block` olarak belirlenmiş alanlar, tersine eşleştirme indeksleri (`.fld`) üzerinden indeksli anahtar başına ortalama O(1) arama maliyetiyle getirilir (çoklu değer sorgularında maliyet sorgulanan anahtar sayısıyla orantılıdır). Kayıtta birden fazla değer virgülle saklansa dahi (`"5,12"` veya `"7,9"`), her değer bağımsız olarak indekslenir. İndeks dosyası (`.fld`) olmayan tablolarda sistem otomatik olarak `recs_scan` üzerinden tam tarama yaparak aynı sonuçları şeffafça üretir:
 
 ```perl
 # 1. Kategori ID'si (Blok 1) "5" olan tüm ürünler
-my @urunler = $dbp->field_fetch("catalog_product", 1, "5");
+my @urunler = $adb->field_fetch("catalog_product", 1, "5");
 
 # 2. Yazar / Katkıda Bulunan ID'si (Blok 3) "9" olan ürünler (Kayıtta "7,9" yazsa bile 9 ile eşleşir)
-my @yazar_urunleri = $dbp->field_fetch("catalog_product", 3, "9");
+my @yazar_urunleri = $adb->field_fetch("catalog_product", 3, "9");
 
 # 3. Kategori 5 içindeki ürünleri Fiyata (Blok 10) göre ucuzdan pahalıya sıralı ve sayfalı alma
-my ($sayi, @sirali_urunler) = $dbp->field_fetch(
+my ($sayi, @sirali_urunler) = $adb->field_fetch(
     "catalog_product", 
     1, "5",                             # Blok 1 = "5"
     0, 12,                              # Start: 0, Limit: 12
@@ -397,12 +404,12 @@ my ($sayi, @sirali_urunler) = $dbp->field_fetch(
 );
 
 # 4. Çoklu değer eşleştirme (Dizi referansı, virgüllü string veya noktalı virgüllü)
-my @coklu = $dbp->field_fetch("catalog_product", 1, ["5", "8"], 0, 20);
-my @coklu = $dbp->field_fetch("catalog_product", 1, "5, 8");
+my @coklu = $adb->field_fetch("catalog_product", 1, ["5", "8"]);
+my @coklu = $adb->field_fetch("catalog_product", 1, "5, 8");
 
 # 5. Sadece Kayıt ID'lerini alma (Bellek tasarruflu liste)
-my ($toplam, @id_listesi) = $dbp->field_fetch("catalog_product", 1, "5", 0, 50, keys_only => 1);
-my @tum_idlar             = $dbp->field_fetch("catalog_product", 1, "5", keys_only => 1);
+my ($toplam, @id_listesi) = $adb->field_fetch("catalog_product", 1, "5", 0, 50, keys_only => 1);
+my @tum_idlar             = $adb->field_fetch("catalog_product", 1, "5", keys_only => 1);
 ```
 
 > **Tekilleştirme (Deduplication) Garantisi:** Bir kayıt sorgulanan birden çok değerle aynı anda eşleşse dahi (`array_nodup` sayesinde) sonuç listesinde mükerrer olarak yer almaz, sadece bir kez döndürülür.
@@ -412,7 +419,7 @@ my @tum_idlar             = $dbp->field_fetch("catalog_product", 1, "5", keys_on
 Kullanıcının birden fazla kriter seçtiği arama ve filtreleme sayfaları için idealdir:
 
 ```perl
-my $sonuc = $dbp->field_filter("catalog_product", {
+my $sonuc = $adb->field_filter("catalog_product", {
     type   => "and",                        # Kriterlerin tümü sağlansın ("and" veya "or")
     filter => {
         1  => "5",                          # Kategori ID = 5
@@ -427,7 +434,7 @@ my $sonuc = $dbp->field_filter("catalog_product", {
 
 print "Filtreye uyan toplam kayıt: $sonuc->{count}\n";
 foreach my $id (@{ $sonuc->{ids} }) {
-    my @urun = $dbp->read_id("catalog_product", $id);
+    my @urun = $adb->read_id("catalog_product", $id);
     print "  -> $urun[4] - $urun[10] TL\n";
 }
 ```
@@ -438,10 +445,10 @@ foreach my $id (@{ $sonuc->{ids} }) {
 
 ```perl
 # 1. "kulaklık bluetooth" geçen ürünleri arama (Varsayılan: AND mantığı)
-my @sonuclar = $dbp->search_table("catalog_product", "kulaklık bluetooth");
+my @sonuclar = $adb->search_table("catalog_product", "kulaklık bluetooth");
 
 # 2. Sayfalı, OR mantıklı ve fiyata göre sıralı arama
-my ($adet, @sonuclar) = $dbp->search_table(
+my ($adet, @sonuclar) = $adb->search_table(
     "catalog_product",
     "kablosuz kulaklık",
     0, 20,                                  # İlk 20 sonuç
@@ -449,9 +456,9 @@ my ($adet, @sonuclar) = $dbp->search_table(
     sort => { blk => 10, reverse => 1 }     # Fiyata göre artan sırala
 );
 
-# 3. Arama sonucu sadece Kayıt ID'lerini alma (keys_only)
-my ($adet, @id_listesi) = $dbp->search_table("catalog_product", "sony", 0, 50, keys_only => 1);
-my @tum_idlar           = $dbp->search_table("catalog_product", "sony", keys_only => 1);
+# 3. Arama sonucu sadece Kayıt ID'lerini alma; ilk 50 kayıt (keys_only)
+my ($adet, @id_listesi) = $adb->search_table("catalog_product", "sony", 0, 50, keys_only => 1);
+my @tum_idlar           = $adb->search_table("catalog_product", "sony", keys_only => 1);
 ```
 
 #### AmberDB Arama Normalizasyonunun Öne Çıkan Güçlü Yönleri:
@@ -465,7 +472,7 @@ my @tum_idlar           = $dbp->search_table("catalog_product", "sony", keys_onl
 ```perl
 my @aranan_idlar = (105, 42, 89, 12);
 # Verilen ID sırasını aynen koruyarak kayıtları tek seferde getirir
-my @kayitlar = $dbp->read_list("catalog_product", \@aranan_idlar);
+my @kayitlar = $adb->read_list("catalog_product", \@aranan_idlar);
 ```
 
 ### 6.6 `table_attr` — Çalışma Zamanında Şemayı Dinamik Olarak Değiştirme
@@ -476,15 +483,42 @@ my @kayitlar = $dbp->read_list("catalog_product", \@aranan_idlar);
 # Senaryo 1: Fatura okuma veya hızlı kasa panelinde arama kapsamını daraltma
 # Tabloda normalde 2 (firma), 3 (yazar), 4 (başlık), 9 (barkod) aranırken,
 # anlık olarak sadece Başlık (4) ve Barkod (9) bloklarında arama yaptırma:
-$dbp->table_attr("catalog_product", { search_block => [ 4, 9 ] });
+$adb->table_attr("catalog_product", { search_block => [ 4, 9 ] });
 
 # Senaryo 2: Silinecek kayıtların saklanması istendiğinde şemadaki keep_deleted alanını true yapma
-$dbp->table_attr("catalog_product", { keep_deleted => 1 });
+$adb->table_attr("catalog_product", { keep_deleted => 1 });
 ```
 
-### 6.7 İndekssiz Tarama Modu (`record_index => 0` / `simple` Modu)
+### 6.7 Basit Mod ve İndekssiz Doğrudan Erişim (`simple => 1` / `record_index => 0`)
 
-Küçük veya orta ölçekli tablolarda diskte `.inx`, `.src`, `.fld` indeks dosyaları oluşturulmadan, doğrudan ana veri dosyası (`.db`) üzerinden `recs_scan` ile arama, alan eşleştirme ve listeleme yapılabilir. İndekssiz modda dahi tüm `keys_only`, `sort`, `start`/`limit` ve Türkçe normalizasyon yetenekleri tam parite ile çalışır.
+AmberDB'de **Basit Mod (`simple`)**, verinin yapısını veya karmaşıklığını kısıtlamaz. Tablolarınız JSON benzeri hiyerarşik bloklara, tekrarlayan alt kayıtlara (repeating blocks) veya çok sütunlu zengin veri modellerine sahip olabilir. 
+
+Basit modun tek ve temel farkı: **İkincil indeksleme mekanizmasının (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, `.rwt`) tamamen devre dışı bırakılmasıdır.** Veriler doğrudan tek bir ana veri dosyasına yazılır ve okunur; filtreleme, arama ve sıralama işlemleri indeks dosyaları yerine doğrudan veri akışı üzerinden sıralı tarama (`recs_scan`) yöntemiyle gerçekleştirilir. Bu sayede indeks bakım ve güncelleme maliyeti ortadan kalkar. İndekssiz çalışırken dahi `keys_only`, `sort`, `start`/`limit` ve dil/Türkçe normalizasyonu tam parite ile çalışır.
+
+#### Basit Modun Temel Kuralları:
+
+1. **Dizin ve Dosya Yolu Davranışı:**  
+   Standart modda tablolar `dbstore/tables/` altında aranır ve oluşturulur. Ancak `simple` modunda motor `tables/` alt klasörünü aramaz; dosyaları doğrudan `dbase_dir` yolunun kökünde arar ve yazar (`$dbase_dir/<tablo>.<uzanti>`). Dolayısıyla, standart modda oluşturulmuş tabloları `simple` mod ile açmak istediğinizde, `dbase_dir` yolunu doğrudan **`dbstore/tables`** olarak belirtmelisiniz:
+   ```perl
+   # Standart tabloları simple mod ile açma:
+   my $adb = AmberDB->new(
+       path => { dbase_dir => "/var/data/eticaretim/dbstore/tables" },
+       cfg  => { simple    => 1 },
+   );
+   ```
+
+2. **Özel Dosya Uzantısı ile Otomatik Basit Moda Geçiş (`db_ext`):**  
+   AmberDB'de varsayılan tablo dosya uzantısı `.db`'dir. Eğer yapılandırmada `db_ext` için `"db"` dışında farklı bir uzantı tanımlarsanız (örneğin `"dat"`, `"txt"`, `"idx"` veya `""`), motor **otomatik olarak `simple` moduna geçer**:
+   ```perl
+   # 1. new() başlatıcısında özel uzantı tanımlama (otomatik simple mod):
+   my $adb = AmberDB->new(
+       path => { dbase_dir => "/var/data/dizin" },
+       cfg  => { db_ext    => "dat" },  # 'dat' uzantısı motoru otomatik simple moda alır
+   );
+
+   # 2. Çalışma zamanında config() ile uzantı değiştirme:
+   $adb->config( db_ext => "dat" );     # Otomatik olarak simple => 1 uygulanır
+   ```
 
 
 ### 6.8 Varlık Kontrol Fonksiyonları
@@ -493,21 +527,21 @@ Tüm kaydı belleğe çekmeden önce kaydın veya tablonun varlığını hızlı
 
 ```perl
 # 1. Tekil Kayıt Varlık Kontrolü (O(1) doğrudan anahtar kontrolü)
-if ($dbp->exist_id("catalog_product", 5001)) {
+if ($adb->exist_id("catalog_product", 5001)) {
     print "5001 ID'li ürün veritabanında mevcut.\n";
 }
 
 # 2. Çoklu Kayıt Varlık Kontrolü (Toplu doğrulama)
-my $varlik_haritasi = $dbp->exist_list("catalog_product", 5001, 5002, 9999);
+my $varlik_haritasi = $adb->exist_list("catalog_product", 5001, 5002, 9999);
 # $varlik_haritasi döner: { 5001 => 1, 5002 => 1, 9999 => 0 }
 
 # 3. Fiziksel Tablo / Dosya Varlık Kontrolü
-if ($dbp->exist_table("catalog_product")) {
+if ($adb->exist_table("catalog_product")) {
     print "catalog_product.db dosyası diskte mevcut.\n";
 }
 
 # Belirli bir uzantının varlığını kontrol etme (örn: .rwt SEO dosyası)
-if ($dbp->exist_table("catalog_product", "rwt")) {
+if ($adb->exist_table("catalog_product", "rwt")) {
     print "SEO indeks dosyası mevcut.\n";
 }
 ```
@@ -516,17 +550,17 @@ if ($dbp->exist_table("catalog_product", "rwt")) {
 
 ```perl
 # 1. Tablodaki İlk Kaydı Okuma (Sayısal en küçük ID)
-my @ilk_urun = $dbp->read_firstid("catalog_product");
+my @ilk_urun = $adb->read_firstid("catalog_product");
 
 # 2. Tablodaki En Son Eklenen Kaydı Okuma (Sayısal en büyük ID)
-my @son_urun = $dbp->read_lastid("catalog_product");
+my @son_urun = $adb->read_lastid("catalog_product");
 
 # 3. Rastgele Tekil Kayıt Okuma (Günün fırsatı / Rastgele vitrin önerisi)
-my @rastgele_urun = $dbp->read_randid("catalog_product");
+my @rastgele_urun = $adb->read_randid("catalog_product");
 print "Günün Fırsatı: $rastgele_urun[4] ($rastgele_urun[10] TL)\n";
 
 # 4. Kaydın Görüntülenme / Tıklanma Sayısını Okuma (.cnt dosyası)
-my $okunma_sayisi = $dbp->read_count("catalog_product", 5001);
+my $okunma_sayisi = $adb->read_count("catalog_product", 5001);
 print "Ürün 5001 toplam $okunma_sayisi kez görüntülendi.\n";
 ```
 
@@ -542,6 +576,7 @@ AmberDB, tablolara hızlı erişim sağlamak için veriyi şemada tanımlanan ku
 |---|---|---|
 | `.inx` | Kayıt İndeksi | Tablodaki tüm aktif ID'lerin sıralı ikili dizisi, toplam kayıt ve son ID bilgisi. |
 | `.fld` | Eşleştirme (Match) | Blok bazlı değer eşleştirmesi (`field_fetch`). Değer → ID ikili dizisi. |
+| `.str` | Alan Sözlüğü (Dictionary) | `.fld` eşlikçisi; serbest metinleri sayısal ID'lere bağlayan çift yönlü sözlük (`_${blk}.str`). |
 | `.src` | Tam Metin (Search) | Kelime bazlı ters indeks (`search_table`). Kelime → ID ikili dizisi. |
 | `.srt` | Sıralama (Sort) | Belirlenen bloklara göre önceden sıralanmış ikili RID dizisi (`sort_block`). |
 | `.fac` | Facet İndeksi | E-ticaret filtreleme panelleri için kayıt başına aktiflik ve özellik haritası. |
@@ -555,7 +590,20 @@ AmberDB, indeks dosyalarında maksimum performans ve minimum disk boyutu elde et
 
 Bu sayede milyonlarca kayıt içeren indeks dosyalarında sayfalama (`LIMIT/OFFSET`), belleğe tüm listeyi yüklemeden doğrudan `substr` ile $O(1)$ zero-copy ikili ofset dilimleme yöntemiyle gerçekleştirilir.
 
-### 7.3 Sıralama Mekanizması ve Kullanım Rehberi
+### 7.3 Eşleştirme İndeksi (`.fld`) ve Çift Yönlü Alan Sözlüğü (`.str`)
+
+AmberDB'de `match_block` içinde tanımlanan alanlar için indeksleme iki tamamlayıcı katmanda gerçekleşir:
+
+1. **İkili Eşleştirme İndeksi (`.fld`):**  
+   Her bir alan için `<tablo>_<blok>.fld` dosyası tutulur. Bu dosya, tekil değer anahtarları karşılığında ilgili kayıt ID'lerini 8-baytlık ikili paketlenmiş diziler (`Q*` / `a8*`) olarak saklar. `field_fetch` sorguları bu dosyadan doğrudan $O(1)$ tekil anahtar okuması yapar.
+
+2. **Çift Yönlü Alan Sözlüğü (`.str`):**  
+   Eğer indekslenen alan serbest metin (kategori adı, marka adı, yazar, etiket vb.) içeriyorsa, motor otomatik olarak `<tablo>_<blok>.str` sözlük dosyasını yönetir:
+   * **İleri Yön (`s:<metin>` $\rightarrow$ `$nid`):** Metin ifadelerine benzersiz artan sayısal bir kimlik (`$nid`) atar.
+   * **Geri Yön (`n:$nid` $\rightarrow$ `<metin>`):** Sayısal kimlikten orijinal metin etiketine anında dönüş sağlar.
+   * **Otomatik Çözümleme:** `field_fetch` veya `field_filter` çağrıldığında geliştirici ister sayısal ID (`12`) ister metin dizesi (`"Sony"`) versin, motor `.str` sözlüğünden değeri otomatik çözümler ve `.fld` üzerinden anında eşleşen kayıtları getirir.
+
+### 7.4 Sıralama Mekanizması ve Kullanım Rehberi
 
 AmberDB, tablolardaki belirli bloklara göre yüksek performanslı ve önceden indekslenmiş sıralama yeteneği sunar.
 
@@ -563,7 +611,7 @@ AmberDB, tablolardaki belirli bloklara göre yüksek performanslı ve önceden i
 Sıralama yapılacak alanlar tablo şema dosyasında (`.table`) tanımlanır. Sadece blok numarası verilebileceği gibi (`4`), sayısal veya tarihsel alanlar için tip (`type`) belirtilebilir:
 
 ```perl
-# dbstore/scheme/catalog_product.table
+# dbstore/schema/catalog_product.table
 {
     id_type    => 'num',
     sort_block => [
@@ -579,19 +627,19 @@ Sıralama yapılacak alanlar tablo şema dosyasında (`.table`) tanımlanır. Sa
 
 ```perl
 # 1. Varsayılan Yön: Azalan / Büyükten Küçüğe (DESC: 99->0, Z->A)
-my @urunler = $dbp->read_all("catalog_product", sort => 10);
-my @urunler = $dbp->read_all("catalog_product", sort => { blk => 10 });
+my @urunler = $adb->read_all("catalog_product", sort => 10);
+my @urunler = $adb->read_all("catalog_product", sort => { blk => 10 });
 
 # 2. Ters Yön: Artan / Küçükten Büyüğe (ASC: 0->99, A->Z)
-my @urunler = $dbp->read_all("catalog_product", sort => -10);
-my @urunler = $dbp->read_all("catalog_product", sort => { blk => 10, reverse => 1 });
+my @urunler = $adb->read_all("catalog_product", sort => -10);
+my @urunler = $adb->read_all("catalog_product", sort => { blk => 10, reverse => 1 });
 
 # 3. Birincil Anahtar (ID) Artan Sıralama:
-my @urunler = $dbp->read_all("catalog_product", sort => { reverse => 1 }); # 1..N en eski ilk
+my @urunler = $adb->read_all("catalog_product", sort => { reverse => 1 }); # 1..N en eski ilk
 
 # 4. field_fetch ve search_table ile Sıralı Filtreleme:
-my @kat_urunleri = $dbp->field_fetch("catalog_product", 1, "elektronik", sort => { blk => 10, reverse => 1 });
-my ($adet, @arama) = $dbp->search_table("catalog_product", "kulaklık", 0, 20, sort => -10);
+my @kat_urunleri = $adb->field_fetch("catalog_product", 1, "elektronik", sort => { blk => 10, reverse => 1 });
+my ($adet, @arama) = $adb->search_table("catalog_product", "kulaklık", 0, 20, sort => -10);
 ```
 
 ---
@@ -624,49 +672,63 @@ Farklı veri türlerinin disk üzerinde standart ve doğru sıralanabilmesi içi
 
 ---
 
-## 8. İşlem Güvenliği ve Kurtarma (Transactions)
+## 8. İşlem Güvenliği, ACID Garantileri ve Kurtarma (Transactions)
 
-`AmberDB::Transact`, çoklu tablo güncellemelerinde veya kritik iş kurallarında (örn. sipariş oluşturma + stok düşme) ACID benzeri işlem bütünlüğü sağlar.
+`AmberDB::Transact`, çoklu tablo güncellemelerinde ve döngüsel iş kurallarında (örn. sipariş oluşturma + stok düşme + bakiye tahsilatı) **tam ACID uyumlu (ACID-Compliant)** işlem bütünlüğü ve **Strict Two-Phase Locking (Strict 2PL)** yalıtımı sağlar.
 
-### 8.1 Transaction Yaşam Döngüsü
+### 8.1 AmberDB'de ACID Şartlarının Karşılanması
 
-1. **`transact_start()`**: Yeni bir işlem başlatır, `$dbase_dir/txn/` altında mikrosaniye hassasiyetinde bir `.txn` undo günlüğü açar.
-2. **CRUD Çağrıları**: `insert_id`, `modify_id`, `delete_id` işlemleri hem ana `.db` dosyasına hem de `.txn` günlüğüne yapılan işlemin tersini (undo verisi) yazar.
+AmberDB, gömülü (embedded) ve şema güdümlü mimarisine uygun olarak 4 temel ACID ilkesini şu mekanizmalarla garanti eder:
+
+| İlke | Kısaltma | AmberDB'deki Teknik Karşılığı ve Güvencesi |
+| :--- | :--- | :--- |
+| **Atomicity** | **A** (Atomiklik) | **Disk Destekli Geri Alma Günlüğü (Undo-Journal):** `transact_start` ile mikrosaniye hassasiyetinde `.txn` kütüğü açılır. Yapılan her `insert_id`, `modify_id`, `delete_id` çağrısının tersi (undo verisi) günlüğe kaydedilir. Hata veya `transact_rollback` durumunda, yapılan tüm değişiklikler ana `.db` dosyasında, `.del` arşivinde, `.aut` denetim izinde ve ilişkili ikincil indekslerde (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, `.rwt`, `.jinx`, `.jsrc`, `.jfld`) **LIFO (son yapılan ilk)** sırasıyla tamamen geri alınır. |
+| **Consistency** | **C** (Tutarlılık) | **Şema, İndeks ve Durum Bütünlüğü:** Her kayıt tanımlı şema alanlarına (`schema`), veri tiplerine ve boyut sınırlarına göre doğrulanır. Otomatik artan sayaç (`autoid`), ikincil arama/faset indeksleri ve SEO URL eşleşmeleri işlem anında eşzamanlı güncellenir. Bir işlem geri alındığında bellek önbelleği (`cache_delete`) ve tüm indeks türevleri eski temiz haline getirilerek veritabanı asla tutarsız ara durumda bırakılmaz. |
+| **Isolation** | **I** (Yalıtım) | **Strict Two-Phase Locking (Strict 2PL):** Bir transaction sırasında değiştirilen tüm kayıtlar işletim sistemi seviyesinde `flock(LOCK_EX)` ile kilitlenir. Kilitler işlem devam ederken açık tutulur; başka hiçbir sürecin bu kayıtları eşzamanlı değiştirmesine izin verilmez. Kilitler yalnızca `transact_end` veya `transact_rollback` anında topluca serbest bırakılır. Bu sayede serileştirilebilir (Serializable) seviyede yalıtım sağlanır. |
+| **Durability** | **D** (Dayanıklılık) | **Senkronize Günlükleme & Çökme Kurtarma (`transact_recover`):** Her günlük yazımında `$fh->flush` işletilir; `cfg => { txn_sync => 1 }` yapılandırıldığında çekirdek seviyesinde `fsync` (`$fh->sync`) ve Berkeley DB tampon senkronizasyonu (`DB_File->sync`) uygulanır. Süreç aniden çökse bile yetim (orphan) `.txn` dosyaları kilit durumuna göre tespit edilir ve otomatik olarak geri alınır. |
+
+> **Not: Toplu İşlemler (Batch / ETL) ve Transaction Ayrımı**  
+> `insert_list`, `modify_list` ve `delete_list` metotları, harici XML/JSON/CSV dosyalarından yüksek verimli toplu veri aktarımları (ETL) için tasarlanmıştır. Bu tür yüklemelerde bozuk birkaç kayıt için binlerce geçerli kaydın geri alınması istenmez. Karşılıklı bağımlılık ve atomik bütünlük gerektiren iş mantığı süreçlerinde (sipariş, stok, fatura) tekil CRUD metotları (`insert_id`, `modify_id`, `delete_id`) transaction bloğu içinde çalıştırılır.
+
+### 8.2 Transaction Yaşam Döngüsü
+
+1. **`transact_start()`**: Yeni bir işlem başlatır, `$dbase_dir/txn/` altında mikrosaniye hassasiyetinde bir `.txn` undo günlüğü açar ve yetim işlemleri onarır (`transact_recover`).
+2. **CRUD Çağrıları**: `insert_id`, `modify_id`, `delete_id` işlemleri hem ana `.db` dosyasına yazar, ilgili kaydın `flock` yazma kilidini alır ve `.txn` günlüğüne yapılan işlemin tersini (undo verisi) yazar.
 3. **`transact_end()`**: İşlemi sonlandırır.
-   - Herhangi bir hata oluşmadıysa: Günlük silinir ve değişiklikler kalıcı olur (`status => "commit"`).
-   - Taban veritabanında kritik bir hata oluştuysa: Günlük LIFO (son yapılan ilk) sırasıyla okunarak hem ana kayıtlar hem tüm indeksler eski haline geri döndürülür (`status => "rollback"`).
+   - Herhangi bir hata oluşmadıysa: Günlük silinir, kilitler açılır ve değişiklikler kalıcı olur (`status => "commit"`).
+   - Taban veritabanında kritik bir hata oluştuysa: Günlük LIFO sırasıyla okunarak hem ana kayıtlar hem tüm indeksler eski haline geri döndürülür, kilitler serbest bırakılır (`status => "rollback"`).
 4. **`transact_rollback()`**: İş mantığına bağlı olarak (örneğin stok yetersizliği durumunda) işlemi zorla geri alır.
 
-### 8.2 Örnek: Sipariş ve Stok Yönetimi Transaction'ı
+### 8.3 Örnek: Sipariş ve Stok Yönetimi Transaction'ı
 
 ```perl
 # 1. Transaction başlat
-$dbp->transact_start();
+$adb->transact_start();
 
 my $urun_id = 42;
 my $adet    = 2;
 my $user_id = 1001;
 
 # Ürünü oku ve stok kontrolü yap
-my @urun = $dbp->read_id("catalog_product", $urun_id);
+my @urun = $adb->read_id("catalog_product", $urun_id);
 my $mevcut_stok = $urun[8]; # Blok 8 = Stok miktarı
 
 if ($mevcut_stok < $adet) {
     # Stok yetersiz, işlemi manuel geri al
-    $dbp->transact_rollback();
+    $adb->transact_rollback();
     die "Hata: Yetersiz stok! İşlem iptal edildi.\n";
 }
 
-# Stoğu düş ve güncelle
+# Stoğu düş ve güncelle (kayıt kilitlenir, undo log yazılır)
 $urun[8] -= $adet;
-$dbp->modify_id("catalog_product", $urun_id, @urun[1..$#urun]);
+$adb->modify_id("catalog_product", $urun_id, @urun[1..$#urun]);
 
 # Sipariş kaydı oluştur
 my @siparis = ( $user_id, $urun_id, $adet, time(), "onaylandi" );
-my $siparis_id = $dbp->insert_id("orders", undef, @siparis);
+my $siparis_id = $adb->insert_id("orders", undef, @siparis);
 
-# Transaction'ı tamamla
-my $sonuc = $dbp->transact_end();
+# Transaction'ı tamamla (kilitler serbest bırakılır, journal temizlenir)
+my $sonuc = $adb->transact_end();
 
 if ($sonuc->{status} eq "commit") {
     print "Sipariş #$siparis_id başarıyla oluşturuldu ve stok düşüldü!\n";
@@ -675,13 +737,13 @@ if ($sonuc->{status} eq "commit") {
 }
 ```
 
-### 8.3 Journal Dayanıklılığı ve Kurtarma (Durability & Crash Recovery)
+### 8.4 Journal Dayanıklılığı ve Kurtarma (Durability & Crash Recovery)
 
 - **IO::Handle Tampon Temizliği (Flush/Sync):** Her işlem anında `$fh->flush` ile tampondan diske iletilir. İsteğe bağlı olarak `cfg => { txn_sync => 1 }` yapılandırıldığında işletim sistemi ve disk seviyesinde fiziksel senkronizasyon (`$fh->sync` / `fsync`) gerçekleştirilir.
 - **`flock` Tabanlı Sahiplik:** Transaction başlatıldığında `.txn` dosyası üzerinde non-blocking exclusive kilit (`LOCK_EX | LOCK_NB`) alınır. Süreç çalıştığı müddetçe kilit korunur; sürecin çökmesi halinde kilit işletim sistemi tarafından otomatik serbest bırakılır.
 - **Yetim İşlem Kurtarma (`transact_recover`):** Sunucunun aniden kapanması veya Perl sürecinin beklenmedik şekilde sonlanması durumunda `txn/` klasöründe kalan yetim (orphan) `.txn` dosyaları taranır. `flock` ile dosya kilidinin serbest kaldığı ve sürecin ölü olduğu doğrulanırsa kayıtlar ve indeksler otomatik olarak kararlı duruma geri döndürülür. Eşzamanlı canlı süreçlerin dosyalarına yarış durumuna (race condition) mahal vermeden kesinlikle dokunulmaz.
 
-### 8.4 Temel Mimari İlke: Otoriter Veri vs. Yeniden Üretilebilir İndeksler
+### 8.5 Temel Mimari İlke: Otoriter Veri vs. Yeniden Üretilebilir İndeksler
 
 AmberDB'nin dosya ve işlem mimarisi kesin bir hiyerarşiye dayanır:
 
@@ -696,6 +758,31 @@ AmberDB'nin dosya ve işlem mimarisi kesin bir hiyerarşiye dayanır:
 
 > **Transaction Tasarımının Temeli:** `AmberDB::Transact` mekanizması bu ilkeye göre kurgulanmıştır. Ana `.db` yazımında bir hata oluşursa (`is_index == 0`) transaction otomatik olarak geri alınır (`rollback`). Ancak ana veri `.db`'ye başarıyla yazıldıktan sonra bir indeks yazımında hata oluşursa (`is_index == 1`), geçerli ve parası ödenmiş/onaylanmış iş verisi çöpe atılmaz; transaction başarılı kabul edilir ve indeks sonradan `AmberDB::Tools` ile kolayca yeniden indekslenir.
 
+### 8.6 Tali Tabloları Transaction Hata Zincirinden Muaf Tutma (`no_transact`)
+
+Karmaşık iş akışlarında (örneğin sipariş oluşturma + stok düşme + bakiye tahsilatı) bazı tablolar **çekirdek işlem** (sipariş, ödeme, stok), bazı tablolar ise **tali / yardımcı veri** (müşteri sipariş geçmişi özeti, ürün görüntüleme sayaçları, bildirim kuyrukları) niteliğindedir. Tali bir tabloya yazarken oluşabilecek beklenmedik bir hata yüzünden parası ödenmiş asıl siparişin iptal edilmesi (`rollback`) istenmez.
+
+AmberDB, şemada veya çalışma zamanında `no_transact => 1` tanımlanmış tabloları **transaction hata zincirinden muaf tutar**:
+
+1. **Statik Şema Tanımı (`.table` dosyası):**
+   ```perl
+   # order_customer_summary.table
+   {
+       name        => "Müşteri Sipariş Özeti",
+       no_transact => 1,   # Hata oluşursa ana transaction'ı iptal etme
+       schema      => [qw(user_id order_id amount created_at)],
+   }
+   ```
+
+2. **Dinamik Çalışma Zamanı Tanımı (`table_attr`):**
+   ```perl
+   # Çalışma anında belirli bir akış için tabloyu muaf tutma:
+   $adb->table_attr("order_customer_summary", no_transact => 1);
+   ```
+
+> **Nasıl Çalışır?**  
+> - `no_transact => 1` olan bir tabloya yazarken hata oluşursa, bu hata `is_index` gibi değerlendirilir ve `transact_end` ana işlemi başarıyla `commit` eder.  
+> - Ancak ana işlemde (ödeme/stok) gerçek bir hata olur ve transaction `rollback` edilirse, `no_transact` tablosundaki kayıtlar da **tutarlılık gereği `.txn` kütüğünden otomatik olarak geri alınır**. Böylece veritabanında asla hayalet/tutarsız kayıt kalmaz.
 
 ---
 
@@ -705,18 +792,18 @@ Eşzamanlı süreçlerin aynı anda aynı kaydı veya tabloyu değiştirmesini e
 
 ```perl
 # 1. Belirli bir kayıt üzerinde yazma kilidi (Exclusive Lock) alma
-if ($dbp->flock_open("catalog_product", "write", $urun_id)) {
+if ($adb->flock_open("catalog_product", "write", $urun_id)) {
     # Kritik kayıt güncelleme işlemleri...
     
     # Kilidi serbest bırak
-    $dbp->flock_close("catalog_product", $urun_id);
+    $adb->flock_close("catalog_product", $urun_id);
 }
 
 # 2. Tüm tablo üzerinde paylaşımlı okuma kilidi (Shared Read Lock) alma
-if ($dbp->flock_open("catalog_product", "read")) {
+if ($adb->flock_open("catalog_product", "read")) {
     # Tablo genelinde tutarlı okuma...
     
-    $dbp->flock_close("catalog_product");
+    $adb->flock_close("catalog_product");
 }
 ```
 
@@ -724,78 +811,246 @@ if ($dbp->flock_open("catalog_product", "read")) {
 
 ---
 
-## 10. Şema Yapılandırması (.table)
+## 10. Şema Yapılandırması (.table ve Kod İçi / In-Memory)
 
-### 10.1 Tablo İsimlendirme Standardı (Naming Conventions)
+AmberDB şema güdümlü (schema-driven) bir veritabanı motorudur. Tablo şemaları; birincil anahtar kısıtlamalarını, alan tiplerini, çok boyutlu indeksleri, otomatik SEO URL (slug) üretimini, facet filtrelerini, yaşam döngüsü (junk) kurallarını, veri doğrulama kurallarını ve SQL `JOIN` gerektirmeyen genişleyen dinamik alt kayıtları yönetir.
 
-AmberDB, deterministik ve otomatik yol çözümlemesi için kesin bir tablo isimlendirme kuralı uygular:
+### 10.1 Şemanın Rolü ve Esnekliği: Zorunlu mu, İsteğe Bağlı mı?
 
-* **Format:** Tüm tablo isimleri **küçük harf (lowercase)**, alfanümerik karakterler ve **snake_case** formatında olmalıdır: `<veritabani>_<tablo_adi>` (Örn: `catalog_product`, `member_address`, `orders_item`).
-* **Veritabanı Öneki Ayrıştırma:** Tablo adındaki ilk alt çizgiye (`_`) kadar olan bölüm, tablonun ait olduğu mantıksal veritabanı grubunu (`<veritabani>.dbase`) belirler.
-* **Şema Dosyası Eşleşmesi:** Örneğin `catalog_product` tablosunun şeması `dbstore/scheme/catalog_product.table` dosyasında, grup ayarları ise `dbstore/scheme/catalog.dbase` dosyasında saklanır.
-* **Büyük/Küçük Harf Kuralı:** `Catalog_Product` veya `userProfile` gibi büyük/karma harfli isimlendirmeler desteklenmez; veritabanı grup ayrıştırmasının başarısız olmasına yol açabilir.
+AmberDB'de şema tasarımı **tamamen esnek ve katmanlıdır**:
 
-### 10.2 Örnek Şema Dosyası
-
-Her tablonun `dbstore/scheme/<tablo_adi>.table` yolunda bir şema dosyası bulunur. Bu dosya tablonun indeksleme, arama ve doğrulama kurallarını belirleyen bir Perl hash döndürür:
+* **Minimalist / Hafif Kullanım:** Şema dosyasında `blocks` (alan listesi) tanımlamak **zorunlu değildir**. Sadece hangi blokların indeksleneceğini belirten `record_index`, `match_block`, `search_block` ve `sort_block` tanımlanarak ultra hafif ve yüksek hızlı bir konfigürasyon oluşturulabilir.
 
 ```perl
-# dbstore/scheme/catalog_product.table
+# dbstore/schema/catalog_product.table
 {
     name         => "Ürün Kataloğu",
-    id_type      => "num",                  # "num" (64-bit sayı) veya "ascii" (max 8 bayt)
-    record_index => 1,                      # .inx indeksini aktif et
-    
-    # İndeks Blok Tanımları
-    match_block  => [1, 2, 3, 20],          # .fld eşleştirme blokları (Kategori, Marka, Yazar, Statü)
-    search_block => [4, 5, 7, 9],           # .src tam metin arama blokları (Ad, Açıklama, Barkod)
-    sort_block   => [ 4, { blk => 10, type => 'num' } ], # .srt sıralama indeksleri
-    facet_block  => [1, 2, 3, 20],          # .fac filtre blokları
-    seo_block    => [2, 4],                 # .rwt URL slug blokları (Marka + Ürün Adı)
-    
-    # Tablo Davranış Ayarları
-    use_cache    => 1,                      # 0: Kapalı, 1: Soft (.inx meta), 2: Hard (.db & .inx tam RAM aynası)
-    cache_ttl    => 3600,                   # L2 önbellek geçerlilik süresi (saniye)
+    id_type      => "num",                  # "num" (64-bit uint) veya "ascii" (max 8 bayt)
+    record_index => 1,                      # .inx birincil indeksini ve auto-increment sayacını açar
+    match_block  => [ 1, 2, 3, 11 ],        # .fld Birebir eşleşme (Kategori, Marka, Yazar, Statü)
+    search_block => [ 4, 5, 7, 9 ],         # .src Tam metin arama (Ad, Alt Başlık, Açıklama, Barkod)
+    sort_block   => [ 4, { blk => 10, type => 'num' } ], # .srt Önceden sıralanmış binary ID indeksleri
     keep_deleted => 1,                      # Silinenleri .del dosyasında sakla (Soft-delete)
-    log_owner    => 1,                      # Kullanıcı denetim izini .aut dosyasına yaz
-    use_facet    => 1,                      # Facet filtrelemeyi aktif et
-    facet_rules  => [ [ 20, "eq", 1 ] ],      # Sadece Satış Statüsü (Blok 20) == 1 olanlar facette görünsün
-    min_char     => 2,                      # Tam metin aramada indekslenecek minimum kelime boyu
+    log_owner    => 1,                      # Değişiklikleri yapan kullanıcıyı .aut dosyasına yaz
     
-    # Blok Tanımları (Alan Detayları)
+}
+```
+
+* **Gelişmiş / Form ve Doğrulama Destekli Kullanım:** `blocks` dizisi tanımlandığında; alan veri tipleri (`type`), form arayüz giriş bileşenleri (`input`), zorunlu/geçerli alan doğrulamaları (`valid`) ve ilişkili tablo eşleşmeleri (`rdbm`) otomatik olarak devreye girer.
+
+### 10.2 Şema Tanımlama ve Okuma Yöntemleri (`table_info` & `table_attr`)
+
+AmberDB'de şema iki şekilde tanımlanabilir ve programatik olarak okunabilir:
+
+1. **Fiziksel Dosya Tabanlı Şema (Önerilen):**  
+   Tablo şemaları `dbstore/schema/<tablo_adi>.table` dosyasına yerleştirilir. AmberDB ilk erişimde bu dosyayı otomatik olarak okur ve ayrıştırır.
+
+2. **Bellek İçi Dinamik Şema (Programmatic / In-Memory):**  
+   Disk dosyasına gerek kalmadan doğrudan `$adb->table_attr("tablo_adi", { ... })` metoduyla çalışma zamanında tanımlanır.
+
+3. **Yüklü Şemayı Okuma (`table_info`):**  
+   Tanımlı bir tablonun tüm şema konfigürasyonunu bellekten veya diskten hash referansı olarak almak için `$adb->table_info($tablo_adi)` kullanılır:
+   ```perl
+   my $schema = $adb->table_info("catalog_product");
+   print "Tablo Adı: $schema->{name}\n";
+   print "Arama Blokları: " . join(", ", @{ $schema->{search_block} || [] }) . "\n";
+   ```
+
+> [!IMPORTANT]
+> **Şema Dosyaları (`.table` ve `.dbase`) Doğal Perl Kodudur (Hash Reference)**  
+> AmberDB'de `.table` ve `.dbase` dosyaları JSON veya YAML değil, doğrudan Perl sözdizimiyle (`{ ... }`) yazılmış doğal Perl hash referansı yapılarıdır. Motor bu dosyaları çalışma zamanında Perl'in yerel `do` ifadesi ile dinamik olarak derler ve yükler.
+>
+> * **Sözdizimi Hatası Koruması:** Dosyada eksik virgül (`,`), kapatılmamış parantez (`}` veya `]`), hatalı tırnak işareti veya geçersiz bir Perl karakteri bulunursa `do` işlemi `undef` döner ve motor şemayı **kesinlikle yükleyemez** (şema boş kalır ve indeksleme kuralları devre dışı kalır).
+> * **Doğrulama İpucu:** Şema dosyalarınızı kaydettikten sonra terminalden `perl -c dbstore/schema/tablo.table` komutuyla derleme kontrolü yaparak sözdizimi hatalarını anında görebilirsiniz.
+
+### 10.3 Şema Dosyası Eşleşme Kuralları
+
+AmberDB, tablo adını ayrıştırarak hangi şema dosyasını ve veritabanı ayarlarını yükleyeceğini otomatik belirler:
+
+* **Veritabanı Ön Eki:** Tablo adında ilk alt çizgiden (`_`) önceki kısım veritabanı / mantıksal grup adıdır.
+* **Şema Dosyası Eşleşmesi:** Örneğin `catalog_product` tablosunun şeması `dbstore/schema/catalog_product.table` dosyasında, grup ayarları ise `dbstore/schema/catalog.dbase` dosyasında saklanır.
+
+### 10.4 Örnek Tablo Şeması (`catalog_product.table`)
+
+Aşağıda e-ticaret ürün kataloğu için kapsamlı bir `.table` şema örneği verilmiştir:
+
+```perl
+# dbstore/schema/catalog_product.table
+{
+    name         => "Ürün Kataloğu",
+    id_type      => "num",                  
+    record_index => 1,                      
+    match_block  => [ 1, 2, 3, 11 ],        
+    search_block => [ 4, 5, 7, 9 ],         
+    sort_block   => [ 4, { blk => 10, type => 'num' } ], 
+    facet_block  => [ 1, 2, 3, 11 ],        
+    seo_block    => [ 2, 4 ],               
+    
+    use_facet    => 1,                      
+    facet_rules  => [ [ 11, "eq", 1 ] ],    
+    use_junk     => 1,                      
+    junk_rules   => [ [ 11, "eq", 0 ] ],    
+    use_cache    => 1,                      
+    cache_ttl    => 3600,                   
+    keep_deleted => 1,                      
+    log_owner    => 1,                      
+    min_char     => 2,                      
+    
     blocks => [
-        # Blok 0: Her zaman birincil anahtardır (ID)
         { id => "id",           name => "Ürün ID",     type => "auto_id", input => "hidden" },
-        { id => "category_id",  name => "Kategori",    type => "text",    input => "select", rdbm => "catalog_category;2" },
-        { id => "brand_id",     name => "Marka",       type => "text",    input => "select", rdbm => "catalog_brand;2" },
+        { id => "category_id",  name => "Kategori",    type => "text",    input => "select",   rdbm => "catalog_category;2" },
+        { id => "brand_id",     name => "Marka",       type => "text",    input => "select",   rdbm => "catalog_brand;2" },
         { id => "author_id",    name => "Yazar",       type => "text",    input => "text" },
-        { id => "title",        name => "Ürün Adı",    type => "text",    input => "text",   valid => "not_null" },
+        { id => "title",        name => "Ürün Adı",    type => "text",    input => "text",     valid => "not_null" },
         { id => "subtitle",     name => "Alt Başlık",  type => "text",    input => "text" },
         { id => "supplier",     name => "Tedarikçi",   type => "text",    input => "text" },
-        { id => "description",  name => "Açıklama",    type => "text",    input => "textarea" },
-        { id => "stock",        name => "Stok Adedi",  type => "text",    input => "text" },
+        { id => "description",  name => "Açıklama",    type => "html",    input => "textarea" },
+        { id => "stock",        name => "Stok Adedi",  type => "num",     input => "text" },
         { id => "barcode",      name => "Barkod",      type => "text",    input => "text" },
-        { id => "price",        name => "Fiyat",       type => "text",    input => "text" },
-        { id => "status",       name => "Satış Durumu",type => "option",  input => "select", option => "1:Satışta,0:Pasif" },
+        { id => "price",        name => "Fiyat",       type => "num",     input => "text" },
+        { id => "status",       name => "Satış Durumu",type => "option",  input => "select",   option => "1:Satışta,0:Pasif" },
     ],
 }
 ```
 
-### 10.2 Dinamik Genişleyen Tablolar ve Tekrarlayan Bloklar (`repeat_ids` & `repeat_start`)
+### 10.5 Şema Parametreleri ve Konfigürasyon Referansı (Tablo Düzeyi)
 
-AmberDB, sabit sütun sınırlarını aşarak tek bir ana döküman kaydının sonuna değişken sayıda alt eleman (sipariş kalemleri, sepet ürünleri, fatura satırları) eklenmesine olanak tanır. Bu özellik ilişkisel SQL'deki `orders` $\leftrightarrow$ `order_items` gibi ara tabloları ve `JOIN` işlemlerini tamamen ortadan kaldırır.
+Aşağıdaki tablo, bir `.table` dosyasında kullanılabilecek tüm üst düzey parametreleri, veri tiplerini, varsayılan değerlerini ve geriye dönük uyumluluk (eski sistem) karşılıklarını listeler:
 
-#### 1. Şema Yapılandırması (`order_active.table` Örneği)
+| Parametre | Tip | Varsayılan | Eski / Alternatif Adı | Açıklama |
+| :--- | :--- | :--- | :--- | :--- |
+| `name` | `string` | `"Tablo"` | — | Tablonun insan tarafından okunabilir adı/başlığı. |
+| `id_type` | `string` | `"num"` | — | Birincil anahtar tipi: `"num"` (64-bit tamsayı) veya `"ascii"` (maks 8 bayt). |
+| `record_index` | `0 / 1` | `0` | `readall` | `1` ise `.inx` birincil indeksini, `table_count`, `table_lastid` ve otomatik sayaç desteğini aktif eder. |
+| `search_block` | `ARRAY` | `[]` | — | `.src` tam metin arama (inverted keyword) indeksine dahil edilecek blok numaraları. |
+| `match_block` | `ARRAY` | `[]` | `fields` | `.fld` birebir eşleşme / filtrelenmiş okuma indeksine dahil edilecek blok numaraları. |
+| `sort_block` | `ARRAY` | `[]` | — | `.srt` önceden sıralanmış binary ID indeksleri oluşturulacak bloklar (`[ 4, { blk => 10, type => 'num' } ]`). |
+| `facet_block` | `ARRAY` | `[]` | `filter_block` | `.fac` çok boyutlu dinamik kategori/ürün filtreleme indeksine dahil edilecek bloklar. |
+| `seo_block` | `ARRAY` | `[]` | `rwlink` | `.rwt` otomatik iki yönlü SEO slug (URL rewrite) üretimi için birleştirilecek bloklar. |
+| `use_facet` | `0 / 1` | `0` | — | Tabloda facet sayım motorunu ve `field_fltkeys` / `facet_menu` altyapısını aktif eder. |
+| `facet_rules` | `ARRAY` | `[]` | — | Facet menüsünde sadece belirli şarta uyan (örn: stokta olan) kayıtları saymak için filtre kuralları. |
+| `use_junk` | `0 / 1` | `0` | — | Pasif/arşiv kayıtları ana tablodan ayırarak iki katmanlı (Hot/Cold) indeksleme sağlar. |
+| `junk_rules` | `ARRAY` | `[]` | — | Hangi kayıtların otomatik olarak Junk katmanına (`.jinx`, `.jsrc`, `.jfld`) taşınacağını belirleyen kurallar. |
+| `use_cache` | `0 / 1 / 2` | `0` | `usecache` | `0`: Kapalı, `1`: Soft (.inx meta önbelleği), `2`: Hard (Tam RAM-Disk aynası). |
+| `cache_ttl` | `integer` | `3600` | — | Tabloya özgü RAM önbellek geçerlilik süresi (saniye). |
+| `keep_deleted` | `0 / 1` | `0` | `nodelete` | Silinen kayıtları yok etmek yerine `.del` arşiv dosyasında saklar (Soft-delete). |
+| `log_owner` | `0 / 1` | `0` | `authority` | Kaydı ekleyen, düzenleyen ve silen kullanıcıları `.aut` denetim izinde saklar. |
+| `use_alias` | `0 / 1` | `0` | `uselnk` | Kayıt birleştirmeleri ve eski ID yönlendirmeleri için `.lnk` alias tablosunu aktif eder. |
+| `use_counter` | `0 / 1` | `0` | `usecnt` | `.cnt` dosyasında kayıt okuma/görüntülenme sayaçlarını otomatik artırır. |
+| `parent_table` | `string` | `""` | — | Dikey bölümlemede üst tablo adı. Bağlı tablo aynı ID'yi paylaşarak ana tabloyu hafif tutar. |
+| `force` | `0 / 1` | `0` | — | `1` ise `insert_id` çağrısında kayıt zaten varsa hata vermek yerine üstüne yazar (Replace modu). |
+| `min_char` | `integer` | `2` | `minchar` | Arama indeksine (`.src`) alınacak kelimeler için asgari karakter uzunluğu (1, 2 veya 3). |
+| `stop_word` | `string` | `""` | `nextkey` | Arama indeksine dahil edilmeyecek durak kelimeler (örn: `"bu ve ile için de da"`). |
+| `repeat_ids` | `integer` | `undef` | — | Tekrarlayan alt blokların ID listesinin otomatik toplanacağı hedef blok indeksi. |
+| `repeat_start` | `integer` | `undef` | — | Dinamik değişken alt elemanların (sipariş kalemleri vb.) başladığı blok indeksi. |
+| `view_block` | `ARRAY` | `[]` | — | Arayüz (Dbapp / CMS) listeleme ekranında gösterilecek öncelikli blok numaraları. |
+| `use_menu` | `0 / 1` | `1` | — | Arayüz yönetim panelinde tablo için menü sekmesi gösterilip gösterilmeyeceği. |
+| `no_transact` | `0 / 1` | `0` | — | `1` ise tablo transaction hata zincirinden ve otomatik rollback işleminden muaf tutulur. |
+
+### 10.6 Blok (Alan) Nitelikleri, Veri Tipleri, Giriş Bileşenleri ve Doğrulama Referansı
+
+Şema içerisindeki `blocks` dizisinde her bir veri alanı (sütun) için aşağıdaki nitelikler tanımlanabilir:
+
+#### 1. Temel Blok Nitelikleri
+
+| Nitelik | Tip | Açıklama | Örnek |
+| :--- | :--- | :--- | :--- |
+| `id` | `string` | Alanın programatik benzersiz anahtar adı | `id => "email"` |
+| `name` | `string` | Formlarda ve arayüzlerde görünen etiket adı | `name => "E-Posta Adresi"` |
+| `type` | `string` | Alanın veri saklama ve indeksleme tipi | `type => "text"` |
+| `input` | `string` | HTML/UI Form giriş bileşeni tipi | `input => "select"` |
+| `valid` | `string` | Otomatik veri doğrulama kuralı | `valid => "not_null;email"` |
+| `option` | `string` | `select`/`radio`/`checkbox` için hazır seçenekler listesi | `option => "1:Aktif,0:Pasif"` |
+| `rdbm` | `string / HASH`| Başka bir tablodan ID $\rightarrow$ Metin eşleme | `rdbm => "catalog_category;2"` |
+| `extend` | `HASH` | 1:1 dikey genişleme tablosu bağlama | `extend => { table => "catalog_price", join => "id" }` |
+
+#### 2. Desteklenen Alan Tipleri (`type`)
+
+| Tip (`type`) | Tanım | Açıklama ve Kullanım |
+| :--- | :--- | :--- |
+| `auto_id` | Otomatik ID | Otomatik artan 64-bit birincil anahtar (Blok 0 için zorunludur). |
+| `text` | Metin | Standart tek satırlı UTF-8 metin veya alfanümerik dize. |
+| `tinytext` | Kısa Metin | Kısa etiketler, kodlar veya bayraklar için optimize edilmiş metin. |
+| `number` | Sayı | Sayısal değer (tamsayı veya ondalıklı para/miktar; `.srt` indeksinde sayısal olarak sıralanır). |
+| `email` | E-posta | E-posta adresi formatındaki alanlar. |
+| `ascii` | ASCII Metin | Yalnızca ASCII karakterler içeren kullanıcı adı, kod vb. veriler. |
+| `password` | Şifre | Tek yönlü tuzlu hash olarak saklanan şifre alanları. |
+| `date_short` | Kısa Tarih | `YYYY-MM-DD` veya `YYYYMMDD` formatında kısa tarih dizesi. |
+| `date_long` | Uzun Tarih | `YYYY-MM-DD HH:MM:SS` formatında zaman damgalı uzun tarih dizesi. |
+| `html` | Zengin HTML | HTML gövdeleri (arama indeksine alınırken etiketler otomatik temizlenir). |
+| `array` | Liste (Array) | İç içe dizi referansı (`[ "a", "b", "c" ]` veya virgüllü değerler). |
+| `hash` | Liste (Hash) | İç içe sözlük referansı (`{ k1 => "v1", k2 => "v2" }`). |
+| `binary` | Binary | Ham ikili (binary) veya pack edilmiş bayt verisi. |
+| `base64` | Base64 | Base64 formatında kodlanmış veri blokları. |
+| `extend` | Harici Tablo | 1:1 dikey genişleme tablosu (aynı ID'yi paylaşır). |
+| `tables` | Birleşik Tablolar | Çoklu tablo ilişkileri ve agregasyon blokları. |
+| `loop` / `repeat` | Son Blok Döngüsü | Değişken sayıda tekrarlayan alt döküman blokları (`repeat_start` ile kullanılır). |
+
+#### 3. Form Giriş Bileşenleri (`input`)
+
+| Giriş Bileşeni (`input`) | UI Karşılığı | Açıklama |
+| :--- | :--- | :--- |
+| `text` | Text | Standart tek satırlık metin kutusu `<input type="text">`. |
+| `textarea` | Textarea | Çok satırlı düz metin alanı `<textarea>`. |
+| `summernote` | Summernote | Zengin WYSIWYG HTML editörü (açıklama ve makale gövdeleri için). |
+| `select` | Select | Tekli açılır liste kutusu `<select>`. |
+| `checkbox` | Checkbox | Çoklu seçim onay kutusu `<input type="checkbox">`. |
+| `radio` | Radio | Tekli seçim radyo butonu `<input type="radio">`. |
+| `file` | File | Dosya veya görsel yükleme bileşeni `<input type="file">`. |
+| `hidden` | Hidden | Gizli form alanı `<input type="hidden">` (ID alanları için). |
+| `email` | Email | E-posta girişi `<input type="email">`. |
+| `ascii` | Kullanıcı / ASCII | Kullanıcı adı veya kod girişi için ASCII kısıtlamalı metin kutusu. |
+| `number` | Numara | Sayısal giriş kutusu `<input type="number">`. |
+| `date` | Tarih | Tarih seçici bileşeni `<input type="date">`. |
+| `password` | Password | Şifrelenmiş giriş alanı `<input type="password">`. |
+| `search_block` | Search | Arama destekli dinamik filtre giriş kutusu. |
+| `selectbyfind` | SelectByFind | Arama ile dinamik veri getiren ilişkili seçim kutusu. |
+| `selectbylist` | SelectByList | Liste üzerinden çoklu eleman seçimine izin veren bileşen. |
+
+#### 4. Otomatik Doğrulama Kuralları (`valid`)
+
+Birden fazla doğrulama kuralı noktalı virgül (`;`) ile zincirlenebilir (örn: `valid => "not_null;email"`):
+
+| Doğrulama Kuralı (`valid`) | Tanım | Kontrol ve Davranış |
+| :--- | :--- | :--- |
+| `none` | Doğrulama Yok | Herhangi bir kural uygulanmaz (varsayılan). |
+| `not_null` | Boş Olamaz | Alanın boş (`undef` veya `""`) geçilmesini engeller. |
+| `unique` | Benzersiz | Değerin tabloda başka hiçbir kayıtta bulunmadığını doğrular. |
+| `email` | E-posta | Geçerli bir RFC e-posta deseni kontrolü yapar. |
+| `telefon` | Telefon | Geçerli sabit/GSM telefon numarası formatı kontrolü yapar. |
+| `ascii` | ASCII | Değerin yalnızca ASCII karakterler içermesini zorunlu kılar. |
+| `regex` | Regex | Özel tanımlı düzenli ifade desenine uyumu denetler. |
+| `auto_num` | Otomatik Sayı | Değeri otomatik artan sayı olarak üretir. |
+| `auto_pass` | Otomatik Şifre | Rastgele güvenli şifre üretir ve tuzlu hash olarak kaydeder. |
+| `auto_date` | Otomatik Tarih | O anki sistem tarih/zaman damgasını otomatik atar. |
+| `auto_str` | Hazır Metin | Önceden tanımlı şablon metnini otomatik uygular. |
+
+### 10.7 CRUD İşlemlerinde Şemanın Rolü
+
+Bir kayıt `insert_id` veya `modify_id` ile kaydedilirken geçirilen dizi argümanları blok indeksleriyle birebir eşleşir. Motor bu tek işlemde şemaya bakarak veriyi `.db` ana dosyasına yazar, `.inx` listesini günceller ve ilgili tüm `.fld`, `.src`, `.rwt` indekslerini otomatik türetir.
+
+### 10.8 Çalışma Zamanında Dinamik Şema Manipülasyonu (`table_attr`)
+
+AmberDB şemaları statik değildir. Veritabanını baştan oluşturmaya veya migration çalıştırmaya gerek kalmadan çalışma zamanında (runtime) dinamik olarak güncellenebilir:
+
 ```perl
-# dbstore/scheme/order_active.table
+$adb->table_attr("catalog_product", { search_block => [ 4, 9 ] });
+```
+
+### 10.9 Dinamik Genişleyen Tablolar ve Tekrarlayan Bloklar (`repeat_ids` & `repeat_start`)
+
+AmberDB, sabit sütun sınırlarını aşarak tek bir ana döküman kaydının sonuna değişken sayıda alt eleman (sipariş kalemleri vb.) eklenmesine olanak tanır.
+
+```perl
+# dbstore/schema/order_active.table
 {
     name         => "Aktif Siparişler",
     record_index => 1,
-    match_block  => [ 1, 2, 12, 14 ],   # 12: Ürün Döngüsü (repeat_ids) otomatik indekslenir
+    match_block  => [ 1, 2, 12, 14 ],
     keep_deleted => 1,
     log_owner    => 1,
-    repeat_ids   => 12,                 # Alt eleman ID'lerinin otomatik toplanacağı blok
-    repeat_start => 15,                 # Dinamik alt eleman bloklarının başladığı indeks
+    repeat_ids   => 12,
+    repeat_start => 15,
 
     blocks => [
         { id => "id",                name => "ID",                   type => "auto_id" }, # 0
@@ -821,7 +1076,7 @@ AmberDB, sabit sütun sınırlarını aşarak tek bir ana döküman kaydının s
 #### 2. Çalışma Mantığı ve Otomatik İndeksleme (`repeat_fields`)
 Her `insert_id`, `modify_id`, `insert_list` veya `modify_list` çağrısında motor, `repeat_start` (15) ve sonrasındaki tüm değişken blokları otomatik olarak işler:
 1. Her ürün/kalem bloğunun (dizi ise ilk elemanını `$_->[0]`, metin ise kendisini) çeker.
-2. Bu ID'leri virgülle birleştirip (`"P101,P102,P103"`) otomatik olarak `repeat_ids` (12) bloğuna yazar (geliştiricinin bu alanı manuel doldurmasına gerek yoktur).
+2. Bu ID'leri virgülle birleştirip (`"101,102,103"`) otomatik olarak `repeat_ids` (12) bloğuna yazar (geliştiricinin bu alanı manuel doldurmasına gerek yoktur).
 3. Blok 12 şemada `match_block` içinde tanımlandığı için, motor `field_to_list` ile bu ID'lerin her birini `order_active_12.fld` eşleştirme indeksine kaydeder.
 
 #### 3. Kodlama ve Sorgulama Örneği
@@ -836,32 +1091,55 @@ my @siparis = (
     "SESS12345",         # [6] Session
     "Teslimat Adresi",   # [7] Teslimat
     "Fatura Adresi",     # [8] Fatura
-    "Aras Kargo",        # [9] Kargo
+    "Kargo ID",          # [9] Kargo ID
     "Kredi Kartı",       # [10] Ödeme
     "**** 1234",         # [11] Kart
-    "",                  # [12] product_ids (Boş bırakılır; motor "P101,P102,P103" olarak doldurur)
+    "",                  # [12] product_ids (Boş bırakılır; motor "101,102,103" olarak doldurur)
     "Zil bozuk",         # [13] Notlar
     "Hediye Paketi",     # [14] Hediye
-    [ "P101", "MacBook Pro M3", 1, 64999.00 ], # [15] 1. Ürün (repeat_start)
-    [ "P102", "Magic Mouse",    2,  3500.00 ], # [16] 2. Ürün
-    [ "P103", "USB-C Adaptör",  1,  1200.00 ], # [17] 3. Ürün
+    [ "101", "MacBook Pro M3", 1, 64999.00 ], # [15] 1. Ürün (repeat_start)
+    [ "102", "Magic Mouse",    2,  3500.00 ], # [16] 2. Ürün
+    [ "103", "USB-C Adaptör",  1,  1200.00 ], # [17] 3. Ürün
 );
 
-my $siparis_id = $dbp->insert_id("order_active", undef, @siparis);
+my $siparis_id = $adb->insert_id("order_active", undef, @siparis);
 
-# 2. P101 ürününü içeren TÜM aktif siparişleri doğrudan tek anahtar okumasıyla ($O(1) key seek) getirme:
-my ($toplam, @siparisler) = $dbp->field_fetch("order_active", 12, "P101");
-print "P101 ürününü içeren $toplam adet aktif sipariş bulundu.\n";
+# 2. 101 ürününü içeren TÜM aktif siparişleri doğrudan tekil anahtar aramasıyla getirme:
+my ($toplam, @siparisler) = $adb->field_fetch("order_active", 12, "101", 0, 20);
+print "101 ürününü içeren $toplam adet aktif sipariş bulundu.\n";
 ```
+
+### 10.10 Dikey Bölümleme (Vertical Partitioning) ve Bağlı Tablolar (`parent_table`)
+
+Çok büyük metin alanları (örneğin uzun HTML ürün açıklamaları, zengin döküman gövdeleri veya detaylı teknik özellikler) içeren senaryolarda, ana tablonun kayıt boyutunu küçük tutmak okuma ve arama hızını maksimize eder. AmberDB'de bu durum **Dikey Bölümleme (Vertical Partitioning)** ile çözülür:
+
+* **Ana Tablo (`catalog_product`):** Sadece listeleme, arama ve filtreleme için gerekli hafif alanları (Başlık, Fiyat, Kategori, Marka, Statü) saklar.
+* **Detay Tablosu (`catalog_descript`):** Şemasında `parent_table => "catalog_product"` tanımlanır ve ana tablodaki kayıtla birebir aynı ID'yi (`rid`) paylaşır.
+
+```perl
+# dbstore/schema/catalog_descript.table
+{
+    name         => "Ürün Açıklamaları",
+    parent_table => "catalog_product",
+    blocks => [
+        { id => "id",          name => "ID",          type => "auto_id" }, # 0 (Ürün ID ile aynı)
+        { id => "description", name => "HTML İçerik", type => "text" },    # 1
+    ]
+}
+```
+
+Bu sayede:
+1. Kategori listeleri ve arama sonuçları yüklenirken megabaytlarca HTML metin belleğe yüklenmez.
+2. Yalnızca kullanıcı ilgili ürünün detay sayfasına girdiğinde `$adb->read_id("catalog_descript", $product_id)` çağrılarak içerik diskten tekil anahtar okumasıyla anında getirilir.
 
 ---
 
 ## 11. Veritabanı Grup Yapısı (.dbase)
 
-Birden fazla ilişkili tabloyu mantıksal gruplar altında toplamak ve yıl/şube bazlı otomatik bölümleme (partitioning) uygulamak için `dbstore/scheme/<grup>.dbase` dosyası kullanılır:
+Birden fazla ilişkili tabloyu mantıksal gruplar altında toplamak ve yıl/şube bazlı otomatik bölümleme (partitioning) uygulamak için `dbstore/schema/<grup>.dbase` dosyası kullanılır:
 
 ```perl
-# dbstore/scheme/catalog.dbase
+# dbstore/schema/catalog.dbase
 {
     name    => "Katalog Veritabanı",
     type    => 0,                           # 0: Sistem tablosu, 1: Dinamik tablo
@@ -874,13 +1152,13 @@ Birden fazla ilişkili tabloyu mantıksal gruplar altında toplamak ve yıl/şub
 
 ---
 
-## 12. Hızlı Filtre ve Kategori Menüsü (Facet Sistemi)
+## 12. Filtre ve Kategori Menüsü (Facet Sistemi)
 
-Facet motoru, e-ticaret sitelerindeki sol filtreleme panelini (Marka, Kategori, Yazar, Fiyat Aralığı, Renk vb.) yüz binlerce ürün arasında **anında ve sıfır gecikmeyle** oluşturan akıllı filtreleme sistemidir.
+Facet motoru, e-ticaret sitelerindeki sol filtreleme panelini (Marka, Kategori, Yazar, Fiyat Aralığı, Renk vb.) büyük ürün katalogları üzerinde **düşük gecikmeli ve yüksek performanslı** olarak oluşturan filtreleme ve kümeleme sistemidir.
 
 ### 12.1 Sağladığı Faydalar ve Özellikler
 
-* **Işık Hızında Filtreleme:** Kullanıcı bir kategoriye girdiğinde veya filtre seçtiğinde, sistem 100.000'lerce ürünü tek tek taramak yerine sadece filtrelenecek özellikleri okuyarak filtre menüsünü milisaniyeler içinde ekrana getirir.
+* **Düşük Gecikmeli Kolon Bazlı Kümeleme:** Kullanıcı bir kategoriye girdiğinde veya filtre seçtiğinde, sistem tüm tablo kayıtlarını satır satır taramak yerine yalnızca hedeflenen kolon indeks dosyalarını (`.fac`) okuyarak filtre menüsünü minimum I/O maliyetiyle oluşturur.
 * **Sadece Satışta Olan Ürünleri Sayar:** Stoğu bitmiş, pasif veya satışı kapanmış ürünler filtre sayılarını şişirmez; kullanıcılar yalnızca gerçekten satın alabilecekleri ürünlerin filtrelerini ve doğru ürün adetlerini görür.
 * **Çoklu Seçim Akıllılığı (Disjunctive Counting):** Kullanıcı aynı anda hem *Apple* hem *Samsung* markalarını seçtiğinde, sistem diğer markaların da adetlerini kaybetmeden doğru şekilde göstermeye devam eder.
 * **Arama Sonuçlarına Özel Filtreler (`base_ids`):** Ziyaretçi sitede bir arama yaptığında (örn. "kulaklık"), sol taraftaki filtre menüsü tüm siteyi değil, sadece arama sonucunda çıkan ürünlerin markalarını ve özelliklerini filtre olarak sunar.
@@ -891,7 +1169,7 @@ Facet motoru, e-ticaret sitelerindeki sol filtreleme panelini (Marka, Kategori, 
 Bir tabloda filtre menüsünü etkinleştirmek için şema dosyanıza `use_facet => 1` ve `facet_block` tanımlarını eklemeniz yeterlidir:
 
 ```perl
-# dbstore/scheme/catalog_attributes.table
+# dbstore/schema/catalog_attributes.table
 {
     name         => "Ürün Nitelikleri",
     use_facet    => 1,                       # Bu tabloda filtreleme motorunu etkinleştirir
@@ -921,7 +1199,7 @@ Ziyaretçinin seçtiği filtrelere göre sol menüyü ve ürün adetlerini tek b
 # Kullanıcının URL'den gelen seçimleri: Kategori 5, Marka 12 veya 14 seçilmiş
 my %secilen_filtreler = ( 1 => "5", 2 => ["12", "14"] );
 
-my $menu = $dbp->facet_menu(
+my $menu = $adb->facet_menu(
     "catalog_attributes",
     \%secilen_filtreler,
     $table_info->{facet_block},
@@ -929,33 +1207,36 @@ my $menu = $dbp->facet_menu(
 );
 
 # $menu çıktısı doğrudan şablona gönderilmeye hazırdır:
-# {
-#     count  => 42,                         # Filtrelere uyan toplam ürün sayısı
-#     ids    => [ 101, 105, 120, ... ],     # Ekranda listelenecek ürünlerin ID'leri
-#     groups => [                           # HTML sol menüsü için hazır gruplar:
-#         {
-#             id    => "marka",
-#             label => "Marka",
-#             items => [
-#                 { id => 12, name => "İthaki", count => 28, selected => 1 },
-#                 { id => 14, name => "Can",    count => 14, selected => 1 },
-#                 { id => 19, name => "YKY",    count => 6,  selected => 0 },
-#             ]
-#         },
-#         ...
-#     ]
-# }
+{
+    count         => 42,                         # Filtrelere uyan toplam ürün sayısı
+    ids           => [ 101, 105, 120, ... ],     # Ekranda listelenecek ürünlerin ID'leri
+    active_counts => { 1 => 1, 2 => 2 },         # Blok bazında aktif filtre sayısı
+    groups        => [                           # HTML sol menüsü için hazır gruplar:
+        {
+            blk          => 2,
+            name         => "Marka",
+            active       => "1",
+            active_count => 2,
+            records      => [
+                { uid => "fc_2_12", param => "f2", val => 12, label => "İthaki", count => 28, checked => "1" },
+                { uid => "fc_2_14", param => "f2", val => 14, label => "Can",    count => 14, checked => "1" },
+                { uid => "fc_2_19", param => "f2", val => 19, label => "YKY",    count => 6,  checked => ""  },
+            ]
+        },
+        ...
+    ]
+}
 ```
 
 #### B. Arama Sonuçları Sayfasında Dinamik Filtre Üretme
 Arama yapıldığında, bulunan ürünlerin ID listesini `base_ids` olarak vererek filtrenin sadece arama sonuçlarını kapsamasını sağlarsınız:
 
 ```perl
-# 1. Ziyaretçinin arama terimiyle ürünleri bul
-my ($toplam, @bulunan_idler) = $dbp->search_table("catalog_product", "bilim kurgu", keys_only => 1);
+# 1. Ziyaretçinin arama terimiyle ürünleri bul (keys_only ile limitsiz ID listesi)
+my @bulunan_idler = $adb->search_table("catalog_product", "bilim kurgu", keys_only => 1);
 
 # 2. Sadece bulunan bu ürünler arasından filtre menüsü üret
-my $arama_menusu = $dbp->facet_menu(
+my $arama_menusu = $adb->facet_menu(
     "catalog_attributes",
     \%secilen_filtreler,
     $table_info->{facet_block},
@@ -983,25 +1264,24 @@ E-ticaret sitelerinde zamanla yüz binlerce ürünün satışı biter, stoğu t�
 Tablonuzda `use_junk => 1` ve hangi durumların arşiv/junk sayılacağını belirten `junk_rules` kurallarını tanımlayın:
 
 ```perl
-# dbstore/scheme/catalog_product.table
+# dbstore/schema/catalog_product.table
 {
     name         => "Ürünler",
     record_index => 1,
-    use_junk     => 1,                       # Akıllı arşiv/junk indekslemeyi açar
+    search_block => [ 4, 5 ],
+    match_block  => [ 1, 2, 3 ],
+
+    # Akıllı arşiv/junk indekslemeyi açar
+    use_junk     => 1,
     
     # Hangi kayıtların "Junk / Arşiv" kabul edileceğini belirleyin:
     junk_rules   => [
         # 1. Ürünün kendi satış durumu (Blok 20) 1 (Satışta) değilse -> ARŞİV
         [ 20, "ne", 1 ],
 
-        # 2. İlişkili Tedarikçi Kuralı: Ürünün üretici firması (Blok 2) pasife alınmışsa -> ARŞİV
-        #    (catalog_producer tablosundaki firmanın durumuna bakar)
+        # 2. İlişkili Tedarikçi Kuralı: Ürünün üretici firması (Blok 2) pasife alınmışsa -> ARŞİV  (catalog_producer tablosundaki firmanın 14. blokunun durumuna bakar)
         [ "2->14", "ne", 1 ],
     ],
-    
-    jnktype      => "AB",                    # Varsayılan arama modu (Önce aktifler, sonra arşiv)
-    search_block => [ 4, 5 ],
-    match_block  => [ 1, 2, 3 ],
 }
 ```
 
@@ -1014,10 +1294,10 @@ Vitrin listelemelerinde ve filtrelerde pasif ürünlerin hiç görünmemesi içi
 
 ```perl
 # Kategori sayfasında sadece satıştaki ürünleri listeleme:
-my @vitrin_urunleri = $dbp->read_all("catalog_product", jnktype => "A", 0, 20);
+my @vitrin_urunleri = $adb->read_all("catalog_product", jnktype => "A");
 
 # Müşteri araması:
-my ($adet, @sonuclar) = $dbp->search_table("catalog_product", "roman", jnktype => "A");
+my ($adet, @sonuclar) = $adb->search_table("catalog_product", "roman", $start, $limit, jnktype => "A");
 ```
 
 #### B. Genel Mağaza Araması (Önce Aktifler, Sonra Eski Ürünler - Mod `AB`)
@@ -1025,30 +1305,30 @@ Müşteri eski bir ürünü arasa bile bulabilsin, ancak öncelik her zaman sat�
 
 ```perl
 # Aktif ürünler en başta, satışı bitmişler arkada listelenir:
-my ($adet, @sonuclar) = $dbp->search_table("catalog_product", "nutuk", jnktype => "AB", 0, 20);
+my ($adet, @sonuclar) = $adb->search_table("catalog_product", "nutuk", $start, $limit, jnktype => "AB");
 ```
 
 #### C. Yönetim Paneli ve Raporlama (Sadece Arşiv / Pasifler - Mod `B`)
-Stok dışı, satışı durdurulmuş veya arşivlenmiş ürünleri incelemek için:
+Junk kayıtları ana tablodan ayırmaz. Sadece indexleri ayırır. Stok dışı, satışı durdurulmuş ve junk olarak işaretlenmiş olan ürünleri incelemek için:
 
 ```perl
 # Satışı kapatılmış ürünleri listeleme:
-my @arsivdeki_urunler = $dbp->read_all("catalog_product", jnktype => "B", keys_only => 1);
+my @just_junk = $adb->read_all("catalog_product", jnktype => "B");
 ```
 
 #### D. Sipariş ve Fatura Konsolu (Tüm Kayıtlar)
-Eski siparişlerde satışı kapanmış ürünlerin detaylarına ulaşmak için tek bir arama yeterlidir:
+Satış faturası konsolunda sadece aktif ürünler istendiği için jnktype => "A" parametresi gönderilebilir. Varsayılan olarak "AB" çalışır ve aktif+junk sıralamasına göre çalışması için parametresiz gönderilmesi yeterlidir:
 
 ```perl
-# ID ile ürün okuma (Arşivde veya aktifte olması fark etmeksizin doğrudan okunur):
-my @urun = $dbp->read_id("catalog_product", $eski_urun_id);
+# ID ile ürün okuma (junkta veya aktifte olması fark etmeksizin doğrudan okunur):
+my @urun = $adb->read_id("catalog_product", $eski_urun_id);
 ```
 
 ### 13.4 Otomatik Durum Değişimi
 Ürünü güncellediğinizde sistem kuralları anında değerlendirir:
-* Ürünün `sales_status` değerini `0` yaptığınızda veya üretici firmasını pasife aldığınızda ürün **kendiliğinden vitrinden arşive geçer**.
-* Ürün stoğa girip tekrar `1` yapıldığında **kendiliğinden vitrine geri döner**.
-* Geliştirici olarak ekstra hiçbir senkronizasyon kodu yazmanız gerekmez.
+* Ürünün `sales_status` değerini `0` yaptığınızda veya üretici firmasını pasife aldığınızda ürün **kendiliğinden aktif indexinden junk indexine geçer**.
+* Ürün stoğa girip tekrar `1` yapıldığında **kendiliğinden junk indexinden aktif indexine geçer**.
+* Geliştirici olarak ekstra hiçbir senkronizasyon kodu yazmanız gerekmez. Sadece şemadaki junk kurallarını doğru giriniz.
 
 ---
 
@@ -1058,21 +1338,27 @@ my @urun = $dbp->read_id("catalog_product", $eski_urun_id);
 
 ```perl
 # ID'den SEO Linki alma
-my $seo_harita = $dbp->get_seourl("catalog_product", 0, 5001);
+my $seo_harita = $adb->get_seourl("catalog_product", 0, 5001);
 my $slug = $seo_harita->{5001};
 print "Ürün Linki: /urun/$slug\n"; # Çıktı: /urun/acme-kablosuz-kulaklik
 
 # SEO Linkinden (Slug) Kayıt ID'sini bulma (Yönlendirici / Router için)
-my $id_harita = $dbp->get_seourl("catalog_product", 1, "acme-kablosuz-kulaklik");
+my $id_harita = $adb->get_seourl("catalog_product", 1, "acme-kablosuz-kulaklik");
 my $id = $id_harita->{"acme-kablosuz-kulaklik"};
 print "Gelen istek Ürün ID'si: $id\n";
 ```
+
+### 14.1 Otomatik Çakışma Çözümleme (Collision Suffixes)
+Aynı başlığa sahip birden fazla kayıt eklendiğinde (örneğin "Kablosuz Kulaklık"), AmberDB otomatik olarak benzersiz artan sayısal sonekler (`_2`, `_3`) ekleyerek URL çakışmalarını şeffaf biçimde çözer:
+* 1. Kayıt: `kablosuz-kulaklik`
+* 2. Kayıt: `kablosuz-kulaklik_2`
+* 3. Kayıt: `kablosuz-kulaklik_3`
 
 > **İlişkisel Slug Çözümleme (`rdbm`):** Eğer SEO bloğunda ilişkisel bir alan varsa (örn. Kategori ID'si), motor bağlı tablodan kategori adını otomatik okuyarak `/elektronik/acme-kulaklik` şeklinde anlamlı slug üretir.
 
 ---
 
-## 14. Birleşik Paylaşımlı RAM Önbellek (.db / .inx) ve Buffer
+## 15. Birleşik Paylaşımlı RAM Önbellek (.db / .inx) ve Buffer
 
 `AmberDB::Cache`, okuma performansını maksimize etmek için AmberDB'nin yerel `.db` ve `.inx` formatlarını kullanan tek ve birleşik bir paylaşımlı önbellek mimarisi sunar:
 
@@ -1087,138 +1373,259 @@ print "Gelen istek Ürün ID'si: $id\n";
 
 ### Önbellek Seviyeleri (`use_cache`)
 * **`0` (Kapalı):** Önbellekleme yapılmaz.
-* **`1` (Soft Cache):** `lastid`, `keys`, `count` meta verileri `cache/${tablo}.inx` dosyasında önbelleklenir. Manuel çağrılan `$dbp->cache_write` ve `$dbp->cache_read` sorguları çalışır. Tekil okumalarda diske gereksiz dosya yazılmaz.
-* **`2` (Hard Cache - Tam Tablo RAM Aynası):** Tablo verileri `cache/${tablo}.db` ve `cache/${tablo}.inx` dosyalarında RAM üzerinde tutulur. Okumalar (`read_id`, `read_list`) doğrudan RAM'den döner.
+* **`1` (Soft Cache):** `lastid`, `keys`, `count` meta verileri `cache/${tablo}.inx` dosyasında önbelleklenir. Manuel çağrılan `$adb->cache_write` ve `$adb->cache_read` sorguları çalışır. Tekil okumalarda diske gereksiz dosya yazılmaz.
+* **`2` (Hard Cache - Tam Tablo RAM Aynası):** Tablo verileri `cache/${tablo}.db` ve index dosyaları RAM üzerinde tutulur. Okumalar (`read_id`, `read_list`) doğrudan RAM'den döner. Sunucu çalıştığı sürece veriler RAM'den paylaşımlı olarak okunmaya devam eder.
+
+### Manuel Önbellek Yönetimi
+Tablo şemasında use_cache değeri 1 olduğunda cache_write, cache_read, cache_delete gibi metodları manuel kullanarak istediğiniz kayıtları cachelemenize izin verir.
 
 ```perl
 # 1. Önbelleğe Manuel Veri Yazma (cache/${tablo}.inx içine yazar)
-$dbp->cache_write("catalog_product", "vitrin_urunleri", @vitrin_listesi);
+$adb->cache_write("catalog_product", "vitrin_urunleri", @vitrin_listesi);
 
 # 2. Önbellekten Okuma
-my @vitrin = $dbp->cache_read("catalog_product", "vitrin_urunleri");
+my @vitrin = $adb->cache_read("catalog_product", "vitrin_urunleri");
 
 # 3. Hard Cache Tablo Preload (Tüm tabloyu RAM'e kopyalar)
-$dbp->cache_preload("catalog_category");
+$adb->cache_preload("catalog_category");
 
 # 4. Önbellek Temizleme (Tabloda modify veya delete yapıldığında otomatik temizlenir)
-$dbp->cache_delete("catalog_product", "vitrin_urunleri"); # Tek anahtar
-$dbp->cache_delete("catalog_product");                    # Tüm tablo önbelleği (.db ve .inx)
+$adb->cache_delete("catalog_product", "vitrin_urunleri"); # Tek anahtar
+$adb->cache_delete("catalog_product");                    # Tüm tablo önbelleği (.db ve .inx)
+
+# 5. RAM-Disk Tanı ve Bağlantı Durumu Kontrolü
+my $cache_tanisi = $adb->cache_setup();
+# Dönen hashref: { is_mounted => 1, mount_desc => "...", cache_dir => "...", cache_size => "512M" }
+```
+
+### Otomatik RAM Önbellek
+Tablo şemasında use_cache değeri 2 olarak belirtilmişse tablonun ve indexlerinin bir kopyasını RAM üzerine kopyalar ve okuma yazma RAM üzerinden çok hızlı bir şekilde gerçekleşir. Redis gibi. Ancak AmberDB bu tabloya yazdığı zaman cache katmanını da günceller ve tutarlı kalmasını sağlar.
+
+Ayrıca AmberDB motorun bazı işlemlerini de cache üzerinde gerçekleştirir. .lock dosyaları, .pid dosyaları, sessionlar, konfig dosyaları ve şemalar da RAM disk üzerinden okunur.
+
+### Önbellek Süresi (`cache_ttl`) ve Çalışma Zamanı Yönetimi
+`cache_ttl` değeri tablo bazında doğrudan şemada tanımlanır (örn: `cache_ttl => 1800`). Session veya PID gibi geçici tabloların önbellek süreleri şemada belirtilebileceği gibi, çalışma zamanında `table_attr` ile dinamik olarak da tanımlanabilir:
+
+```perl
+# Session tablosunun önbellek süresini 30 dakikaya (1800 sn) ayarlama
+$adb->table_attr("session", { use_cache => 1, cache_ttl => 1800 });
 ```
 
 ### Disk Tabanlı Geçici Buffer
 Büyük veri aktarımlarında veya raporlama işlemlerinde geçici disk buffer'ı kullanılır:
 ```perl
-$dbp->buffer_write("rapor_gecici", @buyuk_veri);
-my @veri = $dbp->buffer_read("rapor_gecici");
-$dbp->buffer_delete("rapor_gecici");
+$adb->buffer_write("rapor_gecici", @buyuk_veri);  # yaz
+my @veri = $adb->buffer_read("rapor_gecici");     # oku
+$adb->buffer_delete("rapor_gecici");              # sil
 ```
 
 ---
 
-## 15. Yapılandırma Bayrakları (Flags)
+## 16. Yapılandırma ve Deterministik Bayrak Yönetimi (`config`)
 
-AmberDB'nin çalışma modunu değiştirmek için `$dbp->{cfg}` altında bayraklar tanımlanabilir:
+AmberDB'nin çalışma modunu değiştirmek ve yapılandırma bayraklarını güvenli bir şekilde yönetmek için `$adb->config()` metodu kullanılır:
 
 ```perl
-$dbp->{cfg}->{no_write}   = 1;              # Bakım modu: Tüm yazma işlemlerini engelle
-$dbp->{cfg}->{simple}     = 1;              # İndekssiz düz yazım modu (Acil bulk aktarımlar için)
-$dbp->{cfg}->{keys_only}  = 1;              # read_all çağrılarında sadece ID'leri döndür
-$dbp->{cfg}->{no_backup}  = { "*" => 1 };   # Günlük CSV denetim yedeklerini kapat
-$dbp->{cfg}->{cache_size} = '1024M';        # RAM-Disk / tmpfs önbellek boyutu (Varsayılan: 512M)
-$dbp->{cfg}->{cache_ttl}  = 1800;           # Genel L2 cache süresi (Saniye)
+# Toplu veya tekli yapılandırma ataması (Önerilen)
+$adb->config(
+    no_write   => 1,              # Bakım modu: Tüm yazma işlemlerini engelle
+    no_backup  => 1,              # Tüm tablolar için günlük CSV denetim yedeklerini kapat
+    simple     => 1,              # İndekssiz doğrudan yazım modu (İkincil indeksler devre dışı bırakılır)
+    keys_only  => 1,              # read_all çağrılarında sadece ID'leri döndür
+    cache_size => '1024M',        # RAM-Disk / tmpfs önbellek boyutu (Varsayılan: 512M)
+);
+
+# Tekil okuma:
+my $no_write = $adb->config('no_write');
+
+# Toplu okuma (Güvenli kopya döner):
+my $cfg = $adb->config();
 ```
 
 ---
 
-## 16. Veri Yapıları, Düşük Seviyeli Tablo ve Akış İşlemleri
+## 17. Veri Yapıları, Düşük Seviyeli Tablo ve Akış İşlemleri
 
 AmberDB, standart CRUD katmanının altında doğrudan `DB_File` C seviyesi optimizasyonlarına ve ham akış işlemlerine erişim sunar:
 
-### 16.1 Veri Yapıları ve Serialization (`db_encode`, `db_decode`)
+### 17.1 Veri Yapıları ve Serialization (`db_encode`, `db_decode`)
 
 AmberDB, karmaşık Perl yapılarını özel ayıraçlarla yüksek hızda dizgeleştirir (serialize eder):
 
 ```perl
 # Encode: Perl Verisi → String
-my $str = $dbp->db_encode("Metin", [ 1, 2, 3 ], { key => "val" });
+my $str = $adb->db_encode("Metin", [ 1, 2, 3 ], { key => "val" });
 
 # Decode: String → Perl Verisi
-my ($metin, $dizi_ref, $hash_ref) = $dbp->db_decode($str);
+my ($metin, $dizi_ref, $hash_ref) = $adb->db_decode($str);
 ```
 
-### 16.2 Düşük Seviyeli Tablo ve Akış Yönetimi (`table_read`, `table_write`, `table_close`)
+### 17.2 Düşük Seviyeli Tablo ve Akış Yönetimi (`table_read`, `table_write`, `table_close`)
 
 Büyük veri aktarımlarında veya özel toplu işlerde dosya oturumu açıp kapatmak için kullanılır:
 
 ```perl
-my $tablo_yolu = $dbp->table_path("catalog_product") . ".db";
+my $tablo_yolu = $adb->table_path("catalog_product") . ".db";
 
 # 1. Yazma/Okuma Modunda Tablo Açma ve Kilit Uygulama (flock LOCK_EX)
-my $db_obj = $dbp->table_write($tablo_yolu);
+my $db_obj = $adb->table_write($tablo_yolu);
 
 # 2. Salt-Okunur Modda Tablo Açma (O_RDONLY)
-my $db_ro  = $dbp->table_read($tablo_yolu);
+my $db_ro  = $adb->table_read($tablo_yolu);
 
 # 3. Tabloyu Senkronize Etme (sync), Kilidi Çözme ve Kapatma
-$dbp->table_close($tablo_yolu);
+$adb->table_close($tablo_yolu);
 ```
 
-### 16.3 Ham Kayıt İşleme Metodları (`recs_get`, `recs_put`, `recs_del`)
+### 17.3 Ham Kayıt İşleme Metodları (`recs_get`, `recs_put`, `recs_del`, `recs_exist`, `recs_keys`, `recs_scan`, `table_readid`)
 
 Açık veya otomatik açılan dosya oturumu üzerinde doğrudan `$db->get()`, `$db->put()`, `$db->del()` çağrıları yaparak maksimum performans sağlar:
 
 ```perl
 # 1. Ham Değerleri Toplu Okuma (recs_get)
-my $ham_veriler = $dbp->recs_get($tablo_yolu, 5001, 5002);
+my $ham_veriler = $adb->recs_get($tablo_yolu, 5001, 5002);
 # $ham_veriler döner: { 5001 => "ham_veri_stringi", 5002 => "..." }
 
-# 2. Ham Kayıtları Toplu Yazma (recs_put)
-$dbp->recs_put($tablo_yolu, 
+# 2. Otomatik Dosya Oturumu ile Tek Kayıt Okuma (table_readid)
+my ($rid, @kayit) = $adb->table_readid($tablo_yolu, 5001);
+
+# 3. Ham Kayıtları Toplu Yazma (recs_put)
+$adb->recs_put($tablo_yolu, 
     [ 5001, "5,12", "3", "7", "Ürün A", "", "", "", "", "2999.00", "1" ],
     [ 5002, "5",    "8", "9", "Ürün B", "", "", "", "", "4500.00", "1" ]
 );
 
-# 3. Ham Kayıtları Toplu Silme (recs_del)
-$dbp->recs_del($tablo_yolu, 5001, 5002);
+# 4. Anahtar Varlık Kontrolü (recs_exist)
+my $var_mi = $adb->recs_exist($tablo_yolu, 5001);
+
+# 5. Açık Dosyadaki Tüm Ham Anahtarları Listeleme (recs_keys)
+my @tum_anahtarlar = $adb->recs_keys($tablo_yolu);
+
+# 6. Belleği Şişirmeden Akış Halinde Kayıt Taraması (recs_scan)
+$adb->recs_scan($tablo_yolu, sub {
+    my ($anahtar, $ham_deger) = @_;
+    # Kayıtları akış halinde işle
+});
+
+# 7. Ham Kayıtları Toplu Silme (recs_del)
+$adb->recs_del($tablo_yolu, 5001, 5002);
 ```
 
-### 16.4 Tablo Metadata ve ID Yardımcıları (`table_keys`, `table_count`, `table_lastid`, `table_autoid`, `table_create`)
+### 17.4 Tablo Metadata ve ID Yardımcıları (`table_keys`, `table_count`, `table_lastid`, `table_autoid`, `table_create`)
 
 ```perl
 # Tablodaki tüm aktif ID'leri alma
-my @tum_idlar = $dbp->table_keys("catalog_product");
+my @tum_idlar = $adb->table_keys("catalog_product");
 
 # Tablodaki toplam kayıt sayısı
-my $toplam_kayit = $dbp->table_count("catalog_product");
+my $toplam_kayit = $adb->table_count("catalog_product");
 
 # Tablodaki en son (en büyük) ID
-my $son_id = $dbp->table_lastid("catalog_product");
+my $son_id = $adb->table_lastid("catalog_product");
 
 # Yeni artan ID üretme veya formatlama
-my $yeni_autoid = $dbp->table_autoid("catalog_product");
+my $yeni_autoid = $adb->table_autoid("catalog_product");
 
 # Tablo için boş bir .db veri dosyası oluşturma
-$dbp->table_create("catalog_product");
+$adb->table_create("catalog_product");
+```
+
+### 17.5 Metin ve Dize İşleme Yardımcıları (`AmberDB::String`)
+
+`AmberDB` doğrudan `AmberDB::String` modülünden türediği için metin temizleme, HTML dönüştürme ve veri türü tespiti gibi araçlar doğrudan `$adb` üzerinden çağrılabilir:
+
+```perl
+# 1. Boşluk Temizleme ve Düzleştirme (trim_space)
+my $temiz = $adb->trim_space("  merhaba \n\t dunya  ");      # Satır yapısını korur
+my $duz   = $adb->trim_space("  merhaba \n\t dunya  ", 1);   # Tüm boşlukları tek boşluğa indirger
+
+# 2. HTML Etiketlerini Temizleme (remove_tags)
+my $metin = $adb->remove_tags("<p>Açıklama metni <br/>satır sonu</p>");
+
+# 3. Kelime Bütünlüğünü Koruyarak Kısaltma (truncate_text / sub_str / short_title)
+my $ozet  = $adb->truncate_text($uzun_yazi, 120);          # Kelimeyi bölmeden '...' ile kısaltır
+my $kisa  = $adb->short_title($urun_basligi, 32);          # ASCII uyumlu kısa başlık
+
+# 4. Veri Türü ve Deseni Tanıyıcı (what_isthis)
+my $tur = $adb->what_isthis("kullanici@example.com");      # 'email' döner
+# Tanıdığı türler: email, barcode, gsm, phone, tcno, number, ascii, letter, domain, other
+
+# 5. HTML Entity Dönüşümleri (html_ascode / code_ashtml / text2html / html2text)
+my $kod_html  = $adb->html_ascode('<a href="test">');      # HTML özel karakterlerini entity'ye çevirir
+my $duz_metin = $adb->html2text($html_belgesi);
 ```
 
 ---
 
-## 17. Kullanıcı Denetim İzi (Audit) ve Yedekleme
+## 18. Kullanıcı Denetim İzi (Audit) ve Yedekleme
 
+### 18.1 Kullanıcı İşlem Geçmişi (`log_owner`)
 Şemada `log_owner => 1` aktif olduğunda, kaydın tüm geçmişi `.aut` dosyasında tutulur:
 
 ```perl
 # Bir kaydın kimler tarafından ne zaman değiştirildiğini HTML olarak alma
-my $gecmis_html = $dbp->auth_view("catalog_product", 5001);
+my $gecmis_html = $adb->auth_view("catalog_product", 5001);
 print $gecmis_html;
 # Çıktı:
 #     add     2026-08-14 10:15    admin_maruf
 #     edit    2026-08-14 11:30    editor_ali
 ```
 
+### 18.2 Sürekli Değişiklik Akışı (Continuous Recovery Stream — `YYYY-MM-DD.csv`)
+AmberDB yapılan her `insert`, `modify` ve `delete` işlemini kronolojik zaman-serisi olarak `backup/YYYY/YYYY-MM-DD.csv` dosyasına otomatik olarak ekler (append-only).
+
+Her satır tab ayrılmış (`\t`) olarak şu sütun yapısında yazılır:
+`[Zaman Damgası] \t [Kullanıcı] \t [İşlem] \t [Tablo] \t [Kayıt ID] \t [Paketlenmiş Değerler]`
+
+Bu akışı devre dışı bırakmak için:
+* **Tablo Şemasında (Tablo Bazlı):** Şema dosyasına `no_backup => 1` eklenirse sadece o tablo için yedekleme kapatılır.
+* **Genel Düzeyde (Tüm Tablolar):** `$adb->config(no_backup => 1);` tanımlanırsa tüm tablolar için yedekleme kapatılır.
+
+### 18.3 Native Veritabanı Arşivi (`.amberdb` Dump & Restore)
+AmberDB, tüm şemaları (`schema/*.table`, `schema/*.dbase`) ve otoriter veri dosyalarını (`tables/*.db`, `tables/*.del`, `tables/*.aut`, `tables/*.cnt`) SHA-256 doğrulama özetleriyle birlikte fiziksel dizin yapısıyla birebir örtüşen sıkıştırılmış tek bir **`.amberdb`** arşiv dosyası olarak yedekler ve geri yükler.
+
+Türetilmiş indeks dosyaları (`.inx`, `.src`, `.fld`, `.fac`, `.srt`) boyuttan tasarruf etmek için arşiv içine konmaz; `restore` esnasında şema kurallarına göre `set_index` ile deterministik olarak sıfırdan üretilir.
+
+```perl
+use AmberDB;
+use AmberDB::Tools;
+
+my $adb   = AmberDB->new(path => { dbase_dir => "./dbstore" });
+my $tools = AmberDB::Tools->new($adb);
+
+# 1. Tüm veritabanının tam yedeğini alma (.amberdb)
+my $arsiv = $tools->dump();
+# Çıktı: dbstore/backup/2026/amberdb_2026-08-28_180000.amberdb
+
+# 2. Belirli tabloların snapshot yedeğini alma
+$tools->dump(
+    file   => "backup/2026/katalog_yedek.amberdb",
+    tables => ["catalog_product", "catalog_category"]
+);
+
+# 3. Yedeği geri yükleme ve tüm indeksleri otomatik inşa etme
+$tools->restore(
+    file    => "backup/2026/katalog_yedek.amberdb",
+    force   => 1, # Var olan tabloların üzerine yazma izni
+    reindex => 1  # İndeksleri sıfırdan üret
+);
+```
+
+#### CLI Komut Satırı Aracı (`bin/amberdb_backup.pl`)
+```bash
+# Veritabanını yedekleme
+perl bin/amberdb_backup.pl --dump --file backup/2026/tam_yedek.amberdb
+
+# Belirli tabloları yedekleme
+perl bin/amberdb_backup.pl --dump --tables products,orders
+
+# Yedeği güvenli şekilde geri yükleme
+perl bin/amberdb_backup.pl --restore --file backup/2026/tam_yedek.amberdb --force
+```
+
 ---
 
-## 18. Bakım ve Onarım Araçları (AmberDB::Tools)
+## 19. Bakım ve Onarım Araçları (AmberDB::Tools)
 
 Veritabanı indekslerini sıfırdan yeniden oluşturmak, veri doğrulaması yapmak veya tabloları optimize etmek için `AmberDB::Tools` kullanılır:
 
@@ -1226,8 +1633,8 @@ Veritabanı indekslerini sıfırdan yeniden oluşturmak, veri doğrulaması yapm
 use AmberDB;
 use AmberDB::Tools;
 
-my $dbp   = AmberDB->new(path => { dbase_dir => "./dbstore" });
-my $tools = AmberDB::Tools->new();
+my $adb   = AmberDB->new(path => { dbase_dir => "./dbstore" });
+my $tools = AmberDB::Tools->new($adb);
 
 # 1. Bir tablonun tüm indekslerini sıfırdan oluşturma (Re-Index)
 $tools->set_index("catalog_product");
@@ -1236,7 +1643,7 @@ $tools->set_index("catalog_product");
 $tools->index_alltables();
 
 # 3. İndeks Tutarlılık Kontrolü
-my @kayitlar = $dbp->read_all("catalog_product", 0, 0, no_index => 1);
+my @kayitlar = $adb->read_all("catalog_product", 0, 0, no_index => 1);
 my $fark = $tools->check_readall("catalog_product", @kayitlar);
 
 # 4. Tablo Vakumlama (Fragmentasyonu temizler ve dosyayı küçültür)
@@ -1245,11 +1652,20 @@ $tools->vacuum("catalog_product", 1); # 1 = işlem sonrası reindex yap
 # 5. DB_File tablosunu CSV'ye aktarma veya CSV'den geri yükleme
 $tools->tie2csv("catalog_product");
 $tools->csv2tie("catalog_product");
+
+# 6. Tüm Veritabanı Tablolarını Toplu Yeniden İndeksleme / Dönüştürme
+my $donusum_raporu = $tools->convert_tables();
+
+# 7. Tabloyu ve İlişkili Tüm İkincil İndeks Dosyalarını Diskten Silme
+$tools->del_table("eski_tablo");
+
+# 8. Bağımsız / Geçici Dizinler için Hafif Ad-Hoc AmberDB Örneği
+my $basit_adb = $tools->db_simple("/path/to/data/dir");
 ```
 
 ---
 
-## 19. Dosya Uzantıları Haritası
+## 20. Dosya Uzantıları Haritası
 
 AmberDB dosya uzantıları rollerine ve yeniden üretilebilirlik durumlarına göre 3 grupta toplanır:
 
@@ -1259,6 +1675,7 @@ AmberDB dosya uzantıları rollerine ve yeniden üretilebilirlik durumlarına g�
 | `.db` | Birincil Veri (Source of Truth) | ❌ **Hayır** (Otoriter) | Berkeley DB ana döküman tablosu (`DB_File` Hash). |
 | `.del` | Silinen Kayıtlar Arşivi | ❌ **Hayır** (Otoriter) | Silinen (soft-delete) kayıtların arşivi (`keep_deleted`). |
 | `.aut` | Kullanıcı Denetim İzi (Audit) | ❌ **Hayır** (Otoriter) | Kimin ne zaman hangi kaydı değiştirdiğinin logu (`log_owner`). |
+| `.str` | Metin Sözlük Eşleştirmesi | ❌ **Hayır** (Otoriter) | Serbest metinleri sayısal foreign key ID'lerine bağlayan çift yönlü sözlük (`_${blk}.str`). |
 | **Türetilmiş İndeks Dosyaları** | | | |
 | `.inx` | Birincil Kayıt İndeksi |  **Evet** (`set_index`) | Tüm aktif ID listesi, kayıt sayısı ve son ID ikili indeksi. |
 | `.fld` | Eşleştirme İndeksi (Match) |  **Evet** (`set_index`) | Alan bazlı tersine eşleştirme indeksi (`match_block`). |
@@ -1266,19 +1683,23 @@ AmberDB dosya uzantıları rollerine ve yeniden üretilebilirlik durumlarına g�
 | `.srt` | Sıralama İndeksi (Sort) |  **Evet** (`set_index`) | Belirlenen bloklara göre sıralı ID ikili indeksi (`sort_block`). |
 | `.fac` | Facet Filtreleme İndeksi |  **Evet** (`set_index`) | E-ticaret filtre sayaç ve durum haritası (`facet_block`). |
 | `.rwt` | SEO URL Slug Haritası |  **Evet** (`set_index`) | `_0.rwt` (ID→Slug) ve `_1.rwt` (Slug→ID) çift yönlü eşleştirici. |
+| `.jinx`| Junk Birincil Kayıt İndeksi |  **Evet** (`set_index`) | Pasif/arşiv kayıtların ID ikili indeksi (`use_junk`). |
+| `.jfld`| Junk Eşleştirme İndeksi |  **Evet** (`set_index`) | Pasif kayıtların alan eşleştirme indeksi (`jnktype => 'B'/'AB'`). |
+| `.jsrc`| Junk Tam Metin Arama |  **Evet** (`set_index`) | Pasif kayıtların arama ters indeksi (`jnktype => 'B'/'AB'`). |
 | **Çalışma Zamanı ve Geçici Dosyalar** | | | |
 | `.cnt` | Sayaç Dosyası | ⚠️ Sayaç verisi | Kayıt görüntülenme/tıklanma sayaçları (`use_counter`). |
 | `.txn` | İşlem Günlüğü (Undo Log) | ⚠️ Geçici (Runtime) | Aktif işlem undo-journal geri alma dosyası (`txn/`). |
 | `.cache`| Önbellek Dosyası |  Evet (RAM-Disk) | L2 RAM-Disk paylaşımlı önbellek dosyası (`cache/`). |
+| `.tmp` | Disk Buffer Dosyası | ⚠️ Geçici (Staging) | `dbstore/buffer/` altında geçici aktarım/ETL dosyası (`buffer_write`). |
 | `.lock` | Süreç Kilit Dosyası | ⚠️ Geçici (Mutex) | İşletim sistemi `flock` process senkronizasyon dosyası. |
 
 ---
 
-## 20. Dizin Yapısı
+## 21. Dizin Yapısı
 
 ```text
 dbstore/
-├── table_info/                  ← Şema ve Grup Tanımları
+├── schema/                      ← Şema ve Grup Tanımları
 │   ├── catalog.dbase            ← Grup tanımı
 │   ├── catalog_product.table    ← Ürün tablosu şeması
 │   └── catalog_category.table   ← Kategori tablosu şeması
@@ -1294,6 +1715,7 @@ dbstore/
 │   ├── catalog_product.aut      ← Denetim logu
 │   └── catalog_product.del      ← Silinen kayıtlar
 ├── cache/                       ← L2 Paylaşımlı Önbellek Dosyaları
+├── buffer/                      ← Geçici Disk Buffer / Staging Dosyaları
 ├── txn/                         ← Aktif Transaction Günlükleri
 ├── pids/                        ← Dosya ve Kayıt Kilitleri
 └── backup/                      ← Günlük CSV Yedekleri
@@ -1301,7 +1723,7 @@ dbstore/
 
 ---
 
-## 21. Geliştirici Tavsiyeleri ve En İyi Pratikler
+## 22. Geliştirici Tavsiyeleri ve En İyi Pratikler
 
 1. **Toplu Veri Girişinde `insert_list` Kullanın:** Yüzlerce kaydı tek tek döngüde `insert_id` ile eklemek yerine tek seferde `insert_list` ile ekleyin; disk I/O ve indeksleme süresi 10 kat hızlanacaktır.
 2. **Kritik İş Mantıklarında `transact_start` Kullanın:** Stok düşme, bakiye güncelleme ve sipariş onaylama gibi adımları mutlaka transaction bloğu içine alın.
@@ -1311,7 +1733,7 @@ dbstore/
 
 ---
 
-## 22. Kapsamlı Uygulama Örneği (Sipariş & Stok Senaryosu)
+## 23. Kapsamlı Uygulama Örneği (Sipariş & Stok Senaryosu)
 
 Aşağıdaki örnek; ana tabloların oluşturulması, ürünün ilişkisel ID'ler ve çoklu kategorilerle eklenmesi, SEO URL ile okuma, filtreli arama, sıralama ve güvenli bir sipariş transaction'ını baştan sona gösterir:
 
@@ -1321,17 +1743,17 @@ use warnings;
 use AmberDB;
 
 # 1. Motoru başlat
-my $dbp = AmberDB->new(
+my $adb = AmberDB->new(
     cfg  => { language => "tr", user => "kasiyer_1" },
     path => { dbase_dir => "./dbstore" }
 );
 
 # 2. Ana Tanım Tablolarına Kayıt Ekleme (Master Tables)
-my $kat_bilgisayar = $dbp->insert_id("catalog_category", undef, "Bilgisayar & Bilişim", 1); # ID: 5
-my $kat_tasinabilir = $dbp->insert_id("catalog_category", undef, "Taşınabilir Cihazlar", 1);# ID: 12
+my $kat_bilgisayar = $adb->insert_id("catalog_category", undef, "Bilgisayar & Bilişim", 1); # ID: 5
+my $kat_tasinabilir = $adb->insert_id("catalog_category", undef, "Taşınabilir Cihazlar", 1);# ID: 12
 
-my $marka_apple    = $dbp->insert_id("catalog_brand", undef, "Apple", "ABD");                # ID: 8
-my $yazar_tasarim  = $dbp->insert_id("catalog_author", undef, "Donanım Ekibi", "Ar-Ge");   # ID: 7
+my $marka_apple    = $adb->insert_id("catalog_brand", undef, "Apple", "ABD");                # ID: 8
+my $yazar_tasarim  = $adb->insert_id("catalog_author", undef, "Donanım Ekibi", "Ar-Ge");   # ID: 7
 
 # 3. Yeni Ürün Ekle (İlişkisel alanlara ID verilir; kategori "5,12" olarak çoklu tutulur)
 my @urun = (
@@ -1347,46 +1769,46 @@ my @urun = (
     "1"                             # [11] Satışta: 1
 );
 
-my $urun_id = $dbp->insert_id("catalog_product", undef, @urun);
+my $urun_id = $adb->insert_id("catalog_product", undef, @urun);
 print "1. Ürün Eklendi -> ID: $urun_id\n";
 
 # 4. Otomatik Üretilen SEO URL'yi Oku
-my $seo = $dbp->get_seourl("catalog_product", 0, $urun_id);
+my $seo = $adb->get_seourl("catalog_product", 0, $urun_id);
 print "2. Oluşan URL -> /urun/$seo->{$urun_id}\n";
 
-# 5. Çoklu Kategoriden (Örn: 12 nolu Taşınabilir) Fiyat Sıralı Listeleme
-my ($toplam, @urunler) = $dbp->field_fetch(
-    "catalog_product", 1, "12", 0, 10,
+# 5. Çoklu Kategoriden (Örn: 12 nolu Taşınabilir) Fiyat Sıralı Listeleme, ilk 20 kayıt
+my ($toplam, @urunler) = $adb->field_fetch(
+    "catalog_product", 1, "12", 0, 20,
     sort => { blk => 10, reverse => 1 } # Ucuzdan pahalıya
 );
 print "3. Kategori 12'de $toplam ürün listelendi.\n";
 
 # 6. Güvenli Sipariş Transaction'ı (Stok Düşme ve Sipariş Kaydı)
-$dbp->transact_start();
+$adb->transact_start();
 
-my @mevcut = $dbp->read_id("catalog_product", $urun_id);
+my @mevcut = $adb->read_id("catalog_product", $urun_id);
 if ($mevcut[8] >= 1) { # Stok kontrolü
     # Stoğu 1 azalt
     $mevcut[8] -= 1;
-    $dbp->modify_id("catalog_product", $urun_id, @mevcut[1..$#mevcut]);
+    $adb->modify_id("catalog_product", $urun_id, @mevcut[1..$#mevcut]);
     
     # Sipariş oluştur (Kalemler Blok 3'te ARRAY olarak iç içe döküman şeklinde tutulur)
     my @siparis_kalemleri = ( [ $urun_id, "MacBook Pro M3", 1, 64999.00 ] );
-    my $siparis_id = $dbp->insert_id("orders", undef, "Müşteri Ahmet", time(), \@siparis_kalemleri, { status => "onaylandi" });
+    my $siparis_id = $adb->insert_id("orders", undef, "Müşteri Ahmet", time(), \@siparis_kalemleri, { status => "onaylandi" });
     
-    my $txn = $dbp->transact_end();
+    my $txn = $adb->transact_end();
     if ($txn->{status} eq "commit") {
         print "4. Sipariş #$siparis_id başarıyla tamamlandı! Kalan Stok: $mevcut[8]\n";
     }
 } else {
-    $dbp->transact_rollback();
+    $adb->transact_rollback();
     print "4. Hata: Stok kalmadı, işlem geri alındı!\n";
 }
 ```
 
 ---
 
-## 23. Metod Hızlı Referans Tablosu
+## 24. Metod Hızlı Referans Tablosu
 
 | Metod | Parametreler | Dönüş Değeri | Açıklama |
 |---|---|---|---|
@@ -1401,8 +1823,8 @@ if ($mevcut[8] >= 1) { # Stok kontrolü
 | `read_id` | `$tablo, $id` | `@alanlar` | Birincil anahtara göre kaydı okur. |
 | `read_all` | `$tablo, [$start, $limit, %opt]` | `($toplam, @kayitlar)` | Tablodaki kayıtları sıralı ve sayfalı okur. |
 | `read_list` | `$tablo, \@id_listesi` | `@kayitlar` | ID listesindeki kayıtları verilen sırada getirir. |
-| `field_fetch` | `$tablo, $blok, $deger, [%opt]` | `($toplam, @kayitlar)` | Blok eşleştirme indeksinden doğrudan tekil anahtar araması ($O(1)$ key seek) yapar. |
-| `search_table` | `$tablo, $metin, [%opt]` | `($toplam, @kayitlar)` | Tam metin arama indeksinden arama yapar. |
+| `field_fetch` | `$tablo, $blok, $deger, [%opt]` | `($toplam, @kayitlar)` (sayfalı) / `@kayitlar` | Blok eşleştirme indeksinden (`.fld`) doğrudan tekil anahtar araması yapar. |
+| `search_table` | `$tablo, $metin, [%opt]` | `($toplam, @kayitlar)` (sayfalı) / `@kayitlar` | Tam metin arama indeksinden arama yapar. |
 | `field_filter` | `$tablo, \%filtre_ayarlari` | `{ count, ids }` | Çok kriterli birleşik filtreleme ve sıralama. |
 | `field_fltkeys` | `$tablo, \%facet_ayarlari` | `\%sayilar` | Facet filtre sayaçlarını hesaplar. |
 | **Varlık ve Konumsal Okumalar** | | | |
@@ -1432,7 +1854,9 @@ if ($mevcut[8] >= 1) { # Stok kontrolü
 | `transact_rollback` | — | `\%sonuc` | İşlemi manuel olarak hemen geri alır. |
 | `flock_open`   | `$tablo, $mod, [$id]` | `1/undef` | Kayıt veya tablo seviyesinde kilit alır. |
 | `flock_close`  | `$tablo, [$id]` | `1/undef` | Alınan kilidi serbest bırakır. |
-| **Önbellek, SEO & Denetim** | | | |
+| **Önbellek, SEO, Şema & Denetim** | | | |
+| `table_info`   | `$tablo` | `\%schema` | Tablonun tanımlı şema konfigürasyonunu döner. |
+| `table_attr`   | `$tablo, \%ozellikler` | `1` | Çalışma zamanında bellek içi şema günceller. |
 | `cache_read`   | `$tablo, $anahtar` | `@veriler` | L1/L2 önbellekten veri okur. |
 | `cache_write`  | `$tablo, $anahtar, @veriler`| `1` | L1 ve L2 önbelleğe veri yazar. |
 | `cache_delete` | `$tablo, [$anahtar]` | `1` | Önbelleği temizler. |
@@ -1441,4 +1865,4 @@ if ($mevcut[8] >= 1) { # Stok kontrolü
 
 ---
 
-*Bu doküman `AmberDB` v5.02 motorunun güncel kod mimarisi ve geliştirici pratikleri doğrultusunda hazırlanmıştır.*
+*Bu doküman `AmberDB` v5.21.0 motorunun güncel kod mimarisi ve geliştirici pratikleri doğrultusunda hazırlanmıştır.*

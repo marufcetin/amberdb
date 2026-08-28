@@ -6,8 +6,8 @@ use utf8;
 use Encode qw(decode encode);
 use Carp qw(croak cluck);
 
-our $VERSION = '5.02';
-my $CREATED  = '2026-07-22';
+our $VERSION = '5.21.0';
+my $CREATED  = '2017-07-22';
 
 my %LOCALE_CACHE;
 my %WARNED_LOCALES;
@@ -1149,79 +1149,155 @@ __END__
 
 =head1 NAME
 
-AmberDB::Locale - Locale-aware text processing, formatting, and collation engine
+AmberDB::Locale - Multilingual text processing, collation, number/currency formatting, and search normalization engine
 
 =head1 SYNOPSIS
 
-  use AmberDB::Locale;
-
-  # Create a locale object
-  my $tr = AmberDB::Locale->new(language => "tr");
+  # =========================================================================
+  # 1. DIRECT USAGE VIA AMBERDB INSTANCE ($adb inherits AmberDB::Locale):
+  # Reads active language from config (default is 'tr' or configured language)
+  # =========================================================================
+  my $adb = AmberDB->new(cfg => { language => "tr" });
 
   # Case Conversions & Comparison
-  my $upper  = $tr->uc("ığdır");                         # "IĞDIR"
-  my $lower  = $tr->lc("İSTANBUL");                      # "istanbul"
-  my $title  = $tr->ucfirst("istanbul büyükşehir");      # "İstanbul Büyükşehir"
-  my $folded = $tr->fold("İSTANBUL");                    # "istanbul"
-  my $same   = $tr->ieq("İstanbul", "istanbul");         # 1
+  my $upper  = $adb->uc("ığdır");                         # "IĞDIR"
+  my $lower  = $adb->lc("İSTANBUL");                      # "istanbul"
+  my $title  = $adb->ucfirst("istanbul büyükşehir");      # "İstanbul Büyükşehir"
+  my $folded = $adb->fold("İSTANBUL");                    # "istanbul"
+  my $same   = $adb->ieq("İstanbul", "istanbul");         # 1
 
-  # Sorting
-  my @sorted = $tr->sort(["İzmir", "Ankara", "Van", "Şanlıurfa", "Bursa", "Çanakkale"]);
+  # Unicode Collation Algorithm (UCA) Sorting
+  my @sorted = $adb->sort(["İzmir", "Ankara", "Van", "Şanlıurfa", "Bursa", "Çanakkale"]);
   # => ("Ankara", "Bursa", "Çanakkale", "İzmir", "Şanlıurfa", "Van")
 
-  # Text Normalization & Transliteration
-  my $clean = $tr->normalize("<p>Kâr &amp; zarar</p>"); # "Kar zarar"
-  my $ascii = $tr->to_ascii("çarşı");                    # "carsi"
-  my $slug  = $tr->to_ascii("İstanbul", 1);             # "istanbul"
+  # Text Normalization & Transliteration (Turkish rules: ü -> u, ç -> c)
+  my $clean = $adb->normalize("<p>Kâr &amp; zarar &ccedil;izelgesi</p>"); # "Kar zarar cizelgesi"
+  my $ascii = $adb->to_ascii("müller");                   # "muller"   (Turkish: ü -> u)
+  my $slug  = $adb->to_ascii("İstanbul Kâr & Zarar!", 1); # "istanbul_kar_zarar"
 
-  # UTF-8 Safe Substring
-  my $sub = $tr->substring("Çanakkale", 0, 4);           # "Çana"
+  # UTF-8 Safe Substring (character-based, safe for multibyte chars)
+  my $sub = $adb->substring("Çanakkale", 0, 4);           # "Çana"
 
-  # Number to Written Text
-  my $text = $tr->num2text(1234.56);
-  # => "Bin İki Yüz Otuz Dört TL Elli Altı KR"
+  # Number to Written Text (Invoices / Cheques)
+  my $text = $adb->num2text(1234.56);
+  # => "Bin İki Yüz Otuz Dört TL Elli Altı KR" (Note: "Bin", not "Bir Bin")
 
-  # Formatting Numbers & Currencies
-  my $num  = $tr->format_number(1234567.89);            # "1.234.567,89"
-  my $curr = $tr->format_currency(1234.50, "EUR");       # "1.234,50 €"
+  # Number & Currency Formatting
+  my $num  = $adb->format_number(1234567.89);            # "1.234.567,89"
+  my $curr = $adb->format_currency(1234.50, "EUR");       # "1.234,50 €"
 
   # Date Formatting & Parsing
-  my $date = $tr->format_date(time(), "full");          # "Pazar, 9 Ağustos 2026"
-  my $ep   = $tr->parse_date("09.08.2026");             # Unix timestamp
+  my $date = $adb->format_date(time(), "full");          # "Cuma, 28 Ağustos 2026"
+  my $ep   = $adb->parse_date("28.08.2026");             # Unix timestamp
 
-  # Pluralization
-  my $msg  = $tr->plural(5, { one => "{count} ürün", other => "{count} ürün" });
+  # Pluralization (CLDR)
+  my $msg  = $adb->plural(5, { one => "{count} ürün", other => "{count} ürün" });
+
+  # Search Token Normalization
+  my $norm = $adb->normalize_word("Türkiye'de", 1);      # "turkiye turkiyede"
+
+  # =========================================================================
+  # 2. CROSS-LANGUAGE COMPARISON & STANDALONE USAGE:
+  # =========================================================================
+  use AmberDB::Locale;
+
+  my $tr = AmberDB::Locale->new(language => "tr");
+  my $de = AmberDB::Locale->new(language => "de");
+  my $en = AmberDB::Locale->new(language => "en");
+  my $fr = AmberDB::Locale->new(language => "fr");
+  my $ru = AmberDB::Locale->new(language => "ru");
+
+  # --- A. ASCII Transliteration Differences (to_ascii) ---
+  $tr->to_ascii("müller");          # "muller"    (Turkish rule: ü -> u)
+  $de->to_ascii("müller");          # "mueller"   (German DIN 5007 rule: ü -> ue)
+  $de->to_ascii("Große Straße");    # "Grosse Strasse" (ß -> ss)
+  $tr->to_ascii("çarşı");           # "carsi"     (ç -> c, ş -> s, ı -> i)
+  $fr->to_ascii("façade Noël");     # "facade Noel"
+
+  # --- B. Case Conversion Differences (uc / lc) ---
+  $tr->uc("istanbul");              # "İSTANBUL"  (Turkish dotted i -> İ)
+  $en->uc("istanbul");              # "ISTANBUL"  (Standard English i -> I)
+  $tr->lc("IĞDIR");                 # "ığdır"     (Turkish dotless I -> ı)
+  $en->lc("IĞDIR");                 # "iğdır"     (Standard English I -> i)
+  $de->uc("weiß");                  # "WEISS"     (German ß -> SS)
+
+  # --- C. Number Formatting Differences (format_number) ---
+  $tr->format_number(1234567.89);   # "1.234.567,89" (Group: dot, Dec: comma)
+  $de->format_number(1234567.89);   # "1.234.567,89" (Group: dot, Dec: comma)
+  $en->format_number(1234567.89);   # "1,234,567.89" (Group: comma, Dec: dot)
+  $fr->format_number(1234567.89);   # "1 234 567,89" (Group: space, Dec: comma)
+
+  # --- D. Written Number Differences (num2text) ---
+  $tr->num2text(1000);              # "Bin TL"           (Turkish: "Bin", no "Bir" prefix)
+  $en->num2text(1000);              # "One Thousand USD" (English: requires "One" prefix)
+  $de->num2text(1000);              # "Eins Tausend EUR" (German: requires "Eins" prefix)
+
+  # --- E. Pluralization Differences (plural) ---
+  # English: 2 forms (one, other)
+  $en->plural(1, { one => "{count} item", other => "{count} items" }); # "1 item"
+  $en->plural(5, { one => "{count} item", other => "{count} items" }); # "5 items"
+
+  # Russian: 4 forms (one, few, many, other)
+  my %ru_apple = (
+      one   => "{count} яблоко",
+      few   => "{count} яблока",
+      many  => "{count} яблок",
+      other => "{count} яблока"
+  );
+  $ru->plural(1,  \%ru_apple);      # "1 яблоко"  (ends in 1, except 11)
+  $ru->plural(3,  \%ru_apple);      # "3 яблока"  (ends in 2-4, except 12-14)
+  $ru->plural(5,  \%ru_apple);      # "5 яблок"   (ends in 5-9, 0, or 11-14)
+  $ru->plural(21, \%ru_apple);      # "21 яблоко"
 
 =head1 DESCRIPTION
 
-C<AmberDB::Locale> is a locale-aware text processing engine designed for multilingual Perl applications.
-It provides a unified, high-level API for case conversion, sorting/collation, ASCII transliteration,
-written number conversion, date/time formatting, number/currency formatting, HTML entity decoding,
-CLDR-based plural form selection, and UTF-8 safe substring slicing.
+C<AmberDB::Locale> is a comprehensive, high-performance, locale-aware text processing engine designed for multilingual Perl applications. It provides a unified API for:
 
-Language-specific rules and datasets are decoupled from the engine logic and provided by language data packages
-(e.g., C<AmberDB::Locale::Lang::tr>, C<AmberDB::Locale::Lang::de>, etc.).
+=over 4
+
+=item * Locale-aware case conversion (e.g., Turkish C<I/ı>, C<İ/i>, German C<ß -E<gt> SS>).
+
+=item * 100% standard Unicode Collation Algorithm (UCA) sorting via C<Unicode::Collate::Locale>.
+
+=item * ASCII transliteration and URL slug generation with language-specific rules (e.g. German DIN 5007-2 C<ü -E<gt> ue> vs. Turkish C<ü -E<gt> u>).
+
+=item * Written number and cheque printing conversion supporting integer, decimal, negative numbers, and Eastern Arabic/Persian numerals.
+
+=item * Precision number and ISO 4217 currency formatting with customizable decimal and group separators.
+
+=item * Bidirectional date/time formatting with full pattern tokens (C<YYYY>, C<MMMM>, C<dddd>, C<HH:mm:ss>) and parsing.
+
+=item * Unicode NFKC case-folding and phonetic search token normalization for high-performance inverted indexes.
+
+=item * CLDR-standard plural form evaluation across Western, Slavic, and Eastern languages.
+
+=item * UTF-8 character-safe substring extraction preventing multi-byte corruption.
+
+=back
+
+Language-specific datasets and rule tables are decoupled into modular packages (e.g. C<AmberDB::Locale::Lang::tr>, C<AmberDB::Locale::Lang::de>, C<AmberDB::Locale::Lang::en>, C<AmberDB::Locale::Lang::ru>, C<AmberDB::Locale::Lang::fr>, C<AmberDB::Locale::Lang::es>, C<AmberDB::Locale::Lang::az>, C<AmberDB::Locale::Lang::ar>, C<AmberDB::Locale::Lang::ja>).
+
+B<Inheritance Note:> C<AmberDB> inherits from C<AmberDB::Locale> via C<use parent>. When an C<AmberDB> instance is constructed, it automatically initializes its locale subsystem from C<$adb-E<gt>config('language')>. All methods documented below can be called directly on C<$adb> (e.g. C<$adb-E<gt>format_currency(...)>).
 
 =head1 CONSTRUCTOR
 
 =head2 new([%options | $hashref | $language_code])
 
-Creates and returns an C<AmberDB::Locale> instance configured for the specified language.
+Creates and returns an C<AmberDB::Locale> instance configured for the specified language. Instances are cached internally for high-throughput reuse.
 
-  # Named-parameter API (recommended)
+  # 1. Named-parameter API (recommended)
   my $lang = AmberDB::Locale->new(language => 'tr');
 
-  # Hashref API
+  # 2. Hashref API
   my $lang = AmberDB::Locale->new({ language => 'de' });
 
-  # Positional string API
+  # 3. Positional string API
   my $lang = AmberDB::Locale->new('fr');
 
-  # Default (falls back to English 'en')
+  # 4. Default (falls back to English 'en')
   my $lang = AmberDB::Locale->new();
 
-Language tags can be short ISO codes (e.g., C<"tr">, C<"en">, C<"de">, C<"fr">, C<"es">, C<"ru">, C<"az">, C<"ar">)
-or common aliases (such as C<"turkish">, C<"tr_tr">, C<"tr-tr">, C<"english">, etc.).
+Supported language codes include C<"tr">, C<"en">, C<"de">, C<"fr">, C<"es">, C<"ru">, C<"az">, C<"ar">, C<"ja"> and common aliases (such as C<"turkish">, C<"tr_tr">, C<"english">, C<"german">, etc.).
 If an unsupported language is specified, a warning is issued and the instance falls back to C<"en">.
 
 =head1 METHODS
@@ -1230,26 +1306,38 @@ If an unsupported language is specified, a warning is issued and the instance fa
 
 =head3 uc($string)
 
-Converts C<$string> to uppercase according to locale-specific rules.
+Converts C<$string> to uppercase according to locale-specific casing rules.
 
+  # Turkish dotted/dotless I handling:
   $tr->uc("ığdır");     # "IĞDIR"
   $tr->uc("istanbul");  # "İSTANBUL" (Turkish i -> İ)
+
+  # English standard casing:
+  $en->uc("istanbul");  # "ISTANBUL" (English i -> I)
+
+  # German sharp S:
   $de->uc("straße");    # "STRASSE"  (German ß -> SS)
 
 =head3 lc($string)
 
-Converts C<$string> to lowercase according to locale-specific rules.
+Converts C<$string> to lowercase according to locale-specific casing rules.
 
+  # Turkish dotted/dotless I handling:
   $tr->lc("İSTANBUL");  # "istanbul" (Turkish İ -> i)
   $tr->lc("IĞDIR");     # "ığdır"    (Turkish I -> ı)
 
+  # English standard casing:
+  $en->lc("IĞDIR");     # "iğdır"    (English I -> i)
+
 =head3 ucfirst($string)
 
-Capitalizes the first letter of each word in C<$string> under locale rules. The string is first lowercased,
-and then the first character following word-starting delimiters (spaces, punctuation, brackets) is uppercased.
+Capitalizes the first letter of each word in C<$string> under locale rules. The string is first lowercased, and then the first character following word-starting delimiters (spaces, punctuation, brackets) is uppercased according to locale rules.
 
   $tr->ucfirst("istanbul büyükşehir belediyesi");
-  # "İstanbul Büyükşehir Belediyesi"
+  # => "İstanbul Büyükşehir Belediyesi"
+
+  $tr->ucfirst("ahmet (ısparta) - izmir");
+  # => "Ahmet (Isparta) - İzmir"
 
 =head3 fold($string)
 
@@ -1262,74 +1350,141 @@ Applies Unicode NFKC normalization and locale lowercasing to produce a case-fold
 Performs a locale-aware, case-insensitive comparison between C<$str1> and C<$str2>. Returns C<1> if they are equal under locale rules, C<0> otherwise.
 
   $tr->ieq("İstanbul", "istanbul"); # 1 (true)
+  $tr->ieq("IĞDIR", "ığdır");       # 1 (true)
   $tr->ieq("Ankara", "İzmir");      # 0 (false)
 
 =head2 Sorting
 
 =head3 sort(\@list [, $field_or_index])
 
-Sorts an array reference C<\@list> according to locale collation rules.
+Sorts an array reference C<\@list> using the Unicode Collation Algorithm (UCA) tailored for the active locale.
 
-  # Simple array of strings
+  # 1. Simple array of strings (respects Turkish alphabetical ordering: Ç, Ğ, İ, Ö, Ş, Ü)
   my @sorted = $tr->sort(["İzmir", "Ankara", "Van", "Şanlıurfa", "Bursa", "Çanakkale"]);
   # => ("Ankara", "Bursa", "Çanakkale", "İzmir", "Şanlıurfa", "Van")
 
-  # Array of hash references (sort by hash key)
-  my @sorted_products = $tr->sort(\@products, "name");
+  # 2. Array of hash references (sort by hash key)
+  my @products = (
+      { id => 1, title => "Şemsiye" },
+      { id => 2, title => "Ayna" },
+      { id => 3, title => "Çanta" }
+  );
+  my @sorted_products = $tr->sort(\@products, "title");
+  # => ({ id => 2, title => "Ayna" }, { id => 3, title => "Çanta" }, { id => 1, title => "Şemsiye" })
 
-  # Array of array references (sort by element index)
-  my @sorted_rows = $tr->sort(\@rows, 2);
+  # 3. Array of array references (sort by element column index)
+  my @rows = (
+      [ 101, "Van" ],
+      [ 102, "Adana" ],
+      [ 103, "Çorum" ]
+  );
+  my @sorted_rows = $tr->sort(\@rows, 1);
+  # => ([102, "Adana"], [103, "Çorum"], [101, "Van"])
 
 =head2 Text Normalization & Transliteration
 
 =head3 normalize($string)
 
-Cleans and normalizes C<$string> by decoding HTML entities, stripping HTML tags, mapping locale-specific accents,
-filtering characters outside the locale's safe character set, and collapsing whitespace.
+Cleans and normalizes C<$string> by decoding HTML entities, stripping HTML tags, mapping locale-specific accents (such as circumflex vowels C<â, î, û>), filtering characters outside the locale's safe character set, and collapsing whitespace.
 
   my $clean = $tr->normalize('<p>Kâr &amp; zarar &ccedil;izelgesi</p>');
-  # "Kar zarar cizelgesi"
+  # => "Kar zarar cizelgesi"
 
 =head3 to_ascii($string [, $nonspace])
 
-Transliterates localized text into plain ASCII characters. Useful for generating permalinks, slugs, or safe identifiers.
+Transliterates localized text into plain ASCII characters according to per-language phonetic and transliteration conventions.
 
+=over 4
+
+=item * B<Turkish (C<trE<gt>>):> C<ç -E<gt> c>, C<ğ -E<gt> g>, C<ı/İ -E<gt> i>, C<ö -E<gt> o>, C<ş -E<gt> s>, C<ü -E<gt> u>
+
+  $tr->to_ascii("müller");          # "muller"
   $tr->to_ascii("çarşı");           # "carsi"
+
+=item * B<German (C<deE<gt>>, DIN 5007-2):> C<ä -E<gt> ae>, C<ö -E<gt> oe>, C<ü -E<gt> ue>, C<ß -E<gt> ss>
+
+  $de->to_ascii("müller");          # "mueller"
   $de->to_ascii("Große Straße");    # "Grosse Strasse"
-  $de->to_ascii("Müller");          # "Mueller" (DIN 5007-2: ü -> ue)
 
-If C<$nonspace> is true (slug mode), the string is lowercased and spaces/punctuation are converted to single underscores:
+=item * B<French (C<frE<gt>>):>
 
-  $tr->to_ascii("İstanbul", 1);     # "istanbul"
-  $tr->to_ascii("Kâr & Zarar!", 1); # "kar_zarar"
+  $fr->to_ascii("façade Noël");     # "facade Noel"
+
+=item * B<Spanish (C<esE<gt>>):>
+
+  $es->to_ascii("año niño");        # "ano nino"
+
+=back
+
+If C<$nonspace = 1> (slug mode), the string is lowercased and spaces/punctuation are converted to single underscores:
+
+  $tr->to_ascii("İstanbul", 1);               # "istanbul"
+  $tr->to_ascii("Kâr & Zarar Tablosu!", 1);   # "kar_zarar_tablosu"
 
 =head3 first_char($string)
 
-Returns the normalized, uppercase first character of C<$string> for alphabetical indexing (e.g. A-Z index headings).
-Returns C<"0-9"> if the string begins with a digit.
+Returns the normalized, uppercase first character of C<$string> for alphabetical indexing (e.g. A-Z catalog directories). Returns C<"0-9"> if the string begins with a digit.
 
   $tr->first_char("  çarşı  ");    # "Ç"
   $tr->first_char("123abc");       # "0-9"
   $tr->first_char("İzmir");        # "İ"
 
-=head2 UTF-8 Safe Substring
+=head2 UTF-8 Encoding & Slicing
+
+=head3 utf_encode($string) / utf_decode($string)
+
+Converts a Perl Unicode character string into raw UTF-8 octet bytes (C<utf_encode>) or decodes raw UTF-8 bytes into Perl Unicode characters (C<utf_decode>). Safe against double-encoding.
+
+  my $bytes = $lang->utf_encode($unicode_str);
+  my $chars = $lang->utf_decode($raw_bytes);
 
 =head3 substring($string, [$offset], $length)
 
 Extracts a substring from C<$string> based on character count rather than byte count. Prevents cutting multibyte UTF-8 characters in half. Works transparently on both decoded Unicode strings and raw UTF-8 byte strings.
 
-  $tr->substring("Çanakkale", 0, 4); # "Çana" (4 characters)
+  $tr->substring("Çanakkale", 0, 4); # "Çana" (4 characters, 5 bytes)
   $tr->substring("İstanbul", 2, 3);  # "tan"
 
   # Default offset is 0 if omitted:
   $tr->substring("Şanlıurfa", 5);     # "Şanlı"
 
+=head2 Search Engine Tokenization & Regex
+
+=head3 search_pattern($query)
+
+Converts a search query string into a locale-aware regex pattern. Replaces locale-specific casing characters with regex character classes.
+
+  my $pat = $tr->search_pattern("sırdaş");
+  # => pattern matching both "sırdaş", "SIRDAŞ", "Sırdaş" under Turkish rules
+
+=head3 search_regex($string, $pattern)
+
+Performs a case-insensitive, locale-aware regex match of C<$pattern> inside C<$string>. Returns C<1> on match, C<0> otherwise.
+
+  my $found = $tr->search_regex("İstanbul Boğazı", "istanbul"); # 1
+
+=head3 normalize_word($word, [$mode_write])
+
+Normalizes a single search token according to locale phonetic assimilation, clitic/apostrophe stripping, and final-devoicing rules.
+
+=over 4
+
+=item * B<Write Mode (C<$mode_write = 1>):> Generates both the root token and joined compound token to index clitic variants (e.g. C<"Türkiye'de"> -E<gt> C<"turkiye turkiyede">).
+
+=item * B<Read Mode (C<$mode_write = 0> or omitted):> Strips clitics and suffixes to resolve the base root (e.g. C<"Türkiye'de"> -E<gt> C<"turkiye">; single-letter prefixes like C<"T-Shirt"> resolve to C<"tshirt">).
+
+=back
+
+  my $write_tokens = $tr->normalize_word("Türkiye'de", 1); # "turkiye turkiyede"
+  my $query_token  = $tr->normalize_word("Türkiye'de", 0); # "turkiye"
+
 =head2 Number & Currency Processing
 
 =head3 num2text($number [, %options])
 
-Converts numeric values (integers or floating-point decimals) into written words in the target locale. Ideal for generating invoices, cheques, or formal document text.
+Converts numeric values (integers or floating-point decimals) into written words in the target locale. Ideal for generating formal banking receipts, invoices, and cheques.
 
+  # Turkish rules: "1000" is "Bin TL" (NOT "Bir Bin TL")
   $tr->num2text(0);       # "Sıfır"
   $tr->num2text(1);       # "Bir TL"
   $tr->num2text(100);     # "Yüz TL"
@@ -1337,21 +1492,25 @@ Converts numeric values (integers or floating-point decimals) into written words
   $tr->num2text(1234.56); # "Bin İki Yüz Otuz Dört TL Elli Altı KR"
   $tr->num2text(-42);     # "Eksi Kırk İki TL"
 
+  # English rules: requires "One Thousand"
+  $en->num2text(1000);    # "One Thousand USD"
+  $en->num2text(1234.56); # "One Thousand Two Hundred Thirty Four USD Fifty Six cent"
+
+  # German rules:
+  $de->num2text(1000);    # "Eins Tausend EUR"
+
 Accepts Eastern Arabic (C<٠١٢٣٤٥٦٧٨٩>) and Persian (C<۰۱۲۳۴۵۶۷۸۹>) digits automatically.
 
 Options:
 
 =over 4
 
-=item C<currency =E<gt> { main =E<gt> "...", sub =E<gt> "..." }>
-
-Overrides main and subunit currency names:
+=item * C<currency =E<gt> { main =E<gt> "EUR", sub =E<gt> "cent" }>: Custom currency labels.
 
   $tr->num2text(99.99, currency => { main => "EUR", sub => "cent" });
+  # => "Doksan Dokuz EUR Doksan Dokuz cent"
 
-=item C<numbers =E<gt> \%hash>
-
-Overrides number word definitions with custom data.
+=item * C<numbers =E<gt> \%custom_hash>: Overrides number word definitions with custom dictionaries.
 
 =back
 
@@ -1359,13 +1518,19 @@ Overrides number word definitions with custom data.
 
 Formats C<$number> with locale-specific decimal and thousand grouping separators.
 
+  # Turkish conventions (group: dot, decimal: comma)
   $tr->format_number(1234567.89);                # "1.234.567,89"
   $tr->format_number(1234567.89, decimals => 0); # "1.234.568"
   $tr->format_number(1234567.89, decimals => 3); # "1.234.567,890"
 
+  # German conventions (group: dot, decimal: comma)
+  $de->format_number(1234567.89);                # "1.234.567,89"
+
+  # English conventions (group: comma, decimal: dot)
   my $en = AmberDB::Locale->new(language => "en");
   $en->format_number(1234567.89);                # "1,234,567.89"
 
+  # French conventions (group: space, decimal: comma)
   my $fr = AmberDB::Locale->new(language => "fr");
   $fr->format_number(1234567.89);                # "1 234 567,89"
 
@@ -1375,35 +1540,40 @@ Available options: C<decimals>, C<decimal_sep>, C<group_sep>.
 
 Formats monetary amounts using locale conventions or specific ISO 4217 currency settings.
 
+  # Default Turkish currency (TRY)
   $tr->format_currency(1234.50);                    # "₺1.234,50"
+
+  # Explicit ISO code
   $tr->format_currency(1234.50, 'EUR');             # "1.234,50 €"
   $tr->format_currency(1234.50, currency => 'USD'); # "$1.234,50"
 
-Options can override formatting attributes:
+Custom formatting overrides:
 
   $tr->format_currency(100, symbol => 'TL', position => 'suffix', space => 1);
-  # "100,00 TL"
+  # => "100,00 TL"
 
 =head2 Date & Time Operations
 
 =head3 format_date($time_or_string [, $pattern_or_style])
 
-Formats a Unix timestamp or date string into a localized date/time representation.
+Formats a Unix epoch timestamp or ISO date string into a localized date/time representation.
 
-  my $epoch = time();
-  $tr->format_date($epoch);             # "09.08.2026" (short, default)
-  $tr->format_date($epoch, 'medium');   # "9 Ağu 2026"
-  $tr->format_date($epoch, 'long');     # "9 Ağustos 2026"
-  $tr->format_date($epoch, 'full');     # "Pazar, 9 Ağustos 2026"
+  my $epoch = 1787832600; # 2026-08-28 14:30:00
+
+  # Standard styles:
+  $tr->format_date($epoch);             # "28.08.2026" (short, default)
+  $tr->format_date($epoch, 'medium');   # "28 Ağu 2026"
+  $tr->format_date($epoch, 'long');     # "28 Ağustos 2026"
+  $tr->format_date($epoch, 'full');     # "Cuma, 28 Ağustos 2026"
   $tr->format_date($epoch, 'time');     # "14:30"
-  $tr->format_date($epoch, 'datetime'); # "09.08.2026 14:30"
+  $tr->format_date($epoch, 'datetime'); # "28.08.2026 14:30"
 
-  # Custom format tokens:
-  $tr->format_date($epoch, 'YYYY-MM-DD'); # "2026-08-09"
-  $tr->format_date($epoch, 'DD/MM/YYYY'); # "09/08/2026"
+  # Custom format pattern tokens:
+  $tr->format_date($epoch, 'YYYY-MM-DD'); # "2026-08-28"
+  $tr->format_date($epoch, 'DD/MM/YYYY'); # "28/08/2026"
 
   # Input can also be ISO date strings:
-  $tr->format_date("2026-08-09", 'full'); # "Pazar, 9 Ağustos 2026"
+  $tr->format_date("2026-08-28", 'full'); # "Cuma, 28 Ağustos 2026"
 
 Supported pattern tokens:
 
@@ -1417,31 +1587,31 @@ Supported pattern tokens:
 
 =item * C<dddd>, C<ddd> - Full day name, short day name
 
-=item * C<HH>, C<H> - Hour
+=item * C<HH>, C<H> - Hour (2-digit / 1-digit)
 
-=item * C<mm>, C<m> - Minute
+=item * C<mm>, C<m> - Minute (2-digit / 1-digit)
 
-=item * C<ss>, C<s> - Second
+=item * C<ss>, C<s> - Second (2-digit / 1-digit)
 
 =back
 
 =head3 parse_date($string [, %options])
 
-Parses a localized date string (e.g. C<"09.08.2026"> or C<"2026-08-09 14:30:00">) back into a Unix timestamp or component hash.
+Parses a localized date string (e.g. C<"28.08.2026"> or C<"2026-08-28 14:30:00">) back into a Unix epoch timestamp or component hash.
 
-  my $epoch = $tr->parse_date("09.08.2026"); # Unix timestamp
+  my $epoch = $tr->parse_date("28.08.2026"); # Unix timestamp
 
-  my $hash = $tr->parse_date("09.08.2026", hash => 1);
-  # { year => 2026, month => 8, day => 9, hour => 0, minute => 0, second => 0 }
+  my $hash = $tr->parse_date("28.08.2026", hash => 1);
+  # => { year => 2026, month => 8, day => 28, hour => 0, minute => 0, second => 0 }
 
 =head2 HTML Entity Decoding
 
 =head3 decode_entities($string)
 
-Decodes numeric (hex C<&#x...;>, decimal C<&#...;>) and named HTML entities in C<$string>, incorporating both universal HTML entities and locale-specific extra entities.
+Decodes numeric (hex C<&#x...;>, decimal C<&#...;>) and named HTML entities in C<$string>, incorporating both universal entities and locale-specific extra entities.
 
   $tr->decode_entities("&amp; &lt; &gt; &#x20AC; &ccedil;");
-  # "& < > € ç"
+  # => "& < > € ç"
 
 =head2 Pluralization
 
@@ -1449,14 +1619,27 @@ Decodes numeric (hex C<&#x...;>, decimal C<&#...;>) and named HTML entities in C
 
 Selects and interpolates the appropriate plural form from C<\%forms> based on CLDR plural rules for the active locale.
 
+  # English (2 forms: one, other)
   my $en = AmberDB::Locale->new(language => "en");
-  $en->plural(1, { one => "{count} item",  other => "{count} items" }); # "1 item"
-  $en->plural(5, { one => "{count} item",  other => "{count} items" }); # "5 items"
+  $en->plural(1, { one => "{count} item", other => "{count} items" }); # "1 item"
+  $en->plural(5, { one => "{count} item", other => "{count} items" }); # "5 items"
 
+  # Russian (4 forms: one, few, many, other)
   my $ru = AmberDB::Locale->new(language => "ru");
-  $ru->plural(1, { one => "{count} яблоко", few => "{count} яблока",
-                   many => "{count} яблок",  other => "{count} яблока" });
-  # "1 яблоко"
+  my %ru_apple = (
+      one   => "{count} яблоко",
+      few   => "{count} яблока",
+      many  => "{count} яблок",
+      other => "{count} яблока"
+  );
+  $ru->plural(1,  \%ru_apple); # "1 яблоко"   (ends in 1, except 11)
+  $ru->plural(3,  \%ru_apple); # "3 яблока"   (ends in 2-4, except 12-14)
+  $ru->plural(5,  \%ru_apple); # "5 яблок"    (ends in 5-9, 0, or 11-14)
+  $ru->plural(21, \%ru_apple); # "21 яблоко"  (ends in 1, except 11)
+
+  # Turkish (regular count)
+  my $tr = AmberDB::Locale->new(language => "tr");
+  $tr->plural(5, { one => "{count} ürün", other => "{count} ürün" }); # "5 ürün"
 
 Placeholders C<{count}> or C<{n}> in template strings are automatically replaced with formatted number values.
 
@@ -1464,7 +1647,7 @@ Placeholders C<{count}> or C<{n}> in template strings are automatically replaced
 
 =head3 language()
 
-Returns the active language tag (e.g., C<"tr">, C<"en">).
+Returns the active language tag (e.g., C<"tr">, C<"en">, C<"de">).
 
 =head3 months()
 
@@ -1480,7 +1663,7 @@ Maruf Cetin <marufcetin@gmail.com>
 
 =head1 LICENSE AND COPYRIGHT
 
-Copyright (C) 2026 Maruf Cetin.
+Copyright (C) 2017-2026 Maruf Cetin.
 
 This library is free software; you can redistribute it and/or modify it under the terms of the Artistic License 2.0.
 
