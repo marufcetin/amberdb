@@ -119,7 +119,7 @@ In AmberDB, every record (document) is natively represented as a Perl list/array
 > The primary methods used in everyday application workflows are:
 > * **Writing & Updating:** `insert_id`, `modify_id`, `delete_id`
 > * **Reading & Streaming:** `read_id`, `read_all`, `read_list`
-> * **Filtering & Search:** `field_fetch`, `search_list` (or `search_table`)
+> * **Filtering & Search:** `field_fetch`, `search_table`
 
 ```perl
 # =========================================================================
@@ -162,100 +162,91 @@ In AmberDB, core insertion, modification, deletion, and retrieval operations are
 
 Creating a `.table` schema file is **not strictly mandatory**; schemaless tables store and retrieve records by primary key with zero configuration. However, **if indexing directives are defined in the table schema** (`record_index`, `match_block`, `search_block`, `facet_block`, `sort_block`, `seo_block`):
 1. Every `insert_id`, `modify_id`, or `delete_id` call **automatically compiles, synchronizes, and maintains all secondary search, match, and sort indexes** in the background.
-2. Read, query, and search operations (`read_all`, `field_fetch`, `search_list`, `search_table`, `facet_menu`, etc.) **automatically utilize these precomputed indexes**, bypassing slow full disk scans and executing via direct index lookups.
+2. Read, query, and search operations (`read_all`, `field_fetch`, `search_table`, `facet_menu`, etc.) **automatically utilize these precomputed indexes**, bypassing slow full disk scans and executing via direct index lookups.
 
 ### 3.1 Inserting Records — `insert_id`
 
 In AmberDB, relational fields (configured via `match_block` and `rdbm`) store **foreign primary keys (IDs)** rather than plain text strings. 
 
-For entities associated with multiple categories or multiple authors, ID values are provided as a comma-separated string (e.g., `"5,12"` or `"7,9"`) or an array reference. AmberDB's internal `field_to_list` mechanism parses these delimiters and indexes **each ID independently** into the match and faceted navigation indexes.
-
 ```perl
 # =========================================================================
-# STEP 1: Creating Related Master Tables
+# STEP 1: Populate Master Entity Tables
 # =========================================================================
-
 # 1. Category Table (catalog_category):
 my $cat_computers = $adb->insert_id("catalog_category", undef, "Computers & IT", 1); # ID: 5
 my $cat_audio     = $adb->insert_id("catalog_category", undef, "Headphones & Audio", 1); # ID: 12
 
-# 2. Brand / Manufacturer Table (catalog_brand):
+# 2. Producer / Brand Table (catalog_brand):
 my $brand_sony    = $adb->insert_id("catalog_brand", undef, "Sony", "Japan");          # ID: 3
 my $brand_apple   = $adb->insert_id("catalog_brand", undef, "Apple", "USA");           # ID: 8
 
-# 3. Author / Contributor Table (catalog_author):
+# 3. Contributor / Author Table (catalog_author):
 my $author_1      = $adb->insert_id("catalog_author", undef, "John Doe", "Audio Eng"); # ID: 7
 my $author_2      = $adb->insert_id("catalog_author", undef, "Jane Smith", "Designer");# ID: 9
 
 # =========================================================================
-# STEP 2: Inserting Product Records (catalog_product)
+# STEP 2: Inserting a Product Record (catalog_product)
 # =========================================================================
-# NOTE: 
-# - Blocks 1 (Category), 2 (Brand), and 3 (Author) must contain referenced IDs,
-#   not raw text strings. Otherwise, field_fetch relational lookups will fail!
-# - For multiple categories or authors, join IDs with commas ("5,12" or "7,9").
-
+# IMPORTANT:
+# - Blocks 1 (Category), 2 (Brand), and 3 (Author) must be passed as IDs
+#   belonging to their respective master tables, NOT raw text.
+# - Multi-category or multi-author assignments are concatenated with commas ("5,12" or "7,9").
 my @product_data = (
-    "5,12",                       # [1] Category IDs (Multiple: 5 and 12)
-    "3",                          # [2] Brand ID (3: Sony)
-    "7,9",                        # [3] Author / Contributor IDs (Multiple: 7 and 9)
-    "WH-1000XM5 Wireless Headset",# [4] Product Title
-    "Active Noise Canceling ANC", # [5] Subtitle / Short Description
-    "Supplier Global Ltd.",       # [6] Supplier
-    "Detailed Sony ANC review...",# [7] Description
-    "",                           # [8] Custom Attributes
+    "5,12",                       # [1] Category IDs (Multi-value: 5 = Computers, 12 = Audio)
+    "3",                          # [2] Brand ID (3 = Sony)
+    "7,9",                        # [3] Author / Contributor IDs (Multi-value: Authors 7 and 9)
+    "WH-1000XM5 Wireless Headphones", # [4] Title
+    "Active Noise Cancelling ANC",# [5] Subtitle
+    "Supplier Inc.",              # [6] Supplier
+    "Sony WH-1000XM5 premium sound...", # [7] Description
+    "",                           # [8] Extra specs
     "8690001234567",              # [9] Barcode
     "399.90",                     # [10] Price
-    "1"                           # [11] Sales Status (1: Active)
+    "1"                           # [11] Status (1: Active)
 );
 
-# Single insert with auto-increment ID
+# First argument is table name; second is ID (pass undef/0 for auto ID generation)
 my $new_id = $adb->insert_id("catalog_product", undef, @product_data);
-print "Created product with ID: $new_id\n";
+print "Inserted product ID: $new_id\n";
 
-# Insert with specific ID
+# Inserting with an explicit custom Primary Key ID:
 $adb->insert_id("catalog_product", 5001, @product_data);
 
 # =========================================================================
-# STEP 3: Multi-Value Inverted Index Matching (field_fetch)
+# STEP 3: How Multi-Value Lookups (field_fetch) Work
 # =========================================================================
-# AmberDB's 'field_to_list' extracts comma-separated values and indexes each ID.
-# Both of the following distinct lookups will match the product via direct key lookup:
-my @cat12_prods  = $adb->field_fetch("catalog_product", 1, "12"); # Category 12 products
-my @author9_prods = $adb->field_fetch("catalog_product", 3, "9");  # Author 9 products
+# AmberDB's 'field_to_list' feature automatically unpacks comma-delimited strings
+# ("5,12" and "7,9") and indexes each discrete ID into its respective .fld index.
+# Both of the following independent queries will immediately find the product via fast direct index lookup:
+my @cat12_items   = $adb->field_fetch("catalog_product", 1, "12"); # All products in Category 12
+my @author9_items = $adb->field_fetch("catalog_product", 3, "9");  # All products by Author 9
 ```
 
 ### 3.2 Updating Records — `modify_id`
 
 ```perl
-# Single record update (ID: 5001)
-$product_data[9] = "379.90";     # Update price field
-$product_data[0] = "5,12,18";    # Add a third category (18: Audio Accessories)
-my $ok = $adb->modify_id("catalog_product", 5001, @product_data);
-
-if ($ok) {
-    print "Product and all related indexes updated successfully.\n";
-}
+# Update single record (ID: 5001)
+my @updated = ( "5", "3", "7", "WH-1000XM5 Headphones", "Updated Description", "Supplier", "...", "", "8690001234567", "429.90", "1" );
+$adb->modify_id("catalog_product", 5001, @updated);
 ```
 
 ### 3.3 Deleting Records — `delete_id`
 
 ```perl
-# Single delete
+# Delete single record
 $adb->delete_id("catalog_product", 5001);
 ```
-
-> **Soft Delete:** If `keep_deleted => 1` is enabled in the schema, the deleted record is moved to the `.del` archive rather than permanently destroyed.
 
 ### 3.4 Reading Records — `read_id`
 
 ```perl
+# Retrieve single record by ID
 my @record = $adb->read_id("catalog_product", 5001);
 
 if (@record) {
-    my $id         = $record[0];  # Primary Key ID (Block 0)
+    my $id         = $record[0];  # Block 0 (ID)
     my $categories = $record[1];  # Block 1 (e.g. "5,12")
-    my $brand_id   = $record[2];  # Block 2 (e.g. "3")
+    my $brand      = $record[2];  # Block 2 (e.g. "3")
     my $authors    = $record[3];  # Block 3 (e.g. "7,9")
     my $title      = $record[4];  # Block 4
     my $price      = $record[10]; # Block 10
@@ -266,10 +257,10 @@ if (@record) {
 > [!TIP]
 > **Best Practice: Why You Should Define Schemas (`.table`)**  
 > While AmberDB can operate in a schemaless mode, using schemas and index directives is **strongly recommended in production and essential for maintaining speed on growing tables**:
-> 1. **Query Performance:** As tables grow, queries like `field_fetch` and `search_list` rely on schema-defined indexes to execute instant direct key lookups without full disk scans.
+> 1. **Query Performance:** As tables grow, queries like `field_fetch` and `search_table` rely on schema-defined indexes to execute instant direct key lookups without full disk scans.
 > 2. **Block Layout Clarity & Living Documentation:** The schema's `blocks` definition provides a clear reference for your record layout (e.g., Block 1 = Category, Block 4 = Title, Block 10 = Price). It makes it easy to remember what data is stored in each block and prevents positional index confusion across developers.
 > 
-> *(For full schema parameters and configuration rules, see **[Section 8: Schema Configuration](#8-schema-configuration-table--in-memory)**)*
+> *(For full schema parameters and configuration rules, see **[Section 9: Schema Configuration](#9-schema-configuration-table--in-memory)**)*
 
 ---
 

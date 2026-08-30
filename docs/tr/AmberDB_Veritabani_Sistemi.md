@@ -119,7 +119,7 @@ AmberDB'de her bir kayıt (döküman), doğal bir Perl dizi/liste yapısı (`@re
 > Günlük uygulama geliştirmede en sık kullanılan temel çekirdek işlemler şunlardır:
 > * **Yazma & Değiştirme:** `insert_id`, `modify_id`, `delete_id`
 > * **Okuma & Listeleme:** `read_id`, `read_all`, `read_list`
-> * **Filtreleme & Arama:** `field_fetch`, `search_list` (veya `search_table`)
+> * **Filtreleme & Arama:** `field_fetch`, `search_table`
 
 ```perl
 # =========================================================================
@@ -162,7 +162,7 @@ AmberDB'de temel veri ekleme, güncelleme, silme ve okuma işlemleri doğrudan v
 
 Tablolar için önceden bir `.table` şema dosyası oluşturmak **zorunlu değildir**; şemasız tablolarda da veri depolama ve ID bazlı doğrudan okuma tam verimle çalışır. Ancak **şemada indeksleme kuralları tanımlandıysa** (`record_index`, `match_block`, `search_block`, `facet_block`, `sort_block`, `seo_block`):
 1. Yapılan her `insert_id`, `modify_id` veya `delete_id` çağrısı, şemada belirtilen tüm arama, eşleştirme ve sıralama indekslerini **arka planda otomatik ve senkronize olarak oluşturur ve günceller**.
-2. Okuma, arama ve sorgulama metotları (`read_all`, `field_fetch`, `search_list`, `search_table`, `facet_menu` vb.) bu önceden hesaplanmış indeksleri **otomatik olarak kullanarak** disk taraması (full table scan) yapmadan doğrudan anahtar eşleşmesiyle çalışır.
+2. Okuma, arama ve sorgulama metotları (`read_all`, `field_fetch`, `search_table`, `facet_menu` vb.) bu önceden hesaplanmış indeksleri **otomatik olarak kullanarak** disk taraması (full table scan) yapmadan doğrudan anahtar eşleşmesiyle çalışır.
 
 ### 3.1 Kayıt Ekleme — `insert_id`
 
@@ -267,7 +267,7 @@ if (@kayit) {
 > [!TIP]
 > **En İyi Pratik: Neden Şema (`.table`) Tanımlamalısınız?**  
 > AmberDB şemasız da çalışabilse bile, özellikle **büyüyen tablolarda şema ve indeks kullanımı performansı korumak için şarttır**:
-> 1. **Performans ve Hız:** Kayıt sayısı arttıkça `field_fetch` veya `search_list` gibi sorguların tam disk taraması (full table scan) yapmadan anında sonuç getirmesi için ilgili alanların şema üzerinden indekslenmesi şarttır.
+> 1. **Performans ve Hız:** Kayıt sayısı arttıkça `field_fetch` veya `search_table` gibi sorguların tam disk taraması (full table scan) yapmadan anında sonuç getirmesi için ilgili alanların şema üzerinden indekslenmesi şarttır.
 > 2. **Blok Takibi ve Dokümantasyon:** Şema dosyaları (`blocks`), tablonun hangi indeksinde hangi alanın yer aldığını (örneğin 1. blok Kategori, 4. blok Ürün Adı, 10. blok Fiyat vb.) düzenli bir şekilde takip edebilmeniz için çok elverişlidir. Bu sayede kod yazarken hangi blokta ne olduğunu hatırlamak kolaylaşır ve karışıklıklar önlenir.
 > 
 > *(Detaylı şema parametreleri ve dosya yapısı için bkz: **[Bölüm 9: Şema Yapılandırması](#9-şema-yapılandırması-table-ve-kod-içi--in-memory)**)*
