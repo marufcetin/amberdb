@@ -461,11 +461,39 @@ my @all_ids           = $adb->search_table("catalog_product", "sony", keys_only 
 
 ### 4.5 `read_list` — Reading Specific IDs in Specified Sequence
 
+`read_list` is AmberDB's high-throughput batch record resolution engine. It plays an essential role both in the engine's internal query pipeline and in developer application code:
+
+#### 1. Internal Engine Pipeline:
+All high-level listing and querying methods in AmberDB (`read_all`, `field_fetch`, `search_table`, `field_filter`, etc.) operate in two decoupled stages:
+1. **Index Filtering Stage:** The query method first reads lightweight record keys (`@ids`) from inverted index files (`.inx`, `.fld`, `.src`, `.srt`), evaluating Boolean logic (AND/OR), sorting, and pagination slicing (`recs_cutting`).
+2. **Batch Document Resolution Stage:** Once the final matched ID list is finalized, it is forwarded in a single call to **`read_list`**. `read_list` opens the data table in a single batch session (or leverages the L2 cache) to deserialize all requested records simultaneously, returning them in the **exact positional order** requested.
+
+#### 2. Developer API Usage & Relational Traversal (SQL JOIN Alternative):
+Developers can use `read_list` directly to retrieve full document records for arbitrary collections of IDs efficiently in a single operation.
+
+**Example Scenario: Fetching Full Profiles of Customers with Active Orders**
 ```perl
-my @requested_ids = (105, 42, 89, 12);
-# Returns full records in the exact order requested
-my @records = $adb->read_list("catalog_product", \@requested_ids);
+# 1. Retrieve all active order records
+my @orders = $adb->read_all("order_active");
+
+# 2. Assume Block 2 of each order record ($order[N]->[2]) holds the Customer ID.
+# Extract unique Customer IDs using map:
+my %customer_ids = map { $_->[2] => 1 } @orders;
+
+# 3. Fetch full profile records for all matching customers in a single batch call:
+my @customer_records = $adb->read_list("customers", [ keys %customer_ids ]);
+
+foreach my $customer (@customer_records) {
+    my $c_id      = $customer->[0]; # Customer ID
+    my $c_name    = $customer->[1]; # Full Name
+    my $c_email   = $customer->[2]; # Email
+    my $c_address = $customer->[3]; # Delivery Address (Shipping label / dispatch list)
+    print "Shipping Label -> ID: $c_id | Name: $c_name | Email: $c_email | Address: $c_address\n";
+}
 ```
+
+> [!TIP]
+> `read_list` accepts an array reference (`\@ids`) or a flat array. It guarantees that the returned records preserve the **exact sequential order** of the input ID list.
 
 ### 4.6 Existence Check Functions
 Quickly check whether a record or table exists without pulling full data into memory:

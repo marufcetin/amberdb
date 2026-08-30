@@ -457,11 +457,39 @@ my @tum_idlar           = $adb->search_table("catalog_product", "sony", keys_onl
 
 ### 4.5 `read_list` — Belirli ID Listesini Toplu ve Sıralı Okuma
 
+`read_list`, AmberDB'nin yüksek verimli toplu kayıt çözümleme çekirdeğidir. Hem motorun dahili sorgu işlemcisinde hem de geliştirici API'sinde kritik bir role sahiptir:
+
+#### 1. AmberDB Dahili Çalışma Mantığı (Internal Pipeline):
+AmberDB'deki tüm üst seviye liste ve arama metotları (`read_all`, `field_fetch`, `search_table`, `field_filter` vb.) iki aşamalı bir mimariyle çalışır:
+1. **İndeks Filtreleme Aşaması:** İlgili fonksiyon önce ikili (`.inx`), eşleştirme (`.fld`), arama (`.src`) veya sıralama (`.srt`) ters indekslerinden yalnızca kayıt anahtarlarını (`@ids`) çeker; bu anahtarlar üzerinde kesişim (AND/OR), sıralama ve sayfalama dilimlemesi (`recs_cutting`) uygular.
+2. **Toplu Veri Çözümleme Aşaması:** Filtrelenen ve nihai hale gelen kayıt ID listesi tek seferde **`read_list`** metoduna iletilir. `read_list`, veritabanı dosyasını tek oturumda açıp (veya L2 önbellekten) tüm kayıtları topluca çözer ve parametrede verilen ID sırasını **birebir koruyarak** kayıt referansları listesi (`@kayitlar`) olarak döner.
+
+#### 2. Geliştirici API'sinde Kullanım ve İlişkisel Veri Birleştirme (JOIN Alternatifi):
+Geliştiriciler, ilişkili tablolardan belirli ID kümelerine ait dökümanları tek seferde ve yüksek hızda çekmek için `read_list`'i doğrudan kullanabilir.
+
+**Örnek Senaryo: Aktif Siparişi Olan Müşterilerin Bilgilerini Topluca Getirme**
 ```perl
-my @aranan_idlar = (105, 42, 89, 12);
-# Verilen ID sırasını aynen koruyarak kayıtları tek seferde getirir
-my @kayitlar = $adb->read_list("catalog_product", \@aranan_idlar);
+# 1. Tüm aktif siparişleri oku
+my @siparisler = $adb->read_all("order_active");
+
+# 2. Her bir sipariş kaydının 2. indisi ($siparis[N]->[2]) müşteri ID'si olsun.
+# map kullanarak tekil (unique) müşteri ID'lerini belirle:
+my %musteri_idler = map { $_->[2] => 1 } @siparisler;
+
+# 3. İlgili müşterilerin tam profil kayıtlarını tek adımda topluca oku:
+my @musteri_bilgileri = $adb->read_list("customers", [ keys %musteri_idler ]);
+
+foreach my $musteri (@musteri_bilgileri) {
+    my $m_id     = $musteri->[0]; # Müşteri ID
+    my $m_isim   = $musteri->[1]; # Ad Soyad
+    my $m_eposta = $musteri->[2]; # E-Posta
+    my $m_adres  = $musteri->[3]; # Teslimat Adresi (Kargo etiketi ve döküm için)
+    print "Kargo Etiketi -> ID: $m_id | İsim: $m_isim | E-Posta: $m_eposta | Adres: $m_adres\n";
+}
 ```
+
+> [!TIP]
+> `read_list` metoduna verilen ID listesi dizisi referans (`\@idler`) veya düz dizi olarak geçirilebilir. Metot, dönen kayıtların sırasını girdi dizisindeki ID dizilimiyle **tam olarak aynı sırada** tutmayı garanti eder.
 
 ### 4.6 Varlık Kontrol Fonksiyonları
 
