@@ -235,40 +235,44 @@ my @author9_items = $adb->field_fetch("catalog_product", 3, "9");  # All product
 
 ### 3.2 Updating Records — `modify_id`
 
-AmberDB supports two invocation styles for updating existing records:
-
-#### 1. Standard & Recommended Usage (Array Containing Record ID at Index 0):
-Typically, a record retrieved via `read_id` already includes its Primary Key ID at Index 0 (`$record[0] = 5001`). You can pass this full record array directly to `modify_id` without specifying an extra ID argument:
+In AmberDB, updating records is performed consistently and holistically using the record array (`@record` or `@fields`) where Index 0 contains the target Record ID. The `modify_id` method automatically consumes the first element (`$record[0]`) as the Primary Key ID:
 
 ```perl
-# Read the record (Index 0 contains the ID: 5001)
+# Approach 1: Read existing record via read_id, update fields, and save
 my @record = $adb->read_id("catalog_product", 5001);
 
-# Update specific fields
 $record[1]  = "5,12,18";   # Add category 18
 $record[10] = "429.90";    # Update price
 
-# Pass @record directly (Index 0 is automatically consumed as Record ID):
 my $ok = $adb->modify_id("catalog_product", @record);
 
-if ($ok) {
+# Approach 2: Constructing an update array with data from a Form/API
+my $record_id = 5001; # Target ID incoming from a web form, URL, or API payload
+
+my @fields = (
+    $record_id,                   # [0] Target Record ID (Variable or scalar)
+    "5,12,18",                    # [1] Category IDs
+    "3",                          # [2] Brand ID
+    "7,9",                        # [3] Author IDs
+    "WH-1000XM5 Headphones",      # [4] Product Title
+    "Updated Description",        # [5] Subtitle
+    "Supplier Inc.",              # [6] Supplier
+    "Detailed sound...",          # [7] Description
+    "",                           # [8] Specs
+    "8690001234567",              # [9] Barcode
+    "429.90",                     # [10] Price
+    "1"                           # [11] Status
+);
+
+my $ok2 = $adb->modify_id("catalog_product", @fields);
+
+if ($ok || $ok2) {
     print "Product and all related indexes updated successfully.\n";
 }
 ```
 
-#### 2. Alternative Usage (Array Without Record ID):
-If your array contains only data fields starting from Block 1 and lacks the Record ID at Index 0, pass the target ID explicitly as the second argument:
-
-```perl
-# Array containing only data fields (Blocks 1..N):
-my @fields = ( "5,12,18", "3", "7", "WH-1000XM5 Headphones", "Updated Description", "Supplier", "...", "", "8690001234567", "429.90", "1" );
-
-# Explicitly pass target ID as the second argument:
-$adb->modify_id("catalog_product", 5001, @fields);
-```
-
 > [!WARNING]
-> If `@record` already contains the Primary Key at Index 0, do **not** pass an additional ID argument (`$adb->modify_id("table", 5001, @record)`), as doing so will shift all data fields by one block position.
+> Since the record array (`@record` / `@fields`) already contains the Record ID at Index 0, do not pass an extra ID argument after the table name (i.e. avoid `$adb->modify_id("table", 5001, @fields)`). Always pass the array directly.
 
 ### 3.3 Deleting Records — `delete_id`
 

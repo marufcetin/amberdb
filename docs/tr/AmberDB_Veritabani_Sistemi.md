@@ -238,40 +238,44 @@ my @yazar9_urunleri = $adb->field_fetch("catalog_product", 3, "9");  # 9 nolu ya
 
 ### 3.2 Kayıt Güncelleme — `modify_id`
 
-Kayıt güncellemede iki farklı kullanım biçimi desteklenir:
-
-#### 1. Genel ve Önerilen Kullanım (Kayıt ID'sini [0] İndisinde İçeren Dizi):
-Genellikle `read_id` ile çekilen veya ilk elemanı (`$kayit[0]`) mevcut kayıt ID'si olan tam bir kayıt dizisi doğrudan metoda verilir. Bu durumda `modify_id`, dizinin ilk elemanını otomatik olarak ID olarak alır ve ilgili alanları günceller:
+AmberDB'de kayıt güncelleme işlemi, kaydın 0. indiste ID değerini barındıran bütüncül dizi yapısı (`@kayit` veya `@alanlar`) üzerinden tek ve standart bir biçimde yürütülür. `modify_id`, dizinin ilk elemanını (`$kayit[0]`) otomatik olarak güncellenecek kaydın ID'si kabul eder:
 
 ```perl
-# Kaydı oku (0. indis kaydın ID'sini [5001] içerir)
+# 1. Yöntem: read_id ile mevcut kaydı okuyup güncelleme
 my @kayit = $adb->read_id("catalog_product", 5001);
 
-# İstenen blokları güncelle
 $kayit[1]  = "5,12,18";   # Yeni kategori ID'si ekle (18: Aksesuar)
 $kayit[10] = "13499.90";  # Fiyatı güncelle
 
-# Doğrudan @kayit gönderilir ($kayit[0] otomatik olarak ID kabul edilir):
 my $ok = $adb->modify_id("catalog_product", @kayit);
 
-if ($ok) {
+# 2. Yöntem: Form/API'den gelen verilerle güncelleme dizisi hazırlama
+my $kayit_id = 5001; # Formdan, URL'den veya API'den gelen hedef kayıt ID'si
+
+my @alanlar = (
+    $kayit_id,                    # [0] Güncellenecek Kayıt ID (Değişken veya sabit)
+    "5,12,18",                    # [1] Kategori ID'leri
+    "3",                          # [2] Marka ID
+    "7,9",                        # [3] Yazar ID'leri
+    "WH-1000XM5 Kulaklık",        # [4] Ürün Adı
+    "Yeni Açıklama",              # [5] Kısa Açıklama
+    "Tedarikçi Ltd.",             # [6] Tedarikçi
+    "Sony WH-1000XM5 detay...",   # [7] Detay
+    "",                           # [8] Ek Özellikler
+    "8690001234567",              # [9] Barkod
+    "13499.90",                   # [10] Fiyat
+    "1"                           # [11] Durum
+);
+
+my $ok2 = $adb->modify_id("catalog_product", @alanlar);
+
+if ($ok || $ok2) {
     print "Ürün ve tüm ilişkili indeksler başarıyla güncellendi.\n";
 }
 ```
 
-#### 2. Alternatif Kullanım (Dizi ID Değerini İçermiyorsa):
-Eğer elinizdeki dizi yalnızca 1. bloktan itibaren veri alanlarını içeriyor ve 0. indiste kayıt ID'si barındırmıyorsa, güncellenecek ID ikinci parametre olarak açıkça belirtilir:
-
-```perl
-# Yalnızca veri bloklarını (1..N) içeren liste:
-my @alanlar = ( "5,12,18", "3", "7", "WH-1000XM5 Kulaklık", "Yeni Açıklama", "Tedarikçi", "...", "", "8690001234567", "13499.90", "1" );
-
-# ID açıkça ikinci parametre olarak verilir:
-$adb->modify_id("catalog_product", 5001, @alanlar);
-```
-
 > [!WARNING]
-> Eğer `@kayit` dizisi 0. indiste zaten kayıt ID'sini barındırıyorsa, `$adb->modify_id("tablo", 5001, @kayit)` şeklinde fazladan bir ID parametresi **yazılmamalıdır**; aksi takdirde dizi elemanları birer blok sağa kayacaktır.
+> Kayıt dizisinde (`@kayit` / `@alanlar`) 0. indis zaten güncellenecek kaydın ID'sini barındırdığı için, tablo adından sonra fazladan bir ID parametresi **yazılmamalıdır** (yani `$adb->modify_id("tablo", 5001, @alanlar)` şeklinde çağrılmamalıdır). Dizi doğrudan geçirilmelidir.
 
 ### 3.3 Kayıt Silme — `delete_id`
 
