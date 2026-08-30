@@ -125,6 +125,8 @@ In AmberDB, every record (document) is natively represented as a Perl list/array
 # =========================================================================
 # 1. Constructing and Inserting a Record (@record)
 # =========================================================================
+# In AmberDB, the recommended practice is to maintain the Record ID at Index 0
+# of the array ($record[0] = 0 for new records) and manage the array holistically:
 my @record = (
     0,                                  # [0] Index: Record ID (0 or undef: Auto-Increment)
     "John Doe",                         # [1] Index: Full Name (Scalar Text)
@@ -135,23 +137,28 @@ my @record = (
     { status => "active", login_count => 12 }, # [6] Index: Metadata (Nested HASH reference)
 );
 
-# Inserting the record into the database (The first element $record[0] is processed as the Record ID)
-my $new_id = $adb->insert_id("member_user", @record);
-print "Record created successfully with ID: $new_id\n";
+# Insert: Assign generated ID to both variable and array index 0:
+my $id = $record[0] = $adb->insert_id("member_user", @record);
+print "Record created successfully with ID: $id\n";
 
 # =========================================================================
-# 2. Reading the Record (read_id)
+# 2. Reading, Updating, and Deleting (Standard CRUD Lifecycle)
 # =========================================================================
-# When retrieved, the exact same structure is returned; Index 0 is now the assigned ID:
-my @retrieved = $adb->read_id("member_user", $new_id);
+# Read: Returned array contains the Primary Key at Index 0:
+my @retrieved = $adb->read_id("member_user", $id);
 
-my $id          = $retrieved[0]; # Equals $new_id (e.g. 1001)
+my $record_id   = $retrieved[0]; # Equals $id (e.g. 1001)
 my $name        = $retrieved[1]; # "John Doe"
 my $email       = $retrieved[2]; # "john.doe@example.com"
 my $permissions = $retrieved[5]; # [ "Role_Admin", "Role_Editor" ] (ARRAY-ref)
 my $metadata    = $retrieved[6]; # { status => "active", ... } (HASH-ref)
 
-print "User ID: $id - Name: $name - Status: $metadata->{status}\n";
+# Update: Modify fields and pass @retrieved directly to modify_id:
+$retrieved[4] = 1499.90; # Update balance
+$adb->modify_id("member_user", @retrieved);
+
+# Delete: Remove record using Index 0 ID:
+$adb->delete_id("member_user", $retrieved[0]);
 ```
 
 ---
@@ -173,16 +180,16 @@ In AmberDB, relational fields (configured via `match_block` and `rdbm`) store **
 # STEP 1: Populate Master Entity Tables
 # =========================================================================
 # 1. Category Table (catalog_category):
-my $cat_computers = $adb->insert_id("catalog_category", undef, "Computers & IT", 1); # ID: 5
-my $cat_audio     = $adb->insert_id("catalog_category", undef, "Headphones & Audio", 1); # ID: 12
+my $cat_computers = $adb->insert_id("catalog_category", 0, "Computers & IT", 1); # ID: 5
+my $cat_audio     = $adb->insert_id("catalog_category", 0, "Headphones & Audio", 1); # ID: 12
 
 # 2. Producer / Brand Table (catalog_brand):
-my $brand_sony    = $adb->insert_id("catalog_brand", undef, "Sony", "Japan");          # ID: 3
-my $brand_apple   = $adb->insert_id("catalog_brand", undef, "Apple", "USA");           # ID: 8
+my $brand_sony    = $adb->insert_id("catalog_brand", 0, "Sony", "Japan");          # ID: 3
+my $brand_apple   = $adb->insert_id("catalog_brand", 0, "Apple", "USA");           # ID: 8
 
 # 3. Contributor / Author Table (catalog_author):
-my $author_1      = $adb->insert_id("catalog_author", undef, "John Doe", "Audio Eng"); # ID: 7
-my $author_2      = $adb->insert_id("catalog_author", undef, "Jane Smith", "Designer");# ID: 9
+my $author_1      = $adb->insert_id("catalog_author", 0, "John Doe", "Audio Eng"); # ID: 7
+my $author_2      = $adb->insert_id("catalog_author", 0, "Jane Smith", "Designer");# ID: 9
 
 # =========================================================================
 # STEP 2: Inserting a Product Record (catalog_product)
@@ -191,7 +198,10 @@ my $author_2      = $adb->insert_id("catalog_author", undef, "Jane Smith", "Desi
 # - Blocks 1 (Category), 2 (Brand), and 3 (Author) must be passed as IDs
 #   belonging to their respective master tables, NOT raw text.
 # - Multi-category or multi-author assignments are concatenated with commas ("5,12" or "7,9").
+# - Standard Practice: Set index 0 to 0 and pass the whole array to insert_id.
+
 my @product_data = (
+    0,                            # [0] Record ID (0: Auto-Increment ID)
     "5,12",                       # [1] Category IDs (Multi-value: 5 = Computers, 12 = Audio)
     "3",                          # [2] Brand ID (3 = Sony)
     "7,9",                        # [3] Author / Contributor IDs (Multi-value: Authors 7 and 9)
@@ -205,12 +215,13 @@ my @product_data = (
     "1"                           # [11] Status (1: Active)
 );
 
-# First argument is table name; second is ID (pass undef/0 for auto ID generation)
-my $new_id = $adb->insert_id("catalog_product", undef, @product_data);
+# Inserting with auto-generated ID (Assigned ID updates both variable and $product_data[0])
+my $new_id = $product_data[0] = $adb->insert_id("catalog_product", @product_data);
 print "Inserted product ID: $new_id\n";
 
-# Inserting with an explicit custom Primary Key ID:
-$adb->insert_id("catalog_product", 5001, @product_data);
+# Inserting with an explicit custom Primary Key ID (Assign custom ID to index 0):
+$product_data[0] = 5001;
+$adb->insert_id("catalog_product", @product_data);
 
 # =========================================================================
 # STEP 3: How Multi-Value Lookups (field_fetch) Work
@@ -224,11 +235,40 @@ my @author9_items = $adb->field_fetch("catalog_product", 3, "9");  # All product
 
 ### 3.2 Updating Records — `modify_id`
 
+AmberDB supports two invocation styles for updating existing records:
+
+#### 1. Standard & Recommended Usage (Array Containing Record ID at Index 0):
+Typically, a record retrieved via `read_id` already includes its Primary Key ID at Index 0 (`$record[0] = 5001`). You can pass this full record array directly to `modify_id` without specifying an extra ID argument:
+
 ```perl
-# Update single record (ID: 5001)
-my @updated = ( "5", "3", "7", "WH-1000XM5 Headphones", "Updated Description", "Supplier", "...", "", "8690001234567", "429.90", "1" );
-$adb->modify_id("catalog_product", 5001, @updated);
+# Read the record (Index 0 contains the ID: 5001)
+my @record = $adb->read_id("catalog_product", 5001);
+
+# Update specific fields
+$record[1]  = "5,12,18";   # Add category 18
+$record[10] = "429.90";    # Update price
+
+# Pass @record directly (Index 0 is automatically consumed as Record ID):
+my $ok = $adb->modify_id("catalog_product", @record);
+
+if ($ok) {
+    print "Product and all related indexes updated successfully.\n";
+}
 ```
+
+#### 2. Alternative Usage (Array Without Record ID):
+If your array contains only data fields starting from Block 1 and lacks the Record ID at Index 0, pass the target ID explicitly as the second argument:
+
+```perl
+# Array containing only data fields (Blocks 1..N):
+my @fields = ( "5,12,18", "3", "7", "WH-1000XM5 Headphones", "Updated Description", "Supplier", "...", "", "8690001234567", "429.90", "1" );
+
+# Explicitly pass target ID as the second argument:
+$adb->modify_id("catalog_product", 5001, @fields);
+```
+
+> [!WARNING]
+> If `@record` already contains the Primary Key at Index 0, do **not** pass an additional ID argument (`$adb->modify_id("table", 5001, @record)`), as doing so will shift all data fields by one block position.
 
 ### 3.3 Deleting Records — `delete_id`
 
@@ -633,9 +673,9 @@ if ($current_stock < $quantity) {
     # Insufficient stock: report transaction error (transact_end will trigger automatic rollback)
     $adb->transact_error("catalog_product", "Insufficient stock ($current_stock < $quantity)");
 } else {
-    # Deduct stock and update product (acquires record lock, writes undo log)
+    # Deduct stock and update product (@product[0] contains $product_id)
     $product[8] -= $quantity;
-    $adb->modify_id("catalog_product", $product_id, @product[1..$#product]);
+    $adb->modify_id("catalog_product", @product);
 
     # Create order record
     my @order = ( $user_id, $product_id, $quantity, time(), "confirmed" );
@@ -1714,6 +1754,7 @@ dbstore/
 3. **Index Only Required Fields:** Only assign fields to `match_block` or `search_block` if they are actively queried to minimize disk write overhead.
 4. **Always Handle Pagination Return Signatures Correctly:** When passing `$limit > 0` to `read_all`, `field_fetch`, or `search_table`, remember that the first returned value is `$total_count` integer. Never unpack into a single array (`my @records = $adb->read_all(..., 0, 20)`) as `$records[0]` will be an integer scalar causing fatal crashes upon dereferencing. Always unpack paginated queries as `my ($total_count, @records)`.
 5. **Choose Numeric IDs Where Possible:** Standardize on `id_type => "num"` for optimal 64-bit binary packing performance.
+6. **Standardize on Record Array ID at Index 0:** Always maintain the Primary Key ID at Index 0 (`$record[0]`) within record arrays (`@record`). For new records, initialize with `0` and assign the returned ID via `my $id = $record[0] = $adb->insert_id("table", @record);`. Performing retrieval (`read_id`), updating (`modify_id("table", @record)`), and deletion (`delete_id("table", $record[0])`) against this unified structure ensures clean code and eliminates positional argument shifting bugs.
 
 ---
 
@@ -1772,9 +1813,9 @@ $adb->transact_start();
 
 my @current = $adb->read_id("catalog_product", $product_id);
 if ($current[8] >= 1) { # Check available inventory
-    # Deduct 1 unit
+    # Deduct 1 unit (@current[0] contains $product_id)
     $current[8] -= 1;
-    $adb->modify_id("catalog_product", $product_id, @current[1..$#current]);
+    $adb->modify_id("catalog_product", @current);
     
     # Create order (Items stored as nested ARRAY in Block 3)
     my @order_items = ( [ $product_id, "MacBook Pro M3", 1, 1999.00 ] );

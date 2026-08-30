@@ -125,6 +125,8 @@ AmberDB'de her bir kayıt (döküman), doğal bir Perl dizi/liste yapısı (`@re
 # =========================================================================
 # 1. Kayıt Oluşturma ve Ekleme (@record)
 # =========================================================================
+# AmberDB'de önerilen standart pratik, kayıt dizisinin 0. indisine ID değerini
+# (yeni kayıtlarda 0 veya undef) atayarak diziyi bütüncül olarak yönetmektir:
 my @record = (
     0,                                  # [0] İndis: Kayıt ID (0 veya undef: Otomatik ID)
     "Ahmet Yılmaz",                     # [1] İndis: Ad Soyad (Skalar Metin)
@@ -135,23 +137,28 @@ my @record = (
     { status => "aktif", login_count => 12 }, # [6] İndis: Ek meta veriler (İç içe HASH referansı)
 );
 
-# Kaydı veritabanına ekleme (@record'un ilk elemanı [0] kayıt ID'si olarak işlenir)
-my $yeni_id = $adb->insert_id("member_user", @record);
-print "Kayıt başarıyla eklendi, Üretilen ID: $yeni_id\n";
+# Ekleme: Üretilen yeni ID'yi hem $id değişkenine hem de diziye ($record[0]) atama:
+my $id = $record[0] = $adb->insert_id("member_user", @record);
+print "Kayıt başarıyla eklendi, Üretilen ID: $id\n";
 
 # =========================================================================
-# 2. Kaydı Okuma (read_id)
+# 2. Kayıt Okuma, Güncelleme ve Silme (Standart CRUD Yaşam Döngüsü)
 # =========================================================================
-# Okunduğunda aynı yapı gelir; ancak 0. indis artık üretilen/atanan ID'dir:
-my @gelen_kayit = $adb->read_id("member_user", $yeni_id);
+# Okuma: read_id ile dönen dizinin 0. indisi doğrudan kayıt ID'sidir:
+my @gelen_kayit = $adb->read_id("member_user", $id);
 
-my $id       = $gelen_kayit[0]; # $yeni_id ile aynı (Örn: 1001)
+my $kayit_id = $gelen_kayit[0]; # $id ile aynı (Örn: 1001)
 my $ad_soyad = $gelen_kayit[1]; # "Ahmet Yılmaz"
 my $email    = $gelen_kayit[2]; # "ahmet@ornek.com"
 my $izinler  = $gelen_kayit[5]; # [ "Yetki_A", "Yetki_B" ] (ARRAY-ref)
 my $meta     = $gelen_kayit[6]; # { status => "aktif", ... } (HASH-ref)
 
-print "Kullanıcı ID: $id - İsim: $ad_soyad - Durum: $meta->{status}\n";
+# Güncelleme: Alanları değiştirip doğrudan @gelen_kayit dizisini geçirme:
+$gelen_kayit[4] = 1499.90; # Bakiyeyi güncelle
+$adb->modify_id("member_user", @gelen_kayit);
+
+# Silme: 0. indisteki ID üzerinden kaydı silme:
+$adb->delete_id("member_user", $gelen_kayit[0]);
 ```
 
 ---
@@ -176,16 +183,16 @@ Birden fazla kategoriye veya birden fazla yazara ait ürünler için ID değerle
 # =========================================================================
 
 # 1. Kategori Tablosu (catalog_category):
-my $kat_bilgisayar = $adb->insert_id("catalog_category", undef, "Bilgisayar & Bilişim", 1); # ID: 5
-my $kat_ses        = $adb->insert_id("catalog_category", undef, "Kulaklık & Ses", 1);        # ID: 12
+my $kat_bilgisayar = $adb->insert_id("catalog_category", 0, "Bilgisayar & Bilişim", 1); # ID: 5
+my $kat_ses        = $adb->insert_id("catalog_category", 0, "Kulaklık & Ses", 1);        # ID: 12
 
 # 2. Marka / Üretici Tablosu (catalog_brand):
-my $marka_sony     = $adb->insert_id("catalog_brand", undef, "Sony", "Japonya");             # ID: 3
-my $marka_apple    = $adb->insert_id("catalog_brand", undef, "Apple", "ABD");                # ID: 8
+my $marka_sony     = $adb->insert_id("catalog_brand", 0, "Sony", "Japonya");             # ID: 3
+my $marka_apple    = $adb->insert_id("catalog_brand", 0, "Apple", "ABD");                # ID: 8
 
 # 3. Yazar / Tasarımcı Tablosu (catalog_author):
-my $yazar_1        = $adb->insert_id("catalog_author", undef, "Ahmet Yılmaz", "Akustik Müh.");# ID: 7
-my $yazar_2        = $adb->insert_id("catalog_author", undef, "Mehmet Öz", "Tasarımcı");     # ID: 9
+my $yazar_1        = $adb->insert_id("catalog_author", 0, "Ahmet Yılmaz", "Akustik Müh.");# ID: 7
+my $yazar_2        = $adb->insert_id("catalog_author", 0, "Mehmet Öz", "Tasarımcı");     # ID: 9
 
 # =========================================================================
 # ADIM 2: Ürün Kaydının (catalog_product) Eklenmesi
@@ -194,8 +201,10 @@ my $yazar_2        = $adb->insert_id("catalog_author", undef, "Mehmet Öz", "Tas
 # - Blok 1 (Kategori), Blok 2 (Marka) ve Blok 3 (Yazar) alanlarına doğrudan 
 #   metin yazılmaz; ilgili tablolardaki kayıt ID'leri verilir.
 # - Çoklu kategori veya yazar için değerler virgülle ("5,12" veya "7,9") birleştirilir.
+# - Standart pratik: [0] indisine 0 atanır ve dizi doğrudan insert_id'ye verilir.
 
 my @urun_bilgileri = (
+    0,                            # [0] Kayıt ID (0: Otomatik Artan ID)
     "5,12",                       # [1] Kategori ID'leri (Çoklu: 5 ve 12 nolu kategoriler)
     "3",                          # [2] Marka ID'si (3 = Sony)
     "7,9",                        # [3] Yazar / Katkıda Bulunan ID'leri (Çoklu: 7 ve 9 nolu yazarlar)
@@ -209,12 +218,13 @@ my @urun_bilgileri = (
     "1"                           # [11] Satış Durumu (1: Aktif)
 );
 
-# İlk parametre tablo adı, ikinci parametre ID (otomatik için undef veya 0)
-my $yeni_id = $adb->insert_id("catalog_product", undef, @urun_bilgileri);
+# Otomatik ID ile ekleme (Üretilen ID hem değişkene hem @urun_bilgileri[0]'a atanır)
+my $yeni_id = $urun_bilgileri[0] = $adb->insert_id("catalog_product", @urun_bilgileri);
 print "Eklenen ürünün ID'si: $yeni_id\n";
 
-# Belirli bir ID vererek ekleme
-$adb->insert_id("catalog_product", 5001, @urun_bilgileri);
+# Belirli bir manuel ID vererek ekleme ([0] indisine doğrudan manuel ID yazılır)
+$urun_bilgileri[0] = 5001;
+$adb->insert_id("catalog_product", @urun_bilgileri);
 
 # =========================================================================
 # ADIM 3: Çoklu Değer Eşleştirmesi (field_fetch) Nasıl Çalışır?
@@ -228,16 +238,40 @@ my @yazar9_urunleri = $adb->field_fetch("catalog_product", 3, "9");  # 9 nolu ya
 
 ### 3.2 Kayıt Güncelleme — `modify_id`
 
+Kayıt güncellemede iki farklı kullanım biçimi desteklenir:
+
+#### 1. Genel ve Önerilen Kullanım (Kayıt ID'sini [0] İndisinde İçeren Dizi):
+Genellikle `read_id` ile çekilen veya ilk elemanı (`$kayit[0]`) mevcut kayıt ID'si olan tam bir kayıt dizisi doğrudan metoda verilir. Bu durumda `modify_id`, dizinin ilk elemanını otomatik olarak ID olarak alır ve ilgili alanları günceller:
+
 ```perl
-# Tekil kayıt güncelleme (ID: 5001)
-$urun_bilgileri[9] = "13499.90"; # Fiyatı güncelle
-$urun_bilgileri[0] = "5,12,18";   # Yeni bir kategori ID'si daha ekle (18: Aksesuar)
-my $ok = $adb->modify_id("catalog_product", 5001, @urun_bilgileri);
+# Kaydı oku (0. indis kaydın ID'sini [5001] içerir)
+my @kayit = $adb->read_id("catalog_product", 5001);
+
+# İstenen blokları güncelle
+$kayit[1]  = "5,12,18";   # Yeni kategori ID'si ekle (18: Aksesuar)
+$kayit[10] = "13499.90";  # Fiyatı güncelle
+
+# Doğrudan @kayit gönderilir ($kayit[0] otomatik olarak ID kabul edilir):
+my $ok = $adb->modify_id("catalog_product", @kayit);
 
 if ($ok) {
     print "Ürün ve tüm ilişkili indeksler başarıyla güncellendi.\n";
 }
 ```
+
+#### 2. Alternatif Kullanım (Dizi ID Değerini İçermiyorsa):
+Eğer elinizdeki dizi yalnızca 1. bloktan itibaren veri alanlarını içeriyor ve 0. indiste kayıt ID'si barındırmıyorsa, güncellenecek ID ikinci parametre olarak açıkça belirtilir:
+
+```perl
+# Yalnızca veri bloklarını (1..N) içeren liste:
+my @alanlar = ( "5,12,18", "3", "7", "WH-1000XM5 Kulaklık", "Yeni Açıklama", "Tedarikçi", "...", "", "8690001234567", "13499.90", "1" );
+
+# ID açıkça ikinci parametre olarak verilir:
+$adb->modify_id("catalog_product", 5001, @alanlar);
+```
+
+> [!WARNING]
+> Eğer `@kayit` dizisi 0. indiste zaten kayıt ID'sini barındırıyorsa, `$adb->modify_id("tablo", 5001, @kayit)` şeklinde fazladan bir ID parametresi **yazılmamalıdır**; aksi takdirde dizi elemanları birer blok sağa kayacaktır.
 
 ### 3.3 Kayıt Silme — `delete_id`
 
@@ -650,9 +684,9 @@ if ($mevcut_stok < $adet) {
     # Stok yetersizse hata bildir (transact_end otomatik rollback yapacaktır)
     $adb->transact_error("catalog_product", "Yetersiz stok ($mevcut_stok < $adet)");
 } else {
-    # Stoğu düş ve güncelle (kayıt kilitlenir, undo log yazılır)
+    # Stoğu düş ve güncelle (@urun[0] zaten $urun_id değerini içerir)
     $urun[8] -= $adet;
-    $adb->modify_id("catalog_product", $urun_id, @urun[1..$#urun]);
+    $adb->modify_id("catalog_product", @urun);
 
     # Sipariş kaydı oluştur
     my @siparis = ( $user_id, $urun_id, $adet, time(), "onaylandi" );
@@ -1732,6 +1766,7 @@ dbstore/
 3. **Şemalarda Gereksiz Blokları İndekslemeyin:** Yalnızca filtrelenecek alanları `match_block`, aranacak alanları `search_block` olarak tanımlayın.
 4. **Sayfalama Dönen Değer İmzasını Doğru Karşılayın:** `read_all`, `field_fetch` ve `search_table` metotlarında `$limit > 0` verildiğinde dönen listenin ilk elemanının `$toplam` tamsayısı olduğunu unutmayın. Asla `my @kayitlar = $adb->read_all(..., 0, 20)` şeklinde tek diziye almayın (fatal crash verir); mutlaka `my ($toplam, @kayitlar)` şeklinde ilk elemanı toplam sayı olarak karşılayın.
 5. **Kayıt ID Tipi Seçimi:** Standart tablolar için `id_type => "num"` (sayısal) tercih edin; hem daha az yer kaplar hem de ikili sabit boyutlu ofsetler üzerinde en yüksek dilimleme hızını sunar.
+6. **Kayıt Dizisinde ID Standartı:** Kayıt dizilerinde (`@record`) her zaman 0. indisi Kayıt ID'si (`$record[0]`) olarak konumlandırın. Yeni kayıtta `0` verip `my $id = $record[0] = $adb->insert_id("tablo", @record);` şeklinde atayın. Okuma (`read_id`), güncelleme (`modify_id("tablo", @record)`) ve silme (`delete_id("tablo", $record[0])`) işlemlerini bu bütüncül dizi üzerinden yürütmek parametre kaymalarını ve hataları tamamen önler.
 
 ---
 
@@ -1790,9 +1825,9 @@ $adb->transact_start();
 
 my @mevcut = $adb->read_id("catalog_product", $urun_id);
 if ($mevcut[8] >= 1) { # Stok kontrolü
-    # Stoğu 1 azalt
+    # Stoğu 1 azalt (@mevcut[0] zaten $urun_id değerini içerir)
     $mevcut[8] -= 1;
-    $adb->modify_id("catalog_product", $urun_id, @mevcut[1..$#mevcut]);
+    $adb->modify_id("catalog_product", @mevcut);
     
     # Sipariş oluştur (Kalemler Blok 3'te ARRAY olarak iç içe döküman şeklinde tutulur)
     my @siparis_kalemleri = ( [ $urun_id, "MacBook Pro M3", 1, 64999.00 ] );
