@@ -317,16 +317,20 @@ if (@kayit) {
 AmberDB, kayıtları hızlıca listelemek, belirli bloklara göre filtrelemek ve sıralamak için zengin fonksiyonlar sunar.
 
 > [!CRITICAL]
-> **DÖNEN SONUÇ İMZASI (RETURN SIGNATURE) VE SAYFALAMA KURALI:**
-> `read_all`, `field_fetch` ve `search_table` metotlarında `$limit` parametresinin kullanımı dönen listenin biçimini kökten değiştirir:
-> 1. **Limitsiz Çağrılar (`$limit == 0` veya belirtilmemiş):** Doğrudan kayıt referansları dizisini döner:  
->    `my @kayitlar = $adb->read_all("catalog_product");`  
->    *(Burada `@kayitlar` dizisinin her elemanı doğrudan bir kayıt dizi referansıdır: `$kayitlar[0]->[1]`)*
-> 2. **Sayfalı Çağrılar (`$limit > 0` örn. `0, 20` veya `start => 0, limit => 20`):** Listenin **ilk elemanı toplam eşleşen kayıt sayısı tamsayısıdır (`$toplam_kayit`)**, sonraki elemanlar sayfalanmış kayıtlardır:  
->    `my ($toplam_kayit, @sayfalanmis_kayitlar) = $adb->read_all("catalog_product", 0, 20);`
+> **DÖNEN SONUÇ İMZASI (RETURN SIGNATURE) VE SAYFALAMA MANTIĞI:**
+> `read_all`, `field_fetch` ve `search_table` metotlarında `$limit` parametresinin varlığı veya yokluğu dönen listenin yapısını belirler:
+> 
+> * **1. Limitsiz Çağrılar (`$limit == 0` veya hiç belirtilmemişse):**  
+>   Metot tablodaki veya filtredeki **tüm kayıtları** okur. Dönen `@kayitlar` dizisinin eleman sayısı zaten `scalar @kayitlar` ile toplamı verdiği için liste başına ayrıca bir `$toplam` sayısı eklenmez. Doğrudan kayıt dizi referansları listesi döner:  
+>   `my @kayitlar = $adb->read_all("catalog_product");`  
+>   *(Burada her eleman bir kayıt dizi referansıdır: `$kayitlar[0]->[1]`)*
+> 
+> * **2. Sayfalı / Limitli Çağrılar (`$limit > 0` örn: `0, 20` veya `start => 0, limit => 20`):**  
+>   Burada amaç tablodaki binlerce kaydı belleğe yüklemek yerine yalnızca istenen sayfadaki (örn. 20 adet) kaydı okumaktır. Ancak web arayüzünde sayfalama menüsü (Örn: *"Toplam 1.250 üründen 1-20 arası gösteriliyor"*) oluşturabilmek için sorguya uyan genel toplam sayısına ihtiyaç duyulur. AmberDB tüm tabloyu diskten okumadan ikili indekslerden hesapladığı bu genel toplamı listenin **ilk elemanı olarak (`$toplam`)** döndürür:  
+>   `my ($toplam, @sayfalanmis_kayitlar) = $adb->read_all("catalog_product", 0, 20);`
 >
 > ⚠️ **ÖLÜMCÜL HATA (FATAL CRASH) UYARISI:**  
-> Eğer limit verdiğiniz halde sonucu tekil bir diziye atarsanız (`my @kayitlar = $adb->read_all("catalog_product", 0, 20);`), dizinin ilk elemanı `$kayitlar[0]` kayıt referansı değil **toplam sayı tamsayısı** (örn. `45`) olur. Bu durumda `$kayitlar[0]->[1]` veya `$kayitlar[0][1]` erişimi yapıldığında Perl **`Can't use string ("45") as an ARRAY ref while "strict refs" in use`** şeklinde **fatal hata** vererek programı sonlandırır!  
+> Eğer limit verdiğiniz halde sonucu tek bir diziye atarsanız (`my @kayitlar = $adb->read_all("catalog_product", 0, 20);`), dizinin ilk elemanı `$kayitlar[0]` kayıt referansı değil **toplam sayı tamsayısı** (örn. `1250`) olur. Bu durumda `$kayitlar[0]->[1]` veya `$kayitlar[0][1]` erişimi yapıldığında Perl **`Can't use string ("1250") as an ARRAY ref while "strict refs" in use`** şeklinde **fatal hata** vererek işlemi sonlandırır!  
 > **Kural:** `$limit` değeri `> 0` olan tüm sorgularda dönen değeri mutlaka `my ($toplam, @kayitlar)` şeklinde karşılayınız.
 
 ### 4.1 `read_all` — Tablodaki Tüm Kayıtları Okuma ve Sayfalama

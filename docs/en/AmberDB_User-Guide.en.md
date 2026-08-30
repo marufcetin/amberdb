@@ -313,17 +313,21 @@ if (@record) {
 AmberDB provides flexible methods for listing, filtering, and sorting records.
 
 > [!CRITICAL]
-> **PAGINATION RETURN SIGNATURE RULE:**
-> For `read_all`, `field_fetch`, and `search_table`, the `$limit` parameter alters the shape of the return value:
-> 1. **Unpaginated (`$limit == 0` or omitted):** Returns an array of record array references:  
->    `my @records = $adb->read_all("catalog_product");`  
->    *(Each element in `@records` is a record arrayref: `$records[0]->[1]`)*
-> 2. **Paginated (`$limit > 0` e.g. `0, 20` or `start => 0, limit => 20`):** The **first element is the total matching count integer (`$total_count`)**, followed by the page slice records:  
->    `my ($total_count, @page_records) = $adb->read_all("catalog_product", 0, 20);`
+> **PAGINATION RETURN SIGNATURE & ARCHITECTURAL RATIONALE:**
+> For `read_all`, `field_fetch`, and `search_table`, the presence or absence of `$limit` governs the structure of the returned list:
+> 
+> * **1. Unpaginated Calls (`$limit == 0` or omitted):**  
+>   The method reads **all matching records**. Since the total count is intrinsically available via `scalar @records`, no separate count variable is prepended. The list consists solely of record array references:  
+>   `my @records = $adb->read_all("catalog_product");`  
+>   *(Every item in `@records` is a record arrayref: `$records[0]->[1]`)*
+> 
+> * **2. Paginated Calls (`$limit > 0` e.g. `0, 20` or `start => 0, limit => 20`):**  
+>   Instead of reading thousands of records into RAM, the engine only deserializes the requested page slice (e.g. 20 records). However, web UIs require the total matched count to render pagination bars (e.g. *"Showing 1-20 of 1,250 products"*). AmberDB retrieves this total count instantly from binary indexes and prepends it as the **first returned element (`$total_count`)**:  
+>   `my ($total_count, @page_records) = $adb->read_all("catalog_product", 0, 20);`
 >
 > ⚠️ **FATAL ERROR WARNING:**  
-> If you assign paginated results to a single array (`my @records = $adb->read_all("catalog_product", 0, 20);`), the first element `$records[0]` is the **integer total** (e.g. `45`), not a record reference. Attempting `$records[0]->[1]` or `$records[0][1]` will cause Perl to terminate immediately with a **fatal error**: **`Can't use string ("45") as an ARRAY ref while "strict refs" in use`**!  
-> **Rule:** Whenever `$limit > 0`, always unpack as `my ($total, @records)`.
+> If you assign paginated results to a single array (`my @records = $adb->read_all("catalog_product", 0, 20);`), the first element `$records[0]` will be the **integer total** (e.g. `1250`), not a record reference. Attempting `$records[0]->[1]` or `$records[0][1]` causes Perl to throw a **fatal error**: **`Can't use string ("1250") as an ARRAY ref while "strict refs" in use`**!  
+> **Rule:** Whenever `$limit > 0`, always unpack results as `my ($total, @records)`.
 
 ### 4.1 `read_all` — Reading All Records with Pagination
 
