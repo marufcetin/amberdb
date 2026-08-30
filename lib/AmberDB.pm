@@ -22,7 +22,7 @@ use parent qw(
 our $DB_HASH;
 our $hash_info;
 
-our $VERSION = '5.21.0';
+our $VERSION = '5.21.1';
 my $CREATED = '2005-01-28';
 
 

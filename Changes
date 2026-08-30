@@ -1,5 +1,11 @@
 Revision history for AmberDB
 
+5.21.1  2026-08-29
+        - Fixed read_id return signature across documentation examples to consistently return array format.
+        - Streamlined transaction workflow documentation to use transact_error() for business validations with automatic commit/rollback in transact_end().
+        - Clarified field_fetch return signatures in English documentation to reflect full record retrieval.
+        - Declared missing core dependencies (Archive::Tar, Digest::SHA, JSON::PP, Hash::Util) in Makefile.PL and cpanfile.
+
 5.21.0  2026-08-28
         - Fixed schema cache poisoning in restore() and hardened dbase_info()/table_info() against caching empty parse results.
         - Standardized instance variable naming across codebase, test suites, and documentation to $adb (AmberDB Handle):

@@ -5,7 +5,7 @@ use warnings;
 use Carp qw(croak cluck);
 use File::Spec;
 
-our $VERSION = '5.21.0';
+our $VERSION = '5.21.1';
 my $CREATED = '2018-10-08';
 
 # Constructor
@@ -1289,7 +1289,7 @@ sub dump {
     my $manifest = {
         format          => "AmberDB Archive",
         format_version  => 1,
-        amberdb_version => $AmberDB::VERSION || $VERSION || "5.21.0",
+        amberdb_version => $AmberDB::VERSION || $VERSION,
         created_at      => "$date_iso " . sprintf( "%02d:%02d:%02d", (localtime)[2], (localtime)[1], (localtime)[0] ),
         dbase_dir       => $adb->path('dbase_dir'),
         tables          => {},

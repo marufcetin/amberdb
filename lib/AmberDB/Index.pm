@@ -4,7 +4,7 @@ use 5.016;
 use warnings;
 use Carp qw(croak cluck);
 
-our $VERSION = '5.21.0';
+our $VERSION = '5.21.1';
 
 # =====================================================================
 # OPERATOR AND FIELD RESOLUTION HELPERS (Shared across Index modules)

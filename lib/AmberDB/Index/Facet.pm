@@ -4,7 +4,7 @@ use 5.016;
 use warnings;
 use Carp qw(croak cluck);
 
-our $VERSION = '5.21.0';
+our $VERSION = '5.21.1';
 
 # $adb->facet_rules($table_info, @record);
 # ------------------------------------------------

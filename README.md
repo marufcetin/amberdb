@@ -135,12 +135,12 @@ my $id = $adb->insert_id("catalog_products", 0, "Wireless Headphones", "Electron
 print "Created Product ID: $id\n";
 
 # --- READ ---
-my $product = $adb->read_id("catalog_products", $id);
-print "Product Title: $product->[1]\n";
+my @product = $adb->read_id("catalog_products", $id);
+print "Product Title: $product[1]\n";
 
 # --- UPDATE ---
-$product->[3] = 129.99; # Update Price
-$adb->modify_id("catalog_products", @$product);
+$product[3] = 129.99; # Update Price
+$adb->modify_id("catalog_products", @product);
 
 # --- DELETE ---
 $adb->delete_id("catalog_products", $id);
@@ -209,25 +209,24 @@ AmberDB provides full **ACID-compliant transactions** via disk-backed undo-journ
 # Start atomic multi-table transaction
 $adb->transact_start();
 
-eval {
-    # 1. Deduct balance (acquires record lock, writes undo log)
-    my $account = $adb->read_id("user_account", $user_id);
-    $account->[2] -= 100.00;
-    $adb->modify_id("user_account", @$account);
+# 1. Check & deduct balance (acquires record lock, writes undo log)
+my @account = $adb->read_id("user_account", $user_id);
+if ($account[2] < 100.00) {
+    $adb->transact_error("user_account", "Insufficient balance");
+} else {
+    $account[2] -= 100.00;
+    $adb->modify_id("user_account", @account);
 
     # 2. Create order
     my $order_id = $adb->insert_id("order_master", 0, $user_id, 100.00, "COMPLETED");
+}
 
-    # 3. Commit transaction (releases locks, removes journal)
-    my $status = $adb->transact_end();
-    if ($status->{status} eq 'rollback') {
-        die "Transaction rolled back automatically!";
-    }
-};
-if ($@) {
-    # Explicit manual rollback if an external exception occurred
-    $adb->transact_rollback();
-    warn "Transaction failed: $@";
+# 3. Finalize transaction (commits if clean, automatically rolls back on error)
+my $status = $adb->transact_end();
+if ($status->{status} eq 'commit') {
+    print "Order created and balance deducted successfully.\n";
+} else {
+    warn "Transaction aborted and changes rolled back automatically.\n";
 }
 ```
 
