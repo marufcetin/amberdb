@@ -538,9 +538,11 @@ print "Ürün 5001 toplam $okunma_sayisi kez görüntülendi.\n";
 
 ## 5. Basit Mod ve İndekssiz Doğrudan Erişim (Simple Mode)
 
-AmberDB'de **Basit Mod (`simple => 1` / `record_index => 0`)**, verinin yapısını veya karmaşıklığını kısıtlamaz. Tablolarınız JSON benzeri hiyerarşik bloklara, tekrarlayan alt kayıtlara (repeating blocks) veya çok sütunlu zengin veri modellerine sahip olabilir. 
+AmberDB'de **Basit Mod (`simple => 1` / `record_index => 0`)**, verinin temel saklama esnekliğini kısıtlamaz. Tablolarınız iç içe dizi ve sözlük referansları (ARRAY/HASH) gibi zengin veri yapılarını doğrudan saklayabilir ve okuyabilir. 
 
-Basit modun tek ve temel farkı: **İkincil indeksleme mekanizmasının (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, `.rwt`) tamamen devre dışı bırakılmasıdır.** Veriler doğrudan tek bir ana veri dosyasına yazılır ve okunur; filtreleme, arama ve sıralama işlemleri indeks dosyaları yerine doğrudan veri akışı üzerinden sıralı tarama (`recs_scan`) yöntemiyle gerçekleştirilir. Bu sayede indeks bakım ve güncelleme maliyeti ortadan kalkar. İndekssiz çalışırken dahi `keys_only`, `sort`, `start`/`limit` ve dil/Türkçe normalizasyonu tam parite ile çalışır.
+Basit modun temel farkları ve sınırları şunlardır:
+1. **İkincil İndekslerin Devre Dışı Olması:** İkincil indeksleme mekanizması (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, `.rwt`) tamamen devre dışıdır. Veriler doğrudan tek bir ana veri dosyasına yazılır ve okunur; filtreleme, arama ve sıralama işlemleri indeks dosyaları yerine doğrudan veri akışı üzerinden sıralı tarama (`recs_scan`) yöntemiyle gerçekleştirilir. Bu sayede indeks bakım maliyeti ortadan kalkar. İndekssiz çalışırken dahi `keys_only`, `sort`, `start`/`limit` ve Türkçe normalizasyonu tam parite ile çalışır.
+2. **Otomatik Tekrarlayan Blok Birleştirmesi (`repeat_fields`) Yapılmaz:** Basit modda `.table` şeması yüklenmediği için, `repeat_start` ve `repeat_ids` yönergeleri aktif değildir. Dizi sonundaki tekrarlayan alt elemanlar ana dosyaya ham olarak kaydedilir ve `read_id` ile aynen okunur; ancak kayıt esnasında bu alt blokların ID numaraları şemalı modda olduğu gibi **otomatik olarak `repeat_ids` özet alanında virgülle birleştirilmez**. Eğer basit modda bir özet alanına ihtiyaç varsa geliştiricinin bu alanı kendisinin hazırlaması gerekir.
 
 ### 5.1 Basit Modun Temel Kuralları
 
@@ -1152,6 +1154,10 @@ Her `insert_id`, `modify_id`, `insert_list` veya `modify_list` çağrısında mo
 1. Her ürün/kalem bloğunun (dizi ise ilk elemanını `$_->[0]`, metin ise kendisini) çeker.
 2. Bu ID'leri virgülle birleştirip (`"101,102,103"`) otomatik olarak `repeat_ids` (12) bloğuna yazar (geliştiricinin bu alanı manuel doldurmasına gerek yoktur).
 3. Blok 12 şemada `match_block` içinde tanımlandığı için, motor `field_to_list` ile bu ID'lerin her birini `order_active_12.fld` eşleştirme indeksine kaydeder.
+
+> [!NOTE]
+> **Basit Modda (Şemasız) Tekrarlayan Bloklar:**  
+> Tekrarlayan blokların otomatik olarak derlenip `repeat_ids` özet alanına virgülle yazılması (`repeat_fields`), şema dosyasındaki `repeat_start` ve `repeat_ids` tanımlarına bağlıdır. Şemasız basit modda (`simple => 1`) şema yüklenmediği için bu otomatik derleme yapılmaz; kayıtlar ham Perl listesi olarak diske kaydedilir. Eğer basit modda çalışan bir tabloda bu tür bir özet alanına ihtiyaç varsa, bu alanın geliştirici tarafından manuel olarak doldurulması gerekir.
 
 #### 9.10.3 Kodlama ve Sorgulama Örneği
 ```perl

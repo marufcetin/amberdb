@@ -541,9 +541,11 @@ print "Product 5001 viewed $views times.\n";
 
 ## 5. Simple Mode and Direct Schemaless Access (Simple Mode)
 
-In AmberDB, **Simple Mode (`simple => 1`)** does not restrict the complexity, depth, or schema of your data. Records can still be rich and hierarchical, containing JSON-like blocks, repeating child items, or multi-column data structures.
+In AmberDB, **Simple Mode (`simple => 1`)** preserves the fundamental storage flexibility of your data. Records can store rich, nested data structures directly, including array and hash references (ARRAY/HASH).
 
-The sole technical distinction of Simple Mode is: **Secondary binary indexing (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, `.rwt`) is completely disabled.** All operations write and read directly from a single flat database file, with searches, matching, and sorting evaluated via sequential streaming scans (`recs_scan`). This eliminates disk I/O overhead from index generation. Even without indexes, full feature parity for `keys_only`, `sort`, `start`/`limit`, and language collation is preserved.
+The primary distinctions and operational boundaries of Simple Mode are:
+1. **Secondary Indexing is Fully Disabled:** All secondary binary indexes (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, `.rwt`) are bypassed. Data is written to and read from a single database file, with searches, matching, and sorting evaluated via sequential streaming scans (`recs_scan`). This eliminates index generation overhead while preserving full parity for `keys_only`, `sort`, `start`/`limit`, and language collation.
+2. **No Automatic Repeating Block Aggregation (`repeat_fields`):** Because Simple Mode does not load `.table` schema files, the `repeat_start` and `repeat_ids` directives are inactive. Repeating child elements at the end of the array are stored and retrieved intact as raw Perl lists; however, the engine will not automatically aggregate and join child IDs into the `repeat_ids` block with commas during insertion/modification. If a summary ID list is needed in Simple Mode, it must be constructed manually in application logic.
 
 ### Core Rules of Simple Mode:
 
@@ -1148,6 +1150,10 @@ During every `insert_id`, `modify_id`, `insert_list`, or `modify_list` call, the
 1. It extracts the identifier of each repeating block (the first element `$_->[0]` if it's an ARRAY reference, or the scalar value itself).
 2. It joins these IDs into a comma-separated string (`"101,102,103"`) and assigns it automatically to block `repeat_ids` (12) — developers do not need to populate this field manually.
 3. Because Block 12 is declared in `match_block`, the engine automatically indexes each product key into `order_active_12.fld` via `field_to_list`.
+
+> [!NOTE]
+> **Repeating Blocks in Schemaless Simple Mode:**  
+> Automatic compilation and comma-joining of repeating child IDs into `repeat_ids` (`repeat_fields`) relies strictly on the `repeat_start` and `repeat_ids` attributes in the `.table` schema file. In schemaless Simple Mode (`simple => 1`), schema directives are inactive and this automatic aggregation does not execute; records are written as raw Perl arrays. If a summary ID list is needed in Simple Mode, it must be populated manually by the developer before writing.
 
 #### 9.10.3 Code Example & Direct Querying
 ```perl
