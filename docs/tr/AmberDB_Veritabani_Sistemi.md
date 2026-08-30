@@ -554,7 +554,20 @@ Basit modda ikincil indeksleme mekanizması (`.inx`, `.src`, `.fld`, `.fac`, `.s
    );
    ```
 
-2. **Özel Dosya Uzantısı ile Otomatik Basit Moda Geçiş (`db_ext`):**  
+2. **Yapılandırma Üzerinden Basit Moda Geçiş (`simple => 1`):**  
+   Basit mod, nesne başlatılırken veya çalışma zamanında dinamik olarak aktif edilebilir:
+   ```perl
+   # 1. new() başlatıcısında cfg ile tanımlama:
+   my $adb = AmberDB->new(
+       path => { dbase_dir => "/var/data/eticaretim/dbstore/tables" },
+       cfg  => { simple    => 1 },
+   );
+
+   # 2. Çalışma zamanında config() ile basit moda geçiş:
+   $adb->config( simple => 1 );
+   ```
+
+3. **Özel Dosya Uzantısı ile Otomatik Basit Moda Geçiş (`db_ext`):**  
    AmberDB'de varsayılan tablo dosya uzantısı `.db`'dir. Eğer yapılandırmada `db_ext` için `"db"` dışında farklı bir uzantı tanımlarsanız (örneğin `"dat"`, `"txt"`, `"idx"` veya `""`), motor **otomatik olarak `simple` moduna geçer**:
    ```perl
    # 1. new() başlatıcısında özel uzantı tanımlama (otomatik simple mod):

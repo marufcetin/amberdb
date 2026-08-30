@@ -557,7 +557,20 @@ In Simple Mode, secondary binary indexing (`.inx`, `.src`, `.fld`, `.fac`, `.srt
    );
    ```
 
-2. **Automatic Simple Mode Trigger via Custom Extensions (`db_ext`):**  
+2. **Switching to Simple Mode via Configuration (`simple => 1`):**  
+   Simple Mode can be activated either upon object instantiation or dynamically at runtime:
+   ```perl
+   # 1. Activation during constructor initialization via cfg:
+   my $adb = AmberDB->new(
+       path => { dbase_dir => "/var/data/myapp/dbstore/tables" },
+       cfg  => { simple    => 1 },
+   );
+
+   # 2. Dynamic runtime switch via config():
+   $adb->config( simple => 1 );
+   ```
+
+3. **Automatic Simple Mode Trigger via Custom Extensions (`db_ext`):**  
    AmberDB defaults to the `.db` extension. If `db_ext` is configured with any extension other than `"db"` (e.g. `"dat"`, `"txt"`, `"idx"`, or `""`), the engine **automatically switches into `simple` mode**:
    ```perl
    # 1. Automatic simple mode on constructor initialization:
