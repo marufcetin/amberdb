@@ -541,16 +541,14 @@ print "Product 5001 viewed $views times.\n";
 
 ## 5. Simple Mode and Direct Schemaless Access (Simple Mode)
 
-In AmberDB, **Simple Mode (`simple => 1`)** preserves the fundamental storage flexibility of your data. Records can store rich, nested data structures directly, including array and hash references (ARRAY/HASH).
+In AmberDB, **Simple Mode (`simple => 1`)** represents the entirely schemaless direct file access operational mode where no `.table` schema metadata exists or is loaded. Records can store rich, nested data structures directly, including array and hash references (ARRAY/HASH).
 
-The primary distinctions and operational boundaries of Simple Mode are:
-1. **Secondary Indexing is Fully Disabled:** All secondary binary indexes (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, `.rwt`) are bypassed. Data is written to and read from a single database file, with searches, matching, and sorting evaluated via sequential streaming scans (`recs_scan`). This eliminates index generation overhead while preserving full parity for `keys_only`, `sort`, `start`/`limit`, and language collation.
-2. **No Automatic Repeating Block Aggregation (`repeat_fields`):** Because Simple Mode does not load `.table` schema files, the `repeat_start` and `repeat_ids` directives are inactive. Repeating child elements at the end of the array are stored and retrieved intact as raw Perl lists; however, the engine will not automatically aggregate and join child IDs into the `repeat_ids` block with commas during insertion/modification. If a summary ID list is needed in Simple Mode, it must be constructed manually in application logic.
+In Simple Mode, secondary binary indexing (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, `.rwt`, `.aut`, `.del`) is completely disabled. Data is written to and read from a single database file, with searches, matching, and sorting evaluated via sequential streaming scans (`recs_scan`). This eliminates index generation and maintenance overhead while preserving full feature parity for `keys_only`, `sort`, `start`/`limit`, and language collation.
 
 ### Core Rules of Simple Mode:
 
 1. **Directory and Path Resolution Behavior:**  
-   In standard mode, tables are located and created under `dbstore/tables/`. In `simple` mode, the engine does not look for a `tables/` subdirectory; it creates and reads database files directly inside the root of `dbase_dir` (`$dbase_dir/<table_name>.<ext>`). Consequently, if you want to open tables created under standard mode with `simple` mode, you must explicitly point `dbase_dir` to **`dbstore/tables`**:
+   In standard mode, although the root directory is `dbstore`, tables are located and created under `dbstore/tables/`. In `simple` mode, the engine does not look for a `tables/` subdirectory; it creates and reads database files directly inside the root of `dbase_dir` (`$dbase_dir/<table_name>.<ext>`). Consequently, if you want to open tables created under standard mode with `simple` mode, you must explicitly point `dbase_dir` to **`dbstore/tables`**:
    ```perl
    # Accessing standard database tables in simple mode:
    my $adb = AmberDB->new(

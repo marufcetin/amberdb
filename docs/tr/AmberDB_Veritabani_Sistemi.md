@@ -538,16 +538,14 @@ print "Ürün 5001 toplam $okunma_sayisi kez görüntülendi.\n";
 
 ## 5. Basit Mod ve İndekssiz Doğrudan Erişim (Simple Mode)
 
-AmberDB'de **Basit Mod (`simple => 1` / `record_index => 0`)**, verinin temel saklama esnekliğini kısıtlamaz. Tablolarınız iç içe dizi ve sözlük referansları (ARRAY/HASH) gibi zengin veri yapılarını doğrudan saklayabilir ve okuyabilir. 
+AmberDB'de **Basit Mod (`simple => 1`)**, tabloya ait hiçbir şema bilgisinin bulunmadığı (tamamen şemasız / schemaless) doğrudan dosya erişim çalışma biçimidir. Tablolarınız iç içe dizi ve sözlük referansları (ARRAY/HASH) gibi zengin veri yapılarını doğrudan saklayabilir ve okuyabilir. 
 
-Basit modun temel farkları ve sınırları şunlardır:
-1. **İkincil İndekslerin Devre Dışı Olması:** İkincil indeksleme mekanizması (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, `.rwt`) tamamen devre dışıdır. Veriler doğrudan tek bir ana veri dosyasına yazılır ve okunur; filtreleme, arama ve sıralama işlemleri indeks dosyaları yerine doğrudan veri akışı üzerinden sıralı tarama (`recs_scan`) yöntemiyle gerçekleştirilir. Bu sayede indeks bakım maliyeti ortadan kalkar. İndekssiz çalışırken dahi `keys_only`, `sort`, `start`/`limit` ve Türkçe normalizasyonu tam parite ile çalışır.
-2. **Otomatik Tekrarlayan Blok Birleştirmesi (`repeat_fields`) Yapılmaz:** Basit modda `.table` şeması yüklenmediği için, `repeat_start` ve `repeat_ids` yönergeleri aktif değildir. Dizi sonundaki tekrarlayan alt elemanlar ana dosyaya ham olarak kaydedilir ve `read_id` ile aynen okunur; ancak kayıt esnasında bu alt blokların ID numaraları şemalı modda olduğu gibi **otomatik olarak `repeat_ids` özet alanında virgülle birleştirilmez**. Eğer basit modda bir özet alanına ihtiyaç varsa geliştiricinin bu alanı kendisinin hazırlaması gerekir.
+Basit modda ikincil indeksleme mekanizması (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, `.rwt`, `.aut`, `.del`) tamamen devre dışıdır. Veriler doğrudan tek bir ana veri dosyasına yazılır ve okunur; filtreleme, arama ve sıralama işlemleri indeks dosyaları yerine doğrudan veri akışı üzerinden sıralı tarama (`recs_scan`) yöntemiyle gerçekleştirilir. Bu sayede indeks bakım ve güncelleme maliyeti ortadan kalkar. İndekssiz çalışırken dahi `keys_only`, `sort`, `start`/`limit` ve Türkçe normalizasyonu tam parite ile çalışır.
 
 ### 5.1 Basit Modun Temel Kuralları
 
 1. **Dizin ve Dosya Yolu Davranışı:**  
-   Standart modda tablolar `dbstore/tables/` altında aranır ve oluşturulur. Ancak `simple` modunda motor `tables/` alt klasörünü aramaz; dosyaları doğrudan `dbase_dir` yolunun kökünde arar ve yazar (`$dbase_dir/<tablo>.<uzanti>`). Dolayısıyla, standart modda oluşturulmuş tabloları `simple` mod ile açmak istediğinizde, `dbase_dir` yolunu doğrudan **`dbstore/tables`** olarak belirtmelisiniz:
+   Standart modda root dizini `dbstore` olmasına rağmen tablolar `dbstore/tables/` altında aranır ve oluşturulur. Ancak `simple` modunda motor `tables/` alt klasörünü aramaz; dosyaları doğrudan `dbase_dir` yolunun kökünde arar ve yazar (`$dbase_dir/<tablo>.<uzanti>`). Dolayısıyla, standart modda oluşturulmuş tabloları `simple` mod ile açmak istediğinizde, `dbase_dir` yolunu doğrudan **`dbstore/tables`** olarak belirtmelisiniz:
    ```perl
    # Standart tabloları simple mod ile açma:
    my $adb = AmberDB->new(
