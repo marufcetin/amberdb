@@ -90,8 +90,12 @@ dbstore/
 
 ### Via CPAN (Recommended)
 
+AmberDB can be installed directly from CPAN across Linux, macOS, and Windows (Strawberry Perl / MSYS2 / MSYS64):
+
 ```bash
 cpanm AmberDB
+# or
+cpan AmberDB
 ```
 
 ### Manual Build from Source
@@ -105,7 +109,7 @@ make test
 make install
 ```
 
-*(On Windows with Strawberry Perl, use `gmake` or `dmake`)*
+*(On Windows, you can also install locally via `cpanm .` or `cpan .`)*
 
 ---
 
