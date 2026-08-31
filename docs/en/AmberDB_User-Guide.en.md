@@ -661,27 +661,33 @@ my @cat_items       = $adb->field_fetch("catalog_product", 1, "electronics", sor
 my ($count, @search) = $adb->search_table("catalog_product", "headphone", 0, 20, sort => -10);
 ```
 
-### 6.5 Dynamic Word Weighting & Relevance Ranking
-
-When indexing text across multiple blocks in `search_block`, you can assign custom relevance weights:
-
-```perl
-# dbstore/schema/catalog_product.table
-{
-    search_block => [
-        { blk => 4, weight => 10 }, # Title matches are weighted 10x
-        { blk => 5, weight => 1  }, # Description matches are base weight
-    ]
-}
-```
-
 ---
 
 ## 7. Transaction Safety, ACID Guarantees, and Crash Recovery (Transactions)
 
 `AmberDB::Transact` provides full **ACID-compliant transactions** and **Strict Two-Phase Locking (Strict 2PL)** concurrency control for multi-table updates (e.g., creating an order, updating inventory, and charging accounts).
 
-### 7.1 ACID Guarantees in AmberDB
+### 7.1 Transactional Integrity & The Single Transaction Spine
+
+In modern e-commerce and enterprise workflows, a single high-level user action (such as "Complete Checkout") triggers an interdependent semantic operation chain spanning multiple tables and sub-systems:
+
+```text
+Checkout Operation Chain:
+ ├─ Order Confirmation (creating entry in orders table)
+ ├─ Cart Cleared (purging items from cart table)
+ ├─ Customer Account (balance deduction or card charge record)
+ ├─ Company Account (revenue entry in general ledger)
+ ├─ Stock Inventory (deducting counts in catalog_product table)
+ └─ Supplier Dispatch (writing work item to supplier_queue table)
+```
+
+These operations are **semantically coupled and mutually dependent**. If one operation fails while the others persist, the database falls into an inconsistent state:
+- If the customer's payment is processed and the order record is created, but inventory deduction fails or crashes;
+- Or if stock is deducted and the cart is emptied, but the revenue entry fails to record;
+
+the system state becomes corrupted. To eliminate these anomalies, the entire sequence must be unified within a **single transaction spine (`transact_start` $\rightarrow$ `transact_end`)**. If any step encounters an error or if the process crashes, AmberDB evaluates the `.txn` undo log in reverse (LIFO) order, completely rolling back all modified tables and secondary indexes to their pristine pre-transaction state.
+
+### 7.2 ACID Guarantees in AmberDB
 
 AmberDB guarantees the four classical ACID properties through embedded flat-file database mechanics:
 
@@ -695,7 +701,7 @@ AmberDB guarantees the four classical ACID properties through embedded flat-file
 > **Architectural Note: Batch ETL Imports vs. Business Transactions**  
 > Methods such as `insert_list`, `modify_list`, and `delete_list` are specialized for high-throughput batch imports (e.g., ingesting large XML/JSON product catalogs). Such ETL workflows prioritize performance and partial-acceptance over atomic all-or-nothing rollback. For cyclical business logic where interdependent operations must succeed or fail as a single unit, use single-record CRUD methods within a `transact_start` / `transact_end` block.
 
-### 7.2 Transaction Workflow
+### 7.3 Transaction Workflow
 
 1. **`transact_start()`**: Opens a microsecond-stamped undo journal (`.txn`) in `$dbase_dir/txn/` and recovers any orphaned transactions left by dead processes (`transact_recover`).
 2. **CRUD Operations**: `insert_id`, `modify_id`, `delete_id` write updates to the base `.db` file, acquire record write locks (`flock`), and record reverse undo entries in the `.txn` journal.
@@ -704,7 +710,7 @@ AmberDB guarantees the four classical ACID properties through embedded flat-file
    - If base errors occurred: Evaluates journal in reverse (LIFO) order, restoring base records and index states to their pre-transaction snapshot, releases locks (`status => "rollback"`).
 4. **`transact_rollback()`**: Manually triggers immediate rollback based on business logic.
 
-### 7.3 Practical Example: Checkout & Inventory Transaction
+### 7.4 Practical Example: Checkout & Inventory Transaction
 
 ```perl
 # 1. Start Transaction
@@ -741,13 +747,13 @@ if ($res->{status} eq "commit") {
 }
 ```
 
-### 7.4 Durability and Crash Recovery
+### 7.5 Durability and Crash Recovery
 
 - **IO::Handle Buffer Flushing & Sync:** Every journal entry is immediately flushed with `$fh->flush`. When configured with `cfg => { txn_sync => 1 }`, AmberDB enforces physical OS/disk-level synchronization (`$fh->sync` / `fsync`).
 - **`flock`-Based Ownership:** Active transactions hold an exclusive non-blocking lock (`LOCK_EX | LOCK_NB`) on their `.txn` file. If a process crashes unexpectedly, the lock is automatically released by the operating system.
 - **Orphan Recovery (`transact_recover`):** If a worker process terminates abruptly, stale `.txn` files in `txn/` are scanned. By verifying that the file lock has dropped and the process is no longer active, the journal is safely rolled back to restore consistency without race conditions against concurrent active workers.
 
-### 7.5 Core Architectural Philosophy: Authoritative Data vs. Rebuildable Indexes
+### 7.6 Core Architectural Philosophy: Authoritative Data vs. Rebuildable Indexes
 
 AmberDB's storage and transaction architecture is organized around a strict hierarchy of data authority:
 
@@ -762,7 +768,7 @@ AmberDB's storage and transaction architecture is organized around a strict hier
 
 > **Rationale Behind Transaction Design:** `AmberDB::Transact` was deliberately engineered around this principle. A failure writing to the authoritative `.db` file (`is_index == 0`) triggers an immediate automatic `rollback`. However, if the master document is safely committed to `.db` and an index update encounters a disk error (`is_index == 1`), valid business data is never discarded; the transaction commits, and indexes can simply be repaired using `AmberDB::Tools`.
 
-### 7.6 Exempting Auxiliary Tables from Failure Cascades (`no_transact`)
+### 7.7 Exempting Auxiliary Tables from Failure Cascades (`no_transact`)
 
 In multi-table business operations (e.g. creating an order, updating inventory, and charging accounts), some tables represent **core transactional entities** (orders, payments, inventory), while others serve as **auxiliary or secondary records** (customer order summaries, product view counters, notification queues). An unexpected failure writing to an auxiliary table should not abort or roll back a successfully charged order.
 

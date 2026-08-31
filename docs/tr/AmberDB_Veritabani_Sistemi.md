@@ -660,39 +660,31 @@ my ($adet, @arama) = $adb->search_table("catalog_product", "kulaklık", 0, 20, s
 
 ---
 
-### 6.5 Motorun Arka Plan Mimarisi (Otomatik İşleyiş)
-
-> [!NOTE]
-> Bu bölüm motorun iç mimari mekanizmasını açıklar. Aşağıdaki tüm adımlar AmberDB tarafından **arka planda tamamen otomatik** olarak yürütülür; geliştiricinin herhangi bir manuel işlem yapmasına gerek yoktur.
-
-#### 6.5.1 İkili Sıralama İndeksleri (`.srt`) ve CRUD Senkronizasyonu
-* **Otomatik Dosya Yönetimi:** Şemada `sort_block` tanımlandığında motor her blok için diskte `<tablo>_<blok>.srt` ikili indeks dosyası tutar.
-* **Ekleme (`insert_id` / `insert_list`):** Yeni kayıtlar eklendiğinde sıralama anahtarları üretilir ve ikili arama (`binary search`) ile `.srt` dosyası içindeki doğru pozisyonuna yerleştirilir.
-* **Güncelleme (`modify_id` / `modify_list`):** Bir kaydın sıralanan değeri değiştiğinde, kayıt `.srt` içinde anında yeni yerine taşınır (örneğin ürün fiyatı arttığında ucuzlar sırasından pahalılar sırasına otomatik geçer).
-* **Silme (`delete_id` / `delete_list`):** Silinen kayıtlar `.srt` indeksinden anında temizlenir.
-* **Bakım / Yeniden İndeksleme:** İhtiyaç halinde `AmberDB::Tools->set_sort($table)` veya `set_index($table)` çağrılarak tablodaki tüm `.srt` indeksleri diskten sıfırdan oluşturulabilir.
-
-#### 6.5.2 Otomatik Anahtar Normalizasyonu (`normalize_sort_key`)
-Farklı veri türlerinin disk üzerinde standart ve doğru sıralanabilmesi için motor arka planda şu dönüşümleri uygular:
-
-* **Metin (String) Alanlar:**
-  - Türkçe ve yabancı karakterler `to_ascii` ve `lc` ile ASCII eşdeğerine dönüştürülür ve alfanümerik filtreleme yapılır.
-  - AmberDB'nin 8-bayt ikili standart mimarisine uygun olarak metinler ilk **8 bayta** kırpılır (`len: 8`); kısa metinler boşlukla tamamlanır.
-  - *Örnek:* `"Buzdolabı NoFrost"` $\rightarrow$ `"buzdolab"`
-* **Sayısal (Num / Decimal) Alanlar (1e12 Ofset):**
-  - Negatif, ondalıklı ve pozitif sayıların metin sıralamasında matematiksel değerini koruması için **1e12 (`1_000_000_000_000`)** ofseti eklenerek 20 karakterlik `%020.6f` biçimine çevrilir.
-  - *Örnek:* `-500` $\rightarrow$ `0999999999500.000000`, `0` $\rightarrow$ `1000000000000.000000`, `150.5` $\rightarrow$ `1000000000150.500000`
-  - Böylece `-500 < -150.75 < 0 < 99.99 < 150.5` matematiksel sıralaması kusursuz korunur.
-* **Tarih (Date) Alanlar:**
-  - Tarih değerleri 14 karakterlik `YYYYMMDDHHMMSS` zaman damgasına dönüştürülür.
-
----
-
 ## 7. İşlem Güvenliği, ACID Garantileri ve Kurtarma (Transactions)
 
 `AmberDB::Transact`, çoklu tablo güncellemelerinde ve döngüsel iş kurallarında (örn. sipariş oluşturma + stok düşme + bakiye tahsilatı) **tam ACID uyumlu (ACID-Compliant)** işlem bütünlüğü ve **Strict Two-Phase Locking (Strict 2PL)** yalıtımı sağlar.
 
-### 7.1 AmberDB'de ACID Şartlarının Karşılanması
+### 7.1 İşlemsel Bütünlük ve Tek Transaction Omurgası (Transactional Integrity)
+
+Modern bir e-ticaret veya kurumsal iş akışında tek bir kullanıcı eylemi (örneğin "Siparişi Tamamla"), arka planda birden çok bağımsız tabloyu ve sistemi ilgilendiren semantik bir işlem zincirini tetikler:
+
+```text
+Sipariş İşlem Zinciri:
+ ├─ Sipariş Onayı (orders tablosuna kayıt atılması)
+ ├─ Sepetin Boşaltılması (cart tablosundan ürünlerin silinmesi)
+ ├─ Müşteri Hesabı (bakiye düşümü veya kart çekim kaydı)
+ ├─ Şirket Hesabı (muhasebe/kasa defterine gelir kaydı)
+ ├─ Stok Yönetimi (catalog_product tablosunda adet düşümü)
+ └─ Tedarikçi Bildirimi (supplier_queue tablosuna iş emri yazılması)
+```
+
+Bu adımlar birbirini **semantik olarak doğrudan etkileyen ve tamamlayan işlemlerdir**. Birinin başarısız olması durumunda diğerlerinin veritabanında başarılı kalması sistem açısından büyük bir tutarsızlığa yol açar. Örneğin:
+- Müşteri kartından para çekilip sipariş kaydı oluşturulduktan sonra stok düşme aşamasında bir hata meydana gelirse;
+- Ya da stok düşülüp müşteri sepeti boşaltıldığı halde şirket kasasına gelir kaydı yazılamazsa;
+
+veritabanı parçalı ve bozuk bir duruma düşer. Bu nedenle birbiriyle ilişkili tüm bu adımların **tek bir transaction omurgası (`transact_start` $\rightarrow$ `transact_end`)** altında yürütülmesi gerekir. Adımlardan herhangi biri başarısız olduğunda veya sistem çöktüğünde AmberDB, o ana kadar yapılan tüm disk ve indeks değişikliklerini geriye doğru (LIFO sırasıyla) geri alarak (`rollback`) veritabanını işlemin hiç başlamadığı ilk temiz ve kararlı haline döndürür.
+
+### 7.2 AmberDB'de ACID Şartlarının Karşılanması
 
 AmberDB, gömülü (embedded) ve şema güdümlü mimarisine uygun olarak 4 temel ACID ilkesini şu mekanizmalarla garanti eder:
 
@@ -706,7 +698,7 @@ AmberDB, gömülü (embedded) ve şema güdümlü mimarisine uygun olarak 4 teme
 > **Not: Toplu İşlemler (Batch / ETL) ve Transaction Ayrımı**  
 > `insert_list`, `modify_list` ve `delete_list` metotları, harici XML/JSON/CSV dosyalarından yüksek verimli toplu veri aktarımları (ETL) için tasarlanmıştır. Bu tür yüklemelerde bozuk birkaç kayıt için binlerce geçerli kaydın geri alınması istenmez. Karşılıklı bağımlılık ve atomik bütünlük gerektiren iş mantığı süreçlerinde (sipariş, stok, fatura) tekil CRUD metotları (`insert_id`, `modify_id`, `delete_id`) transaction bloğu içinde çalıştırılır.
 
-### 7.2 Transaction Yaşam Döngüsü
+### 7.3 Transaction Yaşam Döngüsü
 
 1. **`transact_start()`**: Yeni bir işlem başlatır, `$dbase_dir/txn/` altında mikrosaniye hassasiyetinde bir `.txn` undo günlüğü açar ve yetim işlemleri onarır (`transact_recover`).
 2. **CRUD Çağrıları**: `insert_id`, `modify_id`, `delete_id` işlemleri hem ana `.db` dosyasına yazar, ilgili kaydın `flock` yazma kilidini alır ve `.txn` günlüğüne yapılan işlemin tersini (undo verisi) yazar.
@@ -715,7 +707,7 @@ AmberDB, gömülü (embedded) ve şema güdümlü mimarisine uygun olarak 4 teme
    - Taban veritabanında kritik bir hata oluştuysa: Günlük LIFO sırasıyla okunarak hem ana kayıtlar hem tüm indeksler eski haline geri döndürülür, kilitler serbest bırakılır (`status => "rollback"`).
 4. **`transact_rollback()`**: İş mantığına bağlı olarak (örneğin stok yetersizliği durumunda) işlemi zorla geri alır.
 
-### 7.3 Örnek: Sipariş ve Stok Yönetimi Transaction'ı
+### 7.4 Örnek: Sipariş ve Stok Yönetimi Transaction'ı
 
 ```perl
 # 1. Transaction başlat
@@ -752,13 +744,13 @@ if ($sonuc->{status} eq "commit") {
 }
 ```
 
-### 7.4 Journal Dayanıklılığı ve Kurtarma (Durability & Crash Recovery)
+### 7.5 Journal Dayanıklılığı ve Kurtarma (Durability & Crash Recovery)
 
 - **IO::Handle Tampon Temizliği (Flush/Sync):** Her işlem anında `$fh->flush` ile tampondan diske iletilir. İsteğe bağlı olarak `cfg => { txn_sync => 1 }` yapılandırıldığında işletim sistemi ve disk seviyesinde fiziksel senkronizasyon (`$fh->sync` / `fsync`) gerçekleştirilir.
 - **`flock` Tabanlı Sahiplik:** Transaction başlatıldığında `.txn` dosyası üzerinde non-blocking exclusive kilit (`LOCK_EX | LOCK_NB`) alınır. Süreç çalıştığı müddetçe kilit korunur; sürecin çökmesi halinde kilit işletim sistemi tarafından otomatik serbest bırakılır.
 - **Yetim İşlem Kurtarma (`transact_recover`):** Sunucunun aniden kapanması veya Perl sürecinin beklenmedik şekilde sonlanması durumunda `txn/` klasöründe kalan yetim (orphan) `.txn` dosyaları taranır. `flock` ile dosya kilidinin serbest kaldığı ve sürecin ölü olduğu doğrulanırsa kayıtlar ve indeksler otomatik olarak kararlı duruma geri döndürülür. Eşzamanlı canlı süreçlerin dosyalarına yarış durumuna (race condition) mahal vermeden kesinlikle dokunulmaz.
 
-### 7.5 Temel Mimari İlke: Otoriter Veri vs. Yeniden Üretilebilir İndeksler
+### 7.6 Temel Mimari İlke: Otoriter Veri vs. Yeniden Üretilebilir İndeksler
 
 AmberDB'nin dosya ve işlem mimarisi kesin bir hiyerarşiye dayanır:
 
@@ -773,7 +765,7 @@ AmberDB'nin dosya ve işlem mimarisi kesin bir hiyerarşiye dayanır:
 
 > **Transaction Tasarımının Temeli:** `AmberDB::Transact` mekanizması bu ilkeye göre kurgulanmıştır. Ana `.db` yazımında bir hata oluşursa (`is_index == 0`) transaction otomatik olarak geri alınır (`rollback`). Ancak ana veri `.db`'ye başarıyla yazıldıktan sonra bir indeks yazımında hata oluşursa (`is_index == 1`), geçerli ve parası ödenmiş/onaylanmış iş verisi çöpe atılmaz; transaction başarılı kabul edilir ve indeks sonradan `AmberDB::Tools` ile kolayca yeniden indekslenir.
 
-### 7.6 Tali Tabloları Transaction Hata Zincirinden Muaf Tutma (`no_transact`)
+### 7.7 Tali Tabloları Transaction Hata Zincirinden Muaf Tutma (`no_transact`)
 
 Karmaşık iş akışlarında (örneğin sipariş oluşturma + stok düşme + bakiye tahsilatı) bazı tablolar **çekirdek işlem** (sipariş, ödeme, stok), bazı tablolar ise **tali / yardımcı veri** (müşteri sipariş geçmişi özeti, ürün görüntüleme sayaçları, bildirim kuyrukları) niteliğindedir. Tali bir tabloya yazarken oluşabilecek beklenmedik bir hata yüzünden parası ödenmiş asıl siparişin iptal edilmesi (`rollback`) istenmez.
 
