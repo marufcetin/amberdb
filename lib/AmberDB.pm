@@ -3337,7 +3337,7 @@ AmberDB - High-performance, schema-driven NoSQL engine with ACID transactions an
   $adb->insert_id("table_id", @record);
 
   # Update record
-  $adb->modify_id("table_id", $record_id, @record_updated);
+  $adb->modify_id("table_id", @record_updated);
 
   # Delete record
   $adb->delete_id("table_id", $record_id);
