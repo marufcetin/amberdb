@@ -13,6 +13,9 @@ use Test::More;
 use File::Temp qw(tempdir);
 use File::Spec;
 
+binmode Test::More->builder->output,         ':utf8';
+binmode Test::More->builder->failure_output, ':utf8';
+binmode Test::More->builder->todo_output,    ':utf8';
 binmode(STDOUT, ':utf8');
 binmode(STDERR, ':utf8');
 
@@ -89,8 +92,9 @@ subtest 'rdbm match_block numeric indexing (Case 1)' => sub {
     mkdir $schema_dir;
 
     my $schema_file = File::Spec->catfile( $schema_dir, 'products.table' );
-    open my $fh, '>', $schema_file or die "Cannot create schema: $!";
+    open my $fh, '>:encoding(UTF-8)', $schema_file or die "Cannot create schema: $!";
     print $fh <<'SCHEMA';
+use utf8;
 {
     id_type      => 'num',
     record_index => 1,
@@ -150,8 +154,9 @@ subtest 'non-rdbm string match_block with .unq and lastid (Case 2)' => sub {
     mkdir $schema_dir;
 
     my $schema_file = File::Spec->catfile( $schema_dir, 'tags.table' );
-    open my $fh, '>', $schema_file or die "Cannot create schema: $!";
+    open my $fh, '>:encoding(UTF-8)', $schema_file or die "Cannot create schema: $!";
     print $fh <<'SCHEMA';
+use utf8;
 {
     id_type      => 'num',
     record_index => 1,
@@ -227,8 +232,9 @@ subtest 'modify_id, delete_id and index rebuild' => sub {
     mkdir $schema_dir;
 
     my $schema_file = File::Spec->catfile( $schema_dir, 'news.table' );
-    open my $fh, '>', $schema_file or die "Cannot create schema: $!";
+    open my $fh, '>:encoding(UTF-8)', $schema_file or die "Cannot create schema: $!";
     print $fh <<'SCHEMA';
+use utf8;
 {
     id_type      => 'num',
     record_index => 1,
@@ -301,8 +307,9 @@ subtest 'batch match_add handle lifecycle and whitespace cleaning' => sub {
     mkdir $schema_dir;
 
     my $schema_file = File::Spec->catfile( $schema_dir, 'batch_test.table' );
-    open my $fh, '>', $schema_file or die "Cannot create schema file: $!";
+    open my $fh, '>:encoding(UTF-8)', $schema_file or die "Cannot create schema file: $!";
     print $fh <<'SCHEMA';
+use utf8;
 {
     id_type      => 'num',
     record_index => 1,
@@ -375,8 +382,9 @@ subtest 'valid => "unique" constraint check in insert/modify/delete' => sub {
     mkdir $schema_dir;
 
     my $schema_file = File::Spec->catfile( $schema_dir, 'users.table' );
-    open my $fh, '>', $schema_file or die "Cannot create schema: $!";
+    open my $fh, '>:encoding(UTF-8)', $schema_file or die "Cannot create schema: $!";
     print $fh <<'SCHEMA';
+use utf8;
 {
     id_type      => 'num',
     record_index => 1,
@@ -447,8 +455,9 @@ subtest 'RDBM Foreign String auto-resolution via foreign .unq' => sub {
 
     # Target table: catalog_brand
     my $brand_schema = File::Spec->catfile( $schema_dir, 'catalog_brand.table' );
-    open my $bfh, '>', $brand_schema or die "Cannot create schema: $!";
+    open my $bfh, '>:encoding(UTF-8)', $brand_schema or die "Cannot create schema: $!";
     print $bfh <<'SCHEMA';
+use utf8;
 {
     id_type      => 'num',
     record_index => 1,
@@ -463,8 +472,9 @@ SCHEMA
 
     # Host table: catalog_book with rdbm => "catalog_brand;1"
     my $book_schema = File::Spec->catfile( $schema_dir, 'catalog_book.table' );
-    open my $kfh, '>', $book_schema or die "Cannot create schema: $!";
+    open my $kfh, '>:encoding(UTF-8)', $book_schema or die "Cannot create schema: $!";
     print $kfh <<'SCHEMA';
+use utf8;
 {
     id_type      => 'num',
     record_index => 1,
