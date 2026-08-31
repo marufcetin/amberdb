@@ -12,21 +12,21 @@
 
 ## Key Features
 
-- 🏎️ **Ultra High-Performance**: Leverages Berkeley DB (`DB_File`) hash storage with $O(1)$ binary slicing and configurable in-memory buffers.
-- 🧱 **JOIN-Free JSON-like Extensible Block Records**: Eliminates complex relational SQL `JOIN` overhead by storing hierarchical, extensible block records. Newly added blocks and attributes are automatically indexed on the fly for low-latency multi-dimensional querying.
-- ⚙️ **Schema-Driven Dynamic Runtime Manipulation**: Table-specific schemas govern field validations, encodings, and index mappings. Schemas and values are fully mutable and can be modified dynamically at runtime without requiring table recreation or migrations.
-- 📦 **8-Byte Packed Binary Indexing**: Primary and secondary indexes use unified 8-byte packed binary buffers (`Q*` / `a8*`), enabling $O(1)$ substring slicing, sub-millisecond pagination, and memory-efficient `keys_only` scalar pipelines.
-- 🔍 **Intelligent & Locale-Aware Accent Search**: Advanced full-text search engine (`.src`) equipped with regional language and accent intelligence, phonetic devoicing (`b/d/g -> p/t/k`), circumflex/accent unfolding (`â/î/û -> a/i/u`), apostrophe suffix stop-words, and prefix wildcard matching.
-- 🏷️ **Columnar Facet Indexing (`.fac`)**: High-performance multi-dimensional facet filtering with index-level bitwise intersections and bidirectional string dictionaries (`.str`) for e-commerce, catalogs, and large categorical datasets.
-- 🗄️ **Multi-Tier Junk & Lifecycle Management**: Segregates active records from historical/archived data (`.db` master vs `.jnk` tier) with seamless single-pass hybrid queries (`jnktype => 'A' | 'B' | 'AB' | 'BA'`).
-- 🛡️ **ACID-Compliant Undo-Journal Transactions**: Full ACID multi-table transactions with disk-backed journaling (`.txn`), Strict Two-Phase Locking (Strict 2PL), automatic LIFO rollback upon failure or abnormal process exit, and orphaned journal recovery.
-- 💾 **2-Pillar Disaster Recovery & Native `.amberdb` Archiving**: 
+- **Ultra High-Performance**: Leverages Berkeley DB (`DB_File`) hash storage with $O(1)$ binary slicing and configurable in-memory buffers.
+- **JOIN-Free JSON-like Extensible Block Records**: Eliminates complex relational SQL `JOIN` overhead by storing hierarchical, extensible block records. Newly added blocks and attributes are automatically indexed on the fly for low-latency multi-dimensional querying.
+- **Schema-Driven Dynamic Runtime Manipulation**: Table-specific schemas govern field validations, encodings, and index mappings. Schemas and values are fully mutable and can be modified dynamically at runtime without requiring table recreation or migrations.
+- **8-Byte Packed Binary Indexing**: Primary and secondary indexes use unified 8-byte packed binary buffers (`Q*` / `a8*`), enabling $O(1)$ substring slicing, sub-millisecond pagination, and memory-efficient `keys_only` scalar pipelines.
+- **Intelligent & Locale-Aware Accent Search**: Advanced full-text search engine (`.src`) equipped with regional language and accent intelligence, phonetic devoicing (`b/d/g -> p/t/k`), circumflex/accent unfolding (`â/î/û -> a/i/u`), apostrophe suffix stop-words, and prefix wildcard matching.
+- **Columnar Facet Indexing (`.fac`)**: High-performance multi-dimensional facet filtering with index-level bitwise intersections and bidirectional string dictionaries (`.str`) for e-commerce, catalogs, and large categorical datasets.
+- **Multi-Tier Junk & Lifecycle Management**: Segregates active records from historical/archived data (`.db` master vs `.jnk` tier) with seamless single-pass hybrid queries (`jnktype => 'A' | 'B' | 'AB' | 'BA'`).
+- **ACID-Compliant Undo-Journal Transactions**: Full ACID multi-table transactions with disk-backed journaling (`.txn`), Strict Two-Phase Locking (Strict 2PL), automatic LIFO rollback upon failure or abnormal process exit, and orphaned journal recovery.
+- **2-Pillar Disaster Recovery & Native `.amberdb` Archiving**: 
   - **Pillar 1 (Continuous Recovery Stream):** Automatic append-only audit stream in `backup/YYYY/YYYY-MM-DD.csv` capturing every `insert`, `modify`, and `delete`.
   - **Pillar 2 (Native Portable Archive):** Compressed, portable `.amberdb` archives containing schemas (`schema/*.table`, `schema/*.dbase`) and authoritative data files (`tables/*.db`, `tables/*.del`, `tables/*.aut`, `tables/*.cnt`, `tables/*_*.str`) with SHA-256 integrity verification. Derived indexes are excluded to save space and reconstructed deterministically on restore.
-- 🔒 **Multi-Granularity Concurrency Control**: Non-blocking shared reads and exclusive writes at both table-level and individual record-level using OS-native `flock`.
-- 🌐 **Multilingual Locale Engine**: Out-of-the-box support for 9 languages (`en`, `tr`, `de`, `fr`, `es`, `ja`, `ru`, `ar`, `az`) with language-specific case folding (e.g. Turkish `ı/I` and `i/İ`), collation, currency, and date formatting.
-- 🚀 **High-Throughput 2-Phase Batch Operations**: High-performance batch ingestion pipeline (`insert_list`, `modify_list`, `delete_list`) opens master `.db` once for batch writing and executes single-pass index merging (`.inx`, `.src`, `.fld`, `.fac`, `.srt`), delivering 50x-100x faster ETL data imports without per-record locking overhead.
-- ⚡ **RAM-Disk Acceleration**: Integrated CLI tools and automation for mounting `tmpfs` (Linux) or `ImDisk` (Windows) for sub-microsecond in-memory table access.
+- **Multi-Granularity Concurrency Control**: Non-blocking shared reads and exclusive writes at both table-level and individual record-level using OS-native `flock`.
+- **Multilingual Locale Engine**: Out-of-the-box support for 9 languages (`en`, `tr`, `de`, `fr`, `es`, `ja`, `ru`, `ar`, `az`) with language-specific case folding (e.g. Turkish `ı/I` and `i/İ`), collation, currency, and date formatting.
+- **High-Throughput 2-Phase Batch Operations**: High-performance batch ingestion pipeline (`insert_list`, `modify_list`, `delete_list`) opens master `.db` once for batch writing and executes single-pass index merging (`.inx`, `.src`, `.fld`, `.fac`, `.srt`), delivering 50x-100x faster ETL data imports without per-record locking overhead.
+- **RAM-Disk Acceleration**: Integrated CLI tools and automation for mounting `tmpfs` (Linux) or `ImDisk` (Windows) for sub-microsecond in-memory table access.
 
 ---
 
@@ -76,13 +76,13 @@ dbstore/
 | `.jfld`| **Junk Match Index** |  **Yes** (`set_index`) | Field match index for cold records (`jnktype => 'B'/'AB'`) |
 | `.jsrc`| **Junk Full-Text Search** |  **Yes** (`set_index`) | Word-level inverted index for cold records (`jnktype => 'B'/'AB'`) |
 | **Runtime & Backup Files** | | | |
-| `.amberdb` | **Native Database Archive** | 📦 Portable Archive | Compressed tar archive with schemas, data files, and SHA-256 manifest |
-| `.csv` | **Continuous WAL Stream** | 🛡️ Append-Only Log | Daily chronological audit stream (`backup/YYYY/YYYY-MM-DD.csv`) |
-| `.cnt` | **View / Hit Counter** | ⚠️ Counter State | High-throughput concurrent counter store (`use_counter`) |
-| `.txn` | **Transaction Undo Journal** | ⚠️ Transient (Runtime) | Active transaction rollback journal file (`txn/`) |
-| `.cache` | **Shared RAM-Disk Cache** |  Yes (RAM-Disk) | RAM-Disk shared cache file (`cache/`) |
-| `.tmp` | **Disk Buffer File** | ⚠️ Transient (Staging) | Disk staging buffer file under `dbstore/buffer/` (`buffer_write`) |
-| `.lock` | **Process Mutex Lock** | ⚠️ Transient (Mutex) | OS `flock` process synchronization lock file |
+| `.amberdb` | **Native Database Archive** | Portable Archive | Compressed tar archive with schemas, data files, and SHA-256 manifest |
+| `.csv` | **Continuous WAL Stream** | Append-Only Log | Daily chronological audit stream (`backup/YYYY/YYYY-MM-DD.csv`) |
+| `.cnt` | **View / Hit Counter** | Counter State | High-throughput concurrent counter store (`use_counter`) |
+| `.txn` | **Transaction Undo Journal** | Transient (Runtime) | Active transaction rollback journal file (`txn/`) |
+| `.cache` | **Shared RAM-Disk Cache** | Yes (RAM-Disk) | RAM-Disk shared cache file (`cache/`) |
+| `.tmp` | **Disk Buffer File** | Transient (Staging) | Disk staging buffer file under `dbstore/buffer/` (`buffer_write`) |
+| `.lock` | **Process Mutex Lock** | Transient (Mutex) | OS `flock` process synchronization lock file |
 
 ---
 

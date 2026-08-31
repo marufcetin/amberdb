@@ -1,5 +1,11 @@
 Revision history for AmberDB
 
+5.22.1  2026-09-01
+        - [DOCS] Documentation and Synopsis Fixes:
+          * Fixed synopsis and API example signatures across documentation and POD.
+          * Updated README.md installation instructions with streamlined CPAN/cpanm cross-platform support.
+          * Fixed character encoding and wide-character warnings in test suite schemas.
+
 5.22.0  2026-08-31
         - [REFACTOR] Codebase Cleanliness:
           * Removed redundant single-line helper is_rdbm_block() in favor of direct rdbm_target() calls across AmberDB::Index, AmberDB::Index::Junk, and AmberDB::Tools.
