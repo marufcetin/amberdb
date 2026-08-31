@@ -71,7 +71,7 @@ dbstore/
 | `.src` | **Full-Text Search Index** |  **Yes** (`set_index`) | Word-level token inverted index (`search_block`) |
 | `.srt` | **Sorted Index** |  **Yes** (`set_index`) | Pre-sorted binary array of record IDs (`sort_block`) |
 | `.fac` | **Facet Navigation Index** |  **Yes** (`set_index`) | Forward bitset index for faceted filter navigation (`facet_block`) |
-| `.rwt` | **SEO URL Slug Map** |  **Yes** (`set_index`) | Bidirectional map: `_0.rwt` (ID→Slug) and `_1.rwt` (Slug→ID) |
+| `.slg` | **URL Slug Map** |  **Yes** (`set_index`) | Bidirectional map: `_0.slg` (ID→Slug) and `_1.slg` (Slug→ID) |
 | `.jinx`| **Junk Record Index** |  **Yes** (`set_index`) | Binary primary index for cold/archived records (`use_junk`) |
 | `.jfld`| **Junk Match Index** |  **Yes** (`set_index`) | Field match index for cold records (`jnktype => 'B'/'AB'`) |
 | `.jsrc`| **Junk Full-Text Search** |  **Yes** (`set_index`) | Word-level inverted index for cold records (`jnktype => 'B'/'AB'`) |
@@ -352,15 +352,16 @@ Full comprehensive guides are available in the [`docs/`](docs/) directory:
 
 ## Running Tests
 
-AmberDB contains an extensive test suite covering core operations, indexing, transactions, search, facets, concurrency, locales, and backups:
+AmberDB includes an exhaustive test suite covering core operations, indexing, transactions, search, facets, locales, and backups, along with multi-process concurrency stress tests:
 
 ```bash
-# Run all tests via prove
+# Run standard unit & integration test suite (39 test files, 390+ assertions)
 prove -l t/
 
-# Or via standard MakeMaker
-perl Makefile.PL
-make test
+# Run multi-process concurrency & stress test suite (cross-platform Linux & Windows)
+prove -l xt/
+# or directly:
+perl -Ilib xt/amberdb_concurrency_stress.t
 ```
 
 ---

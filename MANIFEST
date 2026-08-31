@@ -73,7 +73,7 @@ t/amberdb_search_filter.t
 t/amberdb_search_with_index.t
 t/amberdb_search_without_index.t
 t/amberdb_security_paths.t
-t/amberdb_seo_facet_bulk.t
+t/amberdb_slug_facet_bulk.t
 t/amberdb_simple_mode.t
 t/amberdb_sort.t
 t/amberdb_string.t

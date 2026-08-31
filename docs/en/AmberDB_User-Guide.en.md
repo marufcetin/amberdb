@@ -1,6 +1,6 @@
 # AmberDB — Developer Guide and Comprehensive Documentation
 
-> **Version:** 5.21.1 · **Initial Design:** 2005 · **Last Updated:** 2026  
+> **Version:** 5.21.2 · **Initial Design:** 2005 · **Last Updated:** 2026  
 > **Namespace:** `AmberDB`  
 > **Built-in Modules:** `Base`, `Index`, `Transact`, `Cache`, `Array`, `String`, `Date`, `Locale`, `Tools`
 
@@ -19,7 +19,7 @@
 9. [Schema Configuration (.table & In-Memory)](#9-schema-configuration-table--in-memory)
 10. [Database Group Structure (.dbase)](#10-database-group-structure-dbase)
 11. [Smart Tiered (Hot / Cold Junk) Indexing](#11-smart-tiered-hot--cold-junk-indexing)
-12. [Automated SEO URL (Slug) Management](#12-automated-seo-url-slug-management)
+12. [Automated URL Slug Management](#12-automated-url-slug-management)
 13. [Unified Shared RAM Cache (.db / .inx) & Persistent Buffer](#13-unified-shared-ram-cache-db--inx--persistent-buffer)
 14. [Configuration and Deterministic Flag Management (`config`)](#14-configuration-and-deterministic-flag-management-config)
 15. [Data Structures, Low-Level Table and Stream Operations](#15-data-structures-low-level-table-and-stream-operations)
@@ -40,7 +40,7 @@
 
 `AmberDB` is a **high-performance, schema-driven NoSQL database engine for Perl**, featuring **precomputed inverted indexing, ACID-compliant transactions with Strict Two-Phase Locking (Strict 2PL), and automatic crash recovery on top of Berkeley DB (`DB_File`)**.
 
-From a developer's perspective, AmberDB eliminates the overhead of provisioning and maintaining external database servers. A single CRUD call automatically updates and synchronizes all associated full-text search, field-match, facet filter, binary sort, and bidirectional SEO URL indexes in one integrated layer.
+From a developer's perspective, AmberDB eliminates the overhead of provisioning and maintaining external database servers. A single CRUD call automatically updates and synchronizes all associated full-text search, field-match, facet filter, binary sort, and bidirectional URL slug indexes in one integrated layer.
 
 ### Built-in Modular Architecture
 
@@ -167,7 +167,7 @@ $adb->delete_id("member_user", $retrieved[0]);
 
 In AmberDB, core insertion, modification, deletion, and retrieval operations are executed directly against the database table.
 
-Creating a `.table` schema file is **not strictly mandatory**; schemaless tables store and retrieve records by primary key with zero configuration. However, **if indexing directives are defined in the table schema** (`record_index`, `match_block`, `search_block`, `facet_block`, `sort_block`, `seo_block`):
+Creating a `.table` schema file is **not strictly mandatory**; schemaless tables store and retrieve records by primary key with zero configuration. However, **if indexing directives are defined in the table schema** (`record_index`, `match_block`, `search_block`, `facet_block`, `sort_block`, `slug_block`):
 1. Every `insert_id`, `modify_id`, or `delete_id` call **automatically compiles, synchronizes, and maintains all secondary search, match, and sort indexes** in the background.
 2. Read, query, and search operations (`read_all`, `field_fetch`, `search_table`, `facet_menu`, etc.) **automatically utilize these precomputed indexes**, bypassing slow full disk scans and executing via direct index lookups.
 
@@ -513,9 +513,9 @@ if ($adb->exist_table("catalog_product")) {
     print "catalog_product.db exists on disk.\n";
 }
 
-# Check specific file extension (e.g. .rwt SEO map)
-if ($adb->exist_table("catalog_product", "rwt")) {
-    print "SEO index file exists.\n";
+# Check specific file extension (e.g. .slg slug map)
+if ($adb->exist_table("catalog_product", "slg")) {
+    print "Slug index file exists.\n";
 }
 ```
 
@@ -543,7 +543,7 @@ print "Product 5001 viewed $views times.\n";
 
 In AmberDB, **Simple Mode (`simple => 1`)** represents the entirely schemaless direct file access operational mode where no `.table` schema metadata exists or is loaded. Records can store rich, nested data structures directly, including array and hash references (ARRAY/HASH).
 
-In Simple Mode, secondary binary indexing (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, `.rwt`, `.aut`, `.del`) is completely disabled. Data is written to and read from a single database file, with searches, matching, and sorting evaluated via sequential streaming scans (`recs_scan`). This eliminates index generation and maintenance overhead while preserving full feature parity for `keys_only`, `sort`, `start`/`limit`, and language collation.
+In Simple Mode, secondary binary indexing (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, `.slg`, `.aut`, `.del`) is completely disabled. Data is written to and read from a single database file, with searches, matching, and sorting evaluated via sequential streaming scans (`recs_scan`). This eliminates index generation and maintenance overhead while preserving full feature parity for `keys_only`, `sort`, `start`/`limit`, and language collation.
 
 ### Core Rules of Simple Mode:
 
@@ -599,7 +599,7 @@ AmberDB maintains structured binary index files based on the schema configuratio
 | `.src` | Full-Text Index | Word-level token inverted index (`search_table`). |
 | `.srt` | Sort Index | Pre-sorted binary array of record IDs for `sort_block` definitions. |
 | `.fac` | Facet Index | Fast forward index for faceted filter navigation. |
-| `.rwt` | SEO URL Index | Bidirectional map: `_0.rwt` (ID → Slug) and `_1.rwt` (Slug → ID). |
+| `.slg` | URL Slug Index | Bidirectional map: `_0.slg` (ID → Slug) and `_1.slg` (Slug → ID). |
 
 ### 6.2 Unified 8-Byte Binary Packing Standard
 
@@ -693,8 +693,8 @@ AmberDB guarantees the four classical ACID properties through embedded flat-file
 
 | ACID Property | Implementation Mechanism & Guarantees |
 | :--- | :--- |
-| **Atomicity** | **Disk-Backed Undo-Journaling:** When `transact_start()` is called, a microsecond-stamped `.txn` journal is created. Every `insert_id`, `modify_id`, and `delete_id` call appends reverse undo instructions. If a critical base error occurs or `transact_rollback()` is triggered, changes across base records (`.db`), soft-delete archives (`.del`), user audit logs (`.aut`), and all secondary indexes (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, `.rwt`, `.jinx`, `.jsrc`, `.jfld`) are completely reverted in **reverse LIFO order**. |
-| **Consistency** | **Schema, Index, and State Integrity:** Inbound records are validated against schema field rules, data types, and byte limits. Primary keys (`autoid`), inverted word indexes, columnar facets, and SEO URLs are synchronized in real time. Upon rollback, both in-memory caches (`cache_delete`) and secondary indexes revert to their clean pre-transaction state, preventing corrupted intermediate states. |
+| **Atomicity** | **Disk-Backed Undo-Journaling:** When `transact_start()` is called, a microsecond-stamped `.txn` journal is created. Every `insert_id`, `modify_id`, and `delete_id` call appends reverse undo instructions. If a critical base error occurs or `transact_rollback()` is triggered, changes across base records (`.db`), soft-delete archives (`.del`), user audit logs (`.aut`), and all secondary indexes (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, `.slg`, `.jinx`, `.jsrc`, `.jfld`) are completely reverted in **reverse LIFO order**. |
+| **Consistency** | **Schema, Index, and State Integrity:** Inbound records are validated against schema field rules, data types, and byte limits. Primary keys (`autoid`), inverted word indexes, columnar facets, and URL slugs are synchronized in real time. Upon rollback, both in-memory caches (`cache_delete`) and secondary indexes revert to their clean pre-transaction state, preventing corrupted intermediate states. |
 | **Isolation** | **Strict Two-Phase Locking (Strict 2PL):** Every record modified within an active transaction acquires an exclusive OS-level lock (`flock LOCK_EX`). Locks are held throughout the entire transaction duration, preventing concurrent workers from modifying the locked records. Locks are released simultaneously only upon commit or rollback, providing serializable isolation. |
 | **Durability** | **Synchronous Journaling & Crash Recovery (`transact_recover`):** All journal writes invoke `$fh->flush`. When configured with `cfg => { txn_sync => 1 }`, AmberDB triggers OS/kernel `fsync` (`$fh->sync`) and Berkeley DB cache flushing (`DB_File->sync`). If a process or server crashes mid-transaction, orphaned `.txn` files are detected via non-blocking flock checks and rolled back automatically. |
 
@@ -763,7 +763,7 @@ AmberDB's storage and transaction architecture is organized around a strict hier
    - **`.aut` (User Audit Trail):** Chronological, time-series history of who created, edited, or deleted records (`log_owner`). This historical data cannot be generated from any other source.
 
 2. **Derived & Rebuildable Indexes (Disposable Secondary Projections):**
-   - **`.inx` (Record Index), `.fld` (Match), `.src` (Full-Text), `.srt` (Sort), `.fac` (Facet), `.rwt` (SEO URL):** All these index files are deterministic projections derived directly from `.db`.
+   - **`.inx` (Record Index), `.fld` (Match), `.src` (Full-Text), `.srt` (Sort), `.fac` (Facet), `.slg` (URL Slug):** All these index files are deterministic projections derived directly from `.db`.
    - If any secondary index is corrupted, deleted, or incomplete, running `AmberDB::Tools->set_index($table)` reconstructs all indexes from scratch within seconds with **zero data loss**.
 
 > **Rationale Behind Transaction Design:** `AmberDB::Transact` was deliberately engineered around this principle. A failure writing to the authoritative `.db` file (`is_index == 0`) triggers an immediate automatic `rollback`. However, if the master document is safely committed to `.db` and an index update encounters a disk error (`is_index == 1`), valid business data is never discarded; the transaction commits, and indexes can simply be repaired using `AmberDB::Tools`.
@@ -793,6 +793,28 @@ AmberDB allows declaring tables with `no_transact => 1` (either in schema `.tabl
 > **How It Works:**  
 > - If an error occurs on a table marked `no_transact => 1`, the error is treated as non-critical (like index errors), and `transact_end` proceeds to `commit`.  
 > - However, if a primary operation fails and triggers a `rollback`, all changes on `no_transact` tables are **still safely reverted in LIFO order via the `.txn` journal** to ensure complete database consistency without ghost records.
+
+### 7.8 Multi-Process Concurrency, Lock Isolation, and Stress Verification
+
+AmberDB is engineered for high-concurrency production deployments (Apache, Plack/PSGI, Starman, FastCGI, Starlet) and background worker pools (cron jobs, async queues) where **dozens of independent processes simultaneously read and write to the same database tables and secondary indexes**.
+
+#### Operating System-Level Lock & Platform Isolation:
+1. **Linux / POSIX Environments:** Leveraging POSIX `fork()` and kernel-level `flock(LOCK_EX)` / `flock(LOCK_SH)` locks, every worker process operates within an isolated memory address space. Strict Two-Phase Locking (Strict 2PL) guarantees serializable transaction isolation across processes.
+2. **Windows / MSYS2 Environments:** On Windows NT architectures, full OS-level lock integrity and file descriptor isolation are maintained across independent worker processes (`perl.exe`).
+3. **Record-Level Locking (`flock_open` / `flock_close`):** For critical concurrent updates on individual records (such as high-demand stock decrements or shared counters), `$adb->flock_open($table, "write", $id)` eliminates race conditions and lost updates with 100% precision.
+
+#### Concurrency & Stress Test Suite (`xt/amberdb_concurrency_stress.t`):
+The database engine's resilience under extreme parallel load is verified by the author/release stress test suite:
+```bash
+# Run multi-process concurrency stress tests directly:
+perl -Ilib xt/amberdb_concurrency_stress.t
+```
+This test suite validates 5 mission-critical concurrency scenarios:
+- **1. Parallel Writers:** Multi-worker concurrent inserts verifying zero ID collisions, exact table counts, and synchronized secondary index compilation (`.inx`, `.fld`, `.src`, `.fac`, `.srt`, `.slg`).
+- **2. Interleaved Reads & Writes:** Concurrent reader processes executing streaming scans and index queries while writers continuously insert new data without deadlocks or corruption.
+- **3. Concurrent Transactions & Crash Recovery:** Simulated sudden process termination mid-transaction, verifying that orphaned `.txn` journals are safely rolled back by `transact_recover` without interfering with active concurrent transactions.
+- **4. Concurrent URL Slug Collisions:** Dozens of processes simultaneously inserting identical product titles, confirming deterministic `-1`, `-2` suffix generation and 100% bidirectional bijection (`_0.slg` $\leftrightarrow$ `_1.slg`).
+- **5. High-Concurrency Inventory Decrements:** Multiple workers decrementing stock on the same product record under `flock_open` write locks, verifying atomic final inventory consistency.
 
 ---
 
@@ -865,7 +887,7 @@ for (my $i = 0; $i < @huge_dataset; $i += $chunk_size) {
 
 ## 9. Schema Configuration (.table & In-Memory)
 
-AmberDB is a schema-driven database engine. Table schemas define primary key constraints, field data types, multi-dimensional indexes, automatic SEO slug generation, facet filters, lifecycle junk rules, data validation constraints, and variable repeating nested child records that eliminate SQL `JOIN` bottlenecks.
+AmberDB is a schema-driven database engine. Table schemas define primary key constraints, field data types, multi-dimensional indexes, automatic URL slug generation, facet filters, lifecycle junk rules, data validation constraints, and variable repeating nested child records that eliminate SQL `JOIN` bottlenecks.
 
 ### 9.1 Database and Table Directory Layout
 
@@ -873,7 +895,7 @@ AmberDB stores tables, indexes, and schema definitions in dedicated physical dir
 
 | Directory | Purpose |
 |---|---|
-| `dbstore/tables/` | Base data (`.db`) and binary indexes (`.inx`, `.fld`, `.src`, `.fac`, `.srt`, `.rwt`) |
+| `dbstore/tables/` | Base data (`.db`) and binary indexes (`.inx`, `.fld`, `.src`, `.fac`, `.srt`, `.slg`) |
 | `dbstore/schema/` | Schema files (`.table`) and group configs (`.dbase`) |
 | `dbstore/conf/` | Plain-text `.conf` configuration and property files |
 | `dbstore/backup/` | Daily CSV audit backups (`dbgun/YYYYMMDD/`) |
@@ -968,7 +990,7 @@ The following reference table details all top-level parameters supported in `.ta
 | `match_block` | `ARRAY` | `[]` | `fields` | Block numbers indexed in `.fld` for exact field-to-ID matching and relational lookup. |
 | `sort_block` | `ARRAY` | `[]` | — | Pre-computed `.srt` binary sort indexes (`[ 4, { blk => 10, type => 'num' } ]`). |
 | `facet_block` | `ARRAY` | `[]` | `filter_block` | Block numbers indexed in `.fac` for columnar faceted category navigation. |
-| `seo_block` | `ARRAY` | `[]` | `rwlink` | Block numbers combined for automated bidirectional `.rwt` SEO URL slug generation (e.g. `[2, 4]`). |
+| `slug_block` | `ARRAY` | `[]` | `rwlink` | Block numbers combined for automated bidirectional `.slg` URL slug generation (e.g. `[2, 4]`). |
 | `use_facet` | `0 / 1` | `0` | — | Enables the facet counting engine and `field_fltkeys` / `facet_menu` on the table. |
 | `facet_rules` | `ARRAY` | `[]` | — | Scoping rules for facet counting (e.g., displaying only in-stock items in filter menus). |
 | `use_junk` | `0 / 1` | `0` | — | Enables dual-tier indexing by segregating inactive/out-of-stock records to Cold Tier B. |
@@ -1104,7 +1126,7 @@ In a single atomic pass, the engine consults the schema and:
 2. Updates `catalog_product.inx` primary index (since `record_index => 1`).
 3. Indexes Category (5), Brand (12), and Status (1) in `catalog_product_*.fld` match indexes (since `match_block => [1, 2, 3, 11]`).
 4. Extracts, tokenizes, normalizes, and indexes Title, Subtitle, Description, and Barcode in `catalog_product_*.src` inverted search indexes.
-5. Generates the SEO slug `sony-wireless-headphones` into `catalog_product.rwt` (since `seo_block => [2, 4]`).
+5. Generates the URL slug `sony-wireless-headphones` into `catalog_product.slg` (since `slug_block => [2, 4]`).
 
 ---
 
@@ -1329,18 +1351,18 @@ When updating a product, AmberDB evaluates the schema rules in real time:
 
 ---
 
-## 12. Automated SEO URL (Slug) Management
+## 12. Automated URL Slug Management
 
-When `seo_block => [2, 4]` is configured (Brand + Title), AmberDB generates and manages clean URL slugs automatically:
+When `slug_block => [2, 4]` is configured (Brand + Title), AmberDB generates and manages clean URL slugs automatically:
 
 ```perl
-# Retrieve SEO Slug by Record ID
-my $seo_map = $adb->get_seourl("catalog_product", 0, 5001);
-my $slug    = $seo_map->{5001};
+# Retrieve URL Slug by Record ID
+my $slug_map = $adb->get_slug("catalog_product", 0, 5001);
+my $slug    = $slug_map->{5001};
 print "URL: /product/$slug\n"; # Output: /product/acme-wireless-headphones
 
-# Resolve Record ID from SEO Slug (Router lookup)
-my $id_map = $adb->get_seourl("catalog_product", 1, "acme-wireless-headphones");
+# Resolve Record ID from URL Slug (Router lookup)
+my $id_map = $adb->get_slug("catalog_product", 1, "acme-wireless-headphones");
 my $id     = $id_map->{"acme-wireless-headphones"};
 print "Resolved Product ID: $id\n";
 ```
@@ -1765,7 +1787,7 @@ AmberDB file extensions are classified into 3 operational tiers based on their a
 | `.src` | Full-Text Search Index |  **Yes** (`set_index`) | Word-level token inverted index (`search_block`). |
 | `.srt` | Sort Index |  **Yes** (`set_index`) | Pre-sorted binary array of record IDs (`sort_block`). |
 | `.fac` | Facet Navigation Index |  **Yes** (`set_index`) | Forward index for faceted filter navigation (`facet_block`). |
-| `.rwt` | SEO URL Slug Map |  **Yes** (`set_index`) | Bidirectional map: `_0.rwt` (ID→Slug) and `_1.rwt` (Slug→ID). |
+| `.slg` | URL Slug Map |  **Yes** (`set_index`) | Bidirectional map: `_0.slg` (ID→Slug) and `_1.slg` (Slug→ID). |
 | `.jinx`| Junk Record Index |  **Yes** (`set_index`) | Binary primary index for cold/archived records (`use_junk`). |
 | `.jfld`| Junk Match Index |  **Yes** (`set_index`) | Field match index for cold records (`jnktype => 'B'/'AB'`). |
 | `.jsrc`| Junk Full-Text Search |  **Yes** (`set_index`) | Word-level inverted index for cold records (`jnktype => 'B'/'AB'`). |
@@ -1793,8 +1815,8 @@ dbstore/
 │   ├── catalog_product_4.src    ← Title search index
 │   ├── catalog_product_10.srt   ← Price sort index
 │   ├── catalog_product.fac      ← Facet index
-│   ├── catalog_product_0.rwt    ← SEO ID → Slug
-│   ├── catalog_product_1.rwt    ← SEO Slug → ID
+│   ├── catalog_product_0.slg    ← ID → Slug Map
+│   ├── catalog_product_1.slg    ← Slug → ID Map
 │   ├── catalog_product.aut      ← Audit trail
 │   └── catalog_product.del      ← Soft-deleted records
 ├── cache/                       ← Shared RAM-Disk Cache Files
@@ -1856,9 +1878,9 @@ my @product = (
 my $product_id = $adb->insert_id("catalog_product", undef, @product);
 print "1. Product created -> ID: $product_id\n";
 
-# 4. Read Auto-Generated SEO URL
-my $seo = $adb->get_seourl("catalog_product", 0, $product_id);
-print "2. Product URL -> /product/$seo->{$product_id}\n";
+# 4. Read Auto-Generated URL Slug
+my $slug_map = $adb->get_slug("catalog_product", 0, $product_id);
+print "2. Product URL -> /product/$slug_map->{$product_id}\n";
 
 # 5. Query Multi-Category (e.g. Category 12) Sorted by Price
 my ($total, @items) = $adb->field_fetch(
@@ -1936,13 +1958,13 @@ if ($current[8] >= 1) { # Check available inventory
 | `transact_start`| — | `1/undef` | Starts a new transaction with undo journaling. |
 | `transact_end`  | — | `\%result` | Commits transaction or triggers auto-rollback. |
 | `transact_rollback` | — | `\%result` | Forces immediate manual rollback. |
-| **Cache, SEO, Schema & Audit** | | | |
+| **Cache, Slug, Schema & Audit** | | | |
 | `table_info`   | `$table` | `\%schema` | Retrieves active table schema configuration hash. |
 | `table_attr`   | `$table, \%attrs` | `1` | Dynamically mutates in-memory table schema at runtime. |
 | `cache_read`   | `$table, $key` | `@data` | Reads from RAM-Disk shared cache. |
 | `cache_write`  | `$table, $key, @data` | `1` | Writes to RAM-Disk shared cache. |
 | `cache_delete` | `$table, [$key]` | `1` | Purges cache entries. |
-| `get_seourl`   | `$table, $type, @keys` | `\%map` | Resolves ID ↔ URL slug mappings. |
+| `get_slug`     | `$table, $type, @keys` | `\%map` | Resolves ID ↔ URL slug mappings. |
 | `auth_view`    | `$table, $id` | `$html` | Returns user audit trail as HTML. |
 
 ---
@@ -2003,7 +2025,7 @@ In AmberDB, you declare indexes once in the table's `.table` schema file:
     search_block => [4],       # Full-text search index (.src)
     facet_block  => [1, 2],    # Faceted navigation index (.fac)
     sort_block   => [10],      # Binary sorted price index (.srt)
-    seo_block    => [1, 4],    # Bidirectional URL slug index (.rwt)
+    slug_block   => [1, 4],    # Bidirectional URL slug index (.slg)
     log_owner    => 1,         # User audit trail (.aut)
     keep_deleted => 1,         # Soft-delete archive (.del)
 }
@@ -2017,7 +2039,7 @@ In SQL, running `SELECT id FROM orders WHERE customer_id = 'A'` requires parsing
 In AmberDB, `field_fetch` is a direct hash key lookup on Berkeley DB returning packed binary buffers. Query planning overhead is zero.
 
 ### 24.5 Built-in Lifecycle and Domain Features
-- **Automatic SEO URL Management:** When titles or categories change, clean slugs like `/products/laptop-pro-m3` and conflict resolution suffixes are generated automatically.
+- **Automatic URL Slug Management:** When titles or categories change, clean slugs like `/products/laptop-pro-m3` and conflict resolution suffixes are generated automatically.
 - **Audit Trails (.aut):** User identity, action type (`add`, `edit`, `del`), and timestamps are recorded without extra tables.
 - **Safe Soft Deletion (.del):** Deleted records are archived safely and can be inspected or restored.
 - **Zero Configuration & Portability:** Copying the database directory creates a complete, standalone backup that can run on any Perl-enabled system.
@@ -2061,5 +2083,5 @@ The following architectural choices might appear restrictive from an ad-hoc SQL 
 
 ---
 
-*This documentation is maintained for `AmberDB` v5.21.1 and aligns with active codebase architecture and developer practices.*
+*This documentation is maintained for `AmberDB` v5.21.2 and aligns with active codebase architecture and developer practices.*
 

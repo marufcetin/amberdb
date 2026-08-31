@@ -4,7 +4,7 @@ use 5.016;
 use warnings;
 use Carp qw(croak cluck);
 
-our $VERSION = '5.21.1';
+our $VERSION = '5.21.2';
 
 # =====================================================================
 # OPERATOR AND FIELD RESOLUTION HELPERS (Shared across Index modules)
@@ -655,31 +655,31 @@ sub records_del {
     }
 }
 
-# my $rw_link = $adb->set_seourl($table, $record);
-# my $rw_link = $adb->set_seourl($table, $record, 1);
+# my $rw_link = $adb->set_slug($table, $record);
+# my $rw_link = $adb->set_slug($table, $record, 1);
 # ------------------------------------------------
-sub set_seourl {
+sub set_slug {
 
     my ( $self, $table, $record, $write ) = @_;
 
-    $self->{seo_max_len} ||= 64;
+    $self->{slug_max_len} ||= 64;
 
     $table or return;
     (defined $record && ref($record) eq "ARRAY") or return;
     my $table_info = $self->table_info($table);
-    $table_info->{seo_block} or return;
+    $table_info->{slug_block} or return;
 
-    # To get seourl value, first the table_path
+    # To get slug value, first the table_path
     my $table_path = $self->table_path($table);
-    my $rwt0_path  = "${table_path}_0.rwt";
-    my $rwt1_path  = "${table_path}_1.rwt";
+    my $slg0_path  = "${table_path}_0.slg";
+    my $slg1_path  = "${table_path}_1.slg";
 
     my ( $val, %db_rw0, %db_rw1 );
 
-# blocks -> rdbm must be defined to read from other related files.
+    # blocks -> rdbm must be defined to read from other related files.
     my $rw_link;
     my $fields = [ @{$record} ];
-    for my $i ( @{ $table_info->{seo_block} } ) {
+    for my $i ( @{ $table_info->{slug_block} } ) {
         $fields->[$i] =~ s/[;,].*// if defined $fields->[$i];
         my $blok = $table_info->{blocks}->[$i] || {};
         if ( defined $blok->{rdbm} && ref( $blok->{rdbm} ) ne 'HASH' && $blok->{rdbm} =~ /([\w]+)[;:,]([\d]+)/ ) {
@@ -705,8 +705,8 @@ sub set_seourl {
         # ascii and cleaned representation
         $fields->[$i] = lc( $self->to_ascii( $fields->[$i] ) );
         $fields->[$i] =~ s/[^a-z0-9]+/-/g;
-        if ( length( $fields->[$i] ) > $self->{seo_max_len} ) {
-            $fields->[$i] = substr( $fields->[$i], 0, $self->{seo_max_len} );
+        if ( length( $fields->[$i] ) > $self->{slug_max_len} ) {
+            $fields->[$i] = substr( $fields->[$i], 0, $self->{slug_max_len} );
         }
         $fields->[$i] =~ s/^\-|\-$//;
         $fields->[$i] or next;
@@ -714,39 +714,39 @@ sub set_seourl {
         $rw_link .= $fields->[$i];
     }
 
-    # write mode (atomically locks both _1.rwt and _0.rwt to avoid race conditions)
+    # write mode (atomically locks both _1.slg and _0.slg to avoid race conditions)
     if ($write) {
-        my $ok1 = $self->table_write($rwt1_path);
+        my $ok1 = $self->table_write($slg1_path);
         unless ($ok1) {
-            $self->transact_error( $rwt1_path, "cannot open" );
+            $self->transact_error( $slg1_path, "cannot open" );
             return;
         }
 
-        my $ok0 = $self->table_write($rwt0_path);
+        my $ok0 = $self->table_write($slg0_path);
         unless ($ok0) {
-            $self->table_close($rwt1_path);
-            $self->transact_error( $rwt0_path, "cannot open" );
+            $self->table_close($slg1_path);
+            $self->transact_error( $slg0_path, "cannot open" );
             return;
         }
 
-        my $recs_val = $self->recs_get( $rwt1_path, $rw_link )->{$rw_link};
+        my $recs_val = $self->recs_get( $slg1_path, $rw_link )->{$rw_link};
         if ( $recs_val && $recs_val ne $record->[0] ) {
             $rw_link .= "-$record->[0]";
         }
-        $self->recs_put( $rwt1_path, [ $rw_link, $record->[0] ] );
-        $self->recs_put( $rwt0_path, [ $record->[0], $rw_link ] );
+        $self->recs_put( $slg1_path, [ $rw_link, $record->[0] ] );
+        $self->recs_put( $slg0_path, [ $record->[0], $rw_link ] );
 
-        $self->table_close($rwt1_path);
-        $self->table_close($rwt0_path);
+        $self->table_close($slg1_path);
+        $self->table_close($slg0_path);
     }
 
     return $rw_link;
 }
 
-# my ($links) = $adb->get_seourl($table, 0, @records_ids);
-# my ($links) = $adb->get_seourl($table, 1, @records_ids);
+# my ($links) = $adb->get_slug($table, 0, @records_ids);
+# my ($links) = $adb->get_slug($table, 1, @records_ids);
 # ------------------------------------------------
-sub get_seourl {
+sub get_slug {
 
     my ( $self, $table, $type, @records ) = @_;
 
@@ -757,25 +757,25 @@ sub get_seourl {
     scalar @records or return {};
     $type //= 0;
 
-    # To get seourl value, first the table_path
+    # To get slug value, first the table_path
     my $table_path = $self->table_path($table);
     my $table_info = $self->table_info($table);
-    return {} unless $table_info->{seo_block};
-    return {} unless -e "${table_path}_$type.rwt";
+    return {} unless $table_info->{slug_block};
+    return {} unless -e "${table_path}_$type.slg";
 
-    my $rwt_path = "${table_path}_$type.rwt";
-    return {} unless -e $rwt_path;
+    my $slg_path = "${table_path}_$type.slg";
+    return {} unless -e $slg_path;
 
-    $self->table_read($rwt_path) or return {};
+    $self->table_read($slg_path) or return {};
     my @rids = map {
         my $rid = ref($_) eq "ARRAY" ? $_->[0] : $_;
         $rid =~ s/^\///;
         $rid =~ s/\/$//;
         $rid;
     } @records;
-    my $vals = $self->recs_get( $rwt_path, @rids );
+    my $vals = $self->recs_get( $slg_path, @rids );
     $links->{$_} = $vals->{$_} for @rids;
-    $self->table_close($rwt_path);
+    $self->table_close($slg_path);
 
     return $links;
 }
@@ -1151,15 +1151,15 @@ __END__
 
 =head1 NAME
 
-AmberDB::Index - Inverted search, exact field match, binary sort, and SEO URL rewrite indexing engine
+AmberDB::Index - Inverted search, exact field match, binary sort, and URL slug rewrite indexing engine
 
 =head1 SYNOPSIS
 
   # Indexing methods are called directly on the AmberDB instance ($adb):
 
-  # 1. SEO URL Slug generation and reverse lookup (.rwt)
-  my $slug     = $adb->set_seourl("catalog_product", $record_ref, 1);
-  my $slug_map = $adb->get_seourl("catalog_product", 0, 101, 102);
+  # 1. URL Slug generation and reverse lookup (.slg)
+  my $slug     = $adb->set_slug("catalog_product", $record_ref, 1);
+  my $slug_map = $adb->get_slug("catalog_product", 0, 101, 102);
 
   # 2. Normalization of array or delimited values into clean lists and .str IDs
   my @str_ids  = $adb->field_to_list($raw_val, 'write', $table_path, $table_info, $blk);
@@ -1169,7 +1169,7 @@ AmberDB::Index - Inverted search, exact field match, binary sort, and SEO URL re
 
 =head1 DESCRIPTION
 
-C<AmberDB::Index> manages flat-file inverted search indexes (C<.src>), exact field matching indexes (C<.fld>), primary key lists (C<.inx>), binary pre-sorted record indexes (C<.srt>), and bidirectional SEO URL rewrite dictionaries (C<.rwt>).
+C<AmberDB::Index> manages flat-file inverted search indexes (C<.src>), exact field matching indexes (C<.fld>), primary key lists (C<.inx>), binary pre-sorted record indexes (C<.srt>), and bidirectional URL slug rewrite dictionaries (C<.slg>).
 
 Facet forward indexing (C<.fac>) is handled by C<AmberDB::Index::Facet>, and dual-tier cold record indexing (C<.jinx>, C<.jfld>, C<.jsrc>) is managed by C<AmberDB::Index::Junk>.
 
@@ -1198,22 +1198,22 @@ Normalizes an input value into a fixed-width byte key for fast monotonic sorting
 
   my $sort_key = $adb->normalize_sort_key("249.90", "num");
 
-=head2 set_seourl($table_id, $record, [$write_mode])
+=head2 set_slug($table_id, $record, [$write_mode])
 
-Generates a URL-friendly ASCII slug from designated schema title blocks and registers bidirectional mapping in C<_0.rwt> (Record ID -E<gt> Slug) and C<_1.rwt> (Slug -E<gt> Record ID).
+Generates a URL-friendly ASCII slug from designated schema title blocks (C<slug_block>) and registers bidirectional mapping in C<_0.slg> (Record ID -E<gt> Slug) and C<_1.slg> (Slug -E<gt> Record ID).
 
-  my $slug = $adb->set_seourl("catalog_product", \@record, 1);
+  my $slug = $adb->set_slug("catalog_product", \@record, 1);
   # => "kablosuz-bluetooth-kulaklik"
 
-=head2 get_seourl($table_id, [$type], @record_or_slug_ids)
+=head2 get_slug($table_id, [$type], @record_or_slug_ids)
 
-Resolves SEO URL slugs or reverse-maps slugs back to record IDs.
+Resolves URL slugs or reverse-maps slugs back to record IDs.
 =over 4
-=item * C<$type = 0>: Returns C<{ record_id =E<gt> slug }> (default, reads C<_0.rwt>).
-=item * C<$type = 1>: Returns C<{ slug =E<gt> record_id }> (reads C<_1.rwt>).
+=item * C<$type = 0>: Returns C<{ record_id =E<gt> slug }> (default, reads C<_0.slg>).
+=item * C<$type = 1>: Returns C<{ slug =E<gt> record_id }> (reads C<_1.slg>).
 =back
 
-  my $urls = $adb->get_seourl("catalog_product", 0, 101, 102);
+  my $slugs = $adb->get_slug("catalog_product", 0, 101, 102);
   # => { 101 => "kablosuz-kulaklik", 102 => "akilli-saat" }
 
 =head2 is_rdbm_block($table_info, $blk)

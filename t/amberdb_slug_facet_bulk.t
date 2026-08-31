@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 
-# t/amberdb/amberdb_seo_facet_bulk.t - Tests for SEO URL, Facet counting, and Bulk CRUD transaction isolation
+# t/amberdb/amberdb_seo_facet_bulk.t - Tests for URL Slug, Facet counting, and Bulk CRUD transaction isolation
 
 use 5.016000;
 use strict;
@@ -23,41 +23,41 @@ $adb->table_attr( 'catalog_product', {
     match_block  => [ 2, 3 ],
     facet_block  => [ 2, 3 ],
     use_facet    => 1,
-    seo_block    => [1],
+    slug_block   => [1],
     id_type      => 'num',
 } );
 
 # ---------------------------------------------------------------------------
-subtest '1. SEO URL generation (.rwt) & collision handling' => sub {
+subtest '1. URL Slug generation (.slg) & collision handling' => sub {
     plan tests => 7;
 
-    # Insert record with SEO title
+    # Insert record with title
     $adb->insert_id( 'catalog_product', 1, 'Apple iPhone 15 Pro', 'Smartphones', 'Apple' );
-    my $seo_map = $adb->get_seourl( 'catalog_product', 0, 1 );
-    is( $seo_map->{1}, 'apple-iphone-15-pro', "SEO slug generated for record 1" );
+    my $slug_map = $adb->get_slug( 'catalog_product', 0, 1 );
+    is( $slug_map->{1}, 'apple-iphone-15-pro', "URL slug generated for record 1" );
 
     # Reverse lookup: slug -> rid
-    my $rid_map = $adb->get_seourl( 'catalog_product', 1, 'apple-iphone-15-pro' );
+    my $rid_map = $adb->get_slug( 'catalog_product', 1, 'apple-iphone-15-pro' );
     is( $rid_map->{'apple-iphone-15-pro'}, 1, "Reverse slug lookup returns correct ID 1" );
 
     # Duplicate title insert (record 2) - should trigger collision resolution in write mode
     $adb->insert_id( 'catalog_product', 2, 'Apple iPhone 15 Pro', 'Smartphones', 'Apple' );
-    my $seo_map2 = $adb->get_seourl( 'catalog_product', 0, 2 );
-    is( $seo_map2->{2}, 'apple-iphone-15-pro-2', "Slug collision resolved with ID suffix for record 2" );
+    my $slug_map2 = $adb->get_slug( 'catalog_product', 0, 2 );
+    is( $slug_map2->{2}, 'apple-iphone-15-pro-2', "Slug collision resolved with ID suffix for record 2" );
 
-    my $rid_map2 = $adb->get_seourl( 'catalog_product', 1, 'apple-iphone-15-pro-2' );
+    my $rid_map2 = $adb->get_slug( 'catalog_product', 1, 'apple-iphone-15-pro-2' );
     is( $rid_map2->{'apple-iphone-15-pro-2'}, 2, "Reverse lookup for resolved duplicate slug returns ID 2" );
 
     # Modify title
     $adb->modify_id( 'catalog_product', 1, 'Apple iPhone 15 Pro Max', 'Smartphones', 'Apple' );
-    my $seo_map_updated = $adb->get_seourl( 'catalog_product', 0, 1 );
-    is( $seo_map_updated->{1}, 'apple-iphone-15-pro-max', "SEO slug updated after record modify" );
+    my $slug_map_updated = $adb->get_slug( 'catalog_product', 0, 1 );
+    is( $slug_map_updated->{1}, 'apple-iphone-15-pro-max', "URL slug updated after record modify" );
 
-    my $old_lookup = $adb->get_seourl( 'catalog_product', 1, 'apple-iphone-15-pro' );
+    my $old_lookup = $adb->get_slug( 'catalog_product', 1, 'apple-iphone-15-pro' );
     ok( !defined $old_lookup->{'apple-iphone-15-pro'}, "Old slug mapping removed from index" );
 
-    # Readonly set_seourl call without write flag returns proposed slug
-    my $slug_dry = $adb->set_seourl( 'catalog_product', [ 3, 'Apple iPhone 15 Pro Max', 'Smartphones', 'Apple' ] );
+    # Readonly set_slug call without write flag returns proposed slug
+    my $slug_dry = $adb->set_slug( 'catalog_product', [ 3, 'Apple iPhone 15 Pro Max', 'Smartphones', 'Apple' ] );
     ok( defined $slug_dry, "Dry-run slug generated without write" );
 
     $adb->delete_id( 'catalog_product', 2 );

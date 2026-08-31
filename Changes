@@ -1,5 +1,29 @@
 Revision history for AmberDB
 
+5.21.2  2026-08-31
+        - [REFACTOR] Terminology and Codebase Refactoring: SEO -> Slug:
+          * Completely replaced SEO terminology with Slug across the entire codebase, test suite, and documentation without legacy aliases:
+            - Renamed methods: set_seourl() -> set_slug(), get_seourl() -> get_slug().
+            - Renamed schema attributes: seo_block -> slug_block, seo_max_len -> slug_max_len.
+          * Renamed test suite t/amberdb_seo_facet_bulk.t to t/amberdb_slug_facet_bulk.t.
+        - [STORAGE] Standardized URL Slug Map File Extension: .rwt -> .slg:
+          * Renamed binary slug map files from _0.rwt / _1.rwt to _0.slg (ID -> Slug) and _1.slg (Slug -> ID) across AmberDB, Index, Transact, and Tools.
+          * Updated Tools->set_index() to reconstruct .slg files with zero data loss.
+        - [DOCS] Caching Terminology Unification:
+          * Completely removed deprecated L1/L2 caching terminology from all documentation and POD.
+          * Standardized on unified "Shared RAM-Disk (tmpfs / ImDisk) Cache" architecture.
+        - [TESTS & CONCURRENCY] Cross-Platform Multi-Process Concurrency Stress Testing:
+          * Upgraded xt/amberdb_concurrency_stress.t to an OS-aware unified architecture supporting both Linux (POSIX fork+exec) and Windows (independent asynchronous perl.exe processes).
+          * Ensures full operating system-level flock(LOCK_EX) lock isolation on Windows without CRT/pseudo-fork thread contention.
+          * Comprehensive validation across 5 concurrency scenarios:
+            1. Multi-worker parallel writes with secondary index synchronization (.inx, .fld, .src, .fac, .srt, .slg).
+            2. Interleaved concurrent reads and writes without deadlocks or corruption.
+            3. Concurrent independent transactions with simulated mid-operation process crashes and orphan recovery (transact_recover).
+            4. High-concurrency duplicate title insertion verifying deterministic URL slug collision resolution and 100% bidirectional bijection.
+            5. Shared record inventory decrements using record-level locks (flock_open / flock_close).
+        - Added Section 7.8 ("Multi-Process Concurrency, Lock Isolation, and Stress Verification") to Turkish and English documentation.
+        - Updated README.md with concurrency stress testing instructions.
+
 5.21.1  2026-08-29
         - Fixed read_id return signature across documentation examples to consistently return array format.
         - Streamlined transaction workflow documentation to use transact_error() for business validations with automatic commit/rollback in transact_end().

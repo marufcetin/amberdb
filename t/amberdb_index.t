@@ -18,7 +18,7 @@ use_ok('AmberDB::Index::Facet')  or BAIL_OUT('Cannot load AmberDB::Index::Facet'
 use_ok('AmberDB::Tools')         or BAIL_OUT('Cannot load AmberDB::Tools');
 
 subtest 'Index Methods Existence' => sub {
-    plan tests => 11;
+    plan tests => 12;
     can_ok( 'AmberDB::Index',        'field_to_list' );
     can_ok( 'AmberDB::Index',        'is_rdbm_block' );
     can_ok( 'AmberDB::Index',        'repeat_fields' );
@@ -29,11 +29,12 @@ subtest 'Index Methods Existence' => sub {
     can_ok( 'AmberDB::Index',        'match_add' );
     can_ok( 'AmberDB::Index',        'search_add' );
     can_ok( 'AmberDB::Index',        'records_add' );
-    can_ok( 'AmberDB::Index',        'set_seourl' );
+    can_ok( 'AmberDB::Index',        'set_slug' );
+    can_ok( 'AmberDB::Index',        'get_slug' );
 };
 
 subtest 'AmberDB Inheritance of Index Methods' => sub {
-    plan tests => 11;
+    plan tests => 12;
     can_ok( 'AmberDB', 'field_to_list' );
     can_ok( 'AmberDB', 'is_rdbm_block' );
     can_ok( 'AmberDB', 'repeat_fields' );
@@ -44,7 +45,8 @@ subtest 'AmberDB Inheritance of Index Methods' => sub {
     can_ok( 'AmberDB', 'match_add' );
     can_ok( 'AmberDB', 'search_add' );
     can_ok( 'AmberDB', 'records_add' );
-    can_ok( 'AmberDB', 'set_seourl' );
+    can_ok( 'AmberDB', 'set_slug' );
+    can_ok( 'AmberDB', 'get_slug' );
 };
 
 subtest 'Facet Rules Evaluation' => sub {

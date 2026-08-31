@@ -48,10 +48,10 @@ subtest '1. Simple Mode ID Flexibility (No 8-byte or Numeric Limit)' => sub {
         is( $exists, 1, "exist_id confirms key exists: $id" );
     }
 
-    # Verify that ONLY sessions.db was created, NO index files (.inx, .fld, .src, .srt)
+    # Verify that ONLY sessions.db was created, NO index files (.inx, .fld, .src, .srt, .fac, .slg)
     my @created_files = glob("$db_dir/*");
-    my @index_files   = grep { /\.(inx|fld|src|srt|fac|rwt)$/ } @created_files;
-    is_deeply( \@index_files, [], 'No index files (.inx, .fld, .src, .srt, .fac, .rwt) generated' );
+    my @index_files   = grep { /\.(inx|fld|src|srt|fac|slg)$/ } @created_files;
+    is_deeply( \@index_files, [], 'No index files (.inx, .fld, .src, .srt, .fac, .slg) generated' );
 };
 
 # ============================================================

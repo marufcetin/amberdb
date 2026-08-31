@@ -6,7 +6,7 @@ use Encode qw(is_utf8 encode decode);
 use Carp qw(croak cluck);
 use parent qw(AmberDB::Locale AmberDB::Array);
 
-our $VERSION = '5.21.1';
+our $VERSION = '5.21.2';
 my $CREATED = '2014-12-20';
 
 # ------------------------------------------------
@@ -554,7 +554,7 @@ sub table_infset {
     # Array keys
     my @array_keys = qw(
       search_block match_block view_block facet_block
-      filter_block seo_block reverse
+      filter_block slug_block reverse
     );
     foreach my $key (@array_keys) {
         next unless ref( $tbl->{$key} ) eq "ARRAY";
@@ -844,7 +844,7 @@ sub _invalidate_table_paths {
 
 # field_to_list and repeat_fields have been moved to AmberDB::Index.
 
-# Index routines (facet_*, match_*, search_*, records_*, seourl)
+# Index routines (facet_*, match_*, search_*, records_*, slug)
 # have been moved to AmberDB::Index.
 
 

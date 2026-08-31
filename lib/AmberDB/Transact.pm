@@ -6,7 +6,7 @@ use Carp qw(croak cluck);
 use Fcntl qw(:flock);
 use IO::Handle;
 
-our $VERSION = '5.21.1';
+our $VERSION = '5.21.2';
 
 # Journal field separator — ASCII Record Separator (0x1E).
 # Tab cannot be used because raw DB values contain literal tabs.
@@ -16,7 +16,7 @@ my $TXN_SEP = "\x1e";
 # -
 # Records a transaction-aware error. Tags with txn_id if transaction is active.
 # Base errors trigger rollback in transact_end unless the error originates from:
-#   1. Secondary index files (.inx, .src, .fld, .fac, .rwt)
+#   1. Secondary index files (.inx, .src, .fld, .fac, .slg)
 #   2. Tables configured with 'no_transact => 1' in schema or via table_attr()
 # -
 sub transact_error {
@@ -25,7 +25,7 @@ sub transact_error {
     $context ||= "transaction";
     $message ||= "transaction error";
 
-    my $is_index = ( $context =~ /\.(inx|src|fld|fac|rwt)/ ) ? 1 : 0;
+    my $is_index = ( $context =~ /\.(inx|src|fld|fac|slg)/ ) ? 1 : 0;
 
     my $is_no_transact = 0;
     if ( !$is_index && $self->can('table_info') ) {
@@ -231,7 +231,7 @@ sub _txn_log {
 # $adb->_txn_apply_rollback($txn_file);
 # ------------------------------------------------
 # Reads journal in reverse order (LIFO), applies undo operations to BOTH
-# base database records AND index files (.inx, .src, .fld, .fac, .srt, .rwt, .jinx, .jsrc, .jfld).
+# base database records AND index files (.inx, .src, .fld, .fac, .srt, .slg, .jinx, .jsrc, .jfld).
 # add  → delete base record + revert .aut audit entry + delete index entries
 # edit → restore old base record + revert .aut audit entry + revert index entries (new → old)
 # del  → restore old base record + revert .del archive entry + revert .aut audit entry + re-add index entries
@@ -286,17 +286,17 @@ sub _txn_apply_rollback {
                 }
                 $self->sort_del( $table_path, $table_info, \@batch );
 
-                if ( $table_info->{seo_block} ) {
-                    my $seo_map = $self->get_seourl( $tableid, 0, $rid );
-                    my $slug    = $seo_map->{$rid};
+                if ( $table_info->{slug_block} ) {
+                    my $slug_map = $self->get_slug( $tableid, 0, $rid );
+                    my $slug     = $slug_map->{$rid};
                     if ($slug) {
-                        if ( $self->table_write("${table_path}_0.rwt") ) {
-                            $self->recs_del( "${table_path}_0.rwt", $rid );
-                            $self->table_close("${table_path}_0.rwt");
+                        if ( $self->table_write("${table_path}_0.slg") ) {
+                            $self->recs_del( "${table_path}_0.slg", $rid );
+                            $self->table_close("${table_path}_0.slg");
                         }
-                        if ( $self->table_write("${table_path}_1.rwt") ) {
-                            $self->recs_del( "${table_path}_1.rwt", $slug );
-                            $self->table_close("${table_path}_1.rwt");
+                        if ( $self->table_write("${table_path}_1.slg") ) {
+                            $self->recs_del( "${table_path}_1.slg", $slug );
+                            $self->table_close("${table_path}_1.slg");
                         }
                     }
                 }
@@ -325,14 +325,14 @@ sub _txn_apply_rollback {
                 }
                 $self->sort_modify( $table_path, $table_info, \@pairs );
 
-                if ( $table_info->{seo_block} ) {
-                    my $seo_map  = $self->get_seourl( $tableid, 0, $rid );
-                    my $new_slug = $seo_map->{$rid};
-                    my $old_slug = $self->set_seourl( $tableid, \@old_rec, 1 );
+                if ( $table_info->{slug_block} ) {
+                    my $slug_map = $self->get_slug( $tableid, 0, $rid );
+                    my $new_slug = $slug_map->{$rid};
+                    my $old_slug = $self->set_slug( $tableid, \@old_rec, 1 );
                     if ( $new_slug && $old_slug && $new_slug ne $old_slug ) {
-                        if ( $self->table_write("${table_path}_1.rwt") ) {
-                            $self->recs_del( "${table_path}_1.rwt", $new_slug );
-                            $self->table_close("${table_path}_1.rwt");
+                        if ( $self->table_write("${table_path}_1.slg") ) {
+                            $self->recs_del( "${table_path}_1.slg", $new_slug );
+                            $self->table_close("${table_path}_1.slg");
                         }
                     }
                 }
@@ -373,7 +373,7 @@ sub _txn_apply_rollback {
                     $self->facet_add( $table_path, $table_info, \@batch );
                 }
                 $self->sort_add( $table_path, $table_info, \@batch );
-                $self->set_seourl( $tableid, \@old_rec, 1 );
+                $self->set_slug( $tableid, \@old_rec, 1 );
             }
         }
     }
@@ -564,7 +564,7 @@ AmberDB::Transact - ACID-compliant transactions with Strict Two-Phase Locking (S
 =head1 DESCRIPTION
 
 C<AmberDB::Transact> provides ACID-compliant transaction undo logging, Strict Two-Phase Locking (Strict 2PL), and automated LIFO rollback for C<AmberDB>.
-It records binary undo journal entries (C<txn/txn_*.txn>) using ASCII record separators (0x1E) for atomic operations across base database files (C<.db>), soft-delete archives (C<.del>), user audit histories (C<.aut>), and all associated index files (C<.inx>, C<.src>, C<.fld>, C<.fac>, C<.srt>, C<.rwt>, C<.jinx>, C<.jsrc>, C<.jfld>).
+It records binary undo journal entries (C<txn/txn_*.txn>) using ASCII record separators (0x1E) for atomic operations across base database files (C<.db>), soft-delete archives (C<.del>), user audit histories (C<.aut>), and all associated index files (C<.inx>, C<.src>, C<.fld>, C<.fac>, C<.srt>, C<.slg>, C<.jinx>, C<.jsrc>, C<.jfld>).
 
 Transactions maintain process ownership via exclusive non-blocking C<flock> on journal files, hold record-level write locks throughout the transaction lifecycle, and guarantee crash durability through C<IO::Handle> buffer flushing, optional filesystem sync (C<txn_sync =E<gt> 1>), and automated orphaned journal recovery (C<transact_recover>).
 

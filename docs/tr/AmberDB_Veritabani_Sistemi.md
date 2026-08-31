@@ -1,6 +1,6 @@
 # AmberDB — Geliştirici Kılavuzu ve Dokümantasyon
 
-> **Sürüm:** 5.21.1 · **İlk Tasarım:** 2005 · **Son Güncelleme:** 2026  
+> **Sürüm:** 5.21.2 · **İlk Tasarım:** 2005 · **Son Güncelleme:** 2026  
 > **Namespace:** `AmberDB`  
 > **Dahili Modüller:** `Base`, `Index`, `Transact`, `Cache`, `Array`, `String`, `Date`, `Locale`, `Tools`
 
@@ -19,7 +19,7 @@
 9. [Şema Yapılandırması (.table ve Kod İçi / In-Memory)](#9-şema-yapılandırması-table-ve-kod-içi--in-memory)
 10. [Veritabanı Grup Yapısı (.dbase)](#10-veritabanı-grup-yapısı-dbase)
 11. [Akıllı Sıcak / Soğuk İndeksleme (Junk Sistemi)](#11-akıllı-sıcak--soğuk-indeksleme-junk-sistemi)
-12. [Otomatik SEO URL (Slug) Yönetimi](#12-otomatik-seo-url-slug-yönetimi)
+12. [Otomatik Slug Kaydı (URL Slug) Yönetimi](#12-otomatik-slug-kaydı-url-slug-yönetimi)
 13. [Birleşik Paylaşımlı RAM Önbellek (.db / .inx) ve Buffer](#13-birleşik-paylaşımlı-ram-önbellek-db--inx-ve-buffer)
 14. [Yapılandırma ve Deterministik Bayrak Yönetimi (`config`)](#14-yapılandırma-ve-deterministik-bayrak-yönetimi-config)
 15. [Veri Yapıları, Düşük Seviyeli Tablo ve Akış İşlemleri](#15-veri-yapıları-düşük-seviyeli-tablo-ve-akış-işlemleri)
@@ -40,7 +40,7 @@
 
 `AmberDB`, Perl için geliştirilmiş; **Berkeley DB (`DB_File`) üzerinde çalışan, şema güdümlü (schema-driven), önceden hesaplanmış ters indekslemeye (precomputed inverted indexing), ACID uyumlu işlem (transaction) motoruna ve Strict 2PL kilit desteğine sahip** yüksek başarımlı bir NoSQL veritabanı motorudur.
 
-Geliştirici açısından AmberDB, harici bir veritabanı sunucusu kurulumu ve bakımı gerektirmeyen; tek bir satır CRUD çağrısıyla tüm ilişkili arama, eşleştirme, facet filtreleme, sıralama ve SEO bağlantılarını senkronize eden bütünleşik bir veri katmanıdır.
+Geliştirici açısından AmberDB, harici bir veritabanı sunucusu kurulumu ve bakımı gerektirmeyen; tek bir satır CRUD çağrısıyla tüm ilişkili arama, eşleştirme, facet filtreleme, sıralama ve URL slug eşleşmelerini senkronize eden bütünleşik bir veri katmanıdır.
 
 ### Dahili Mimari
 
@@ -167,7 +167,7 @@ $adb->delete_id("member_user", $gelen_kayit[0]);
 
 AmberDB'de temel veri ekleme, güncelleme, silme ve okuma işlemleri doğrudan veritabanı tablosu üzerinde yürütülür.
 
-Tablolar için önceden bir `.table` şema dosyası oluşturmak **zorunlu değildir**; şemasız tablolarda da veri depolama ve ID bazlı doğrudan okuma tam verimle çalışır. Ancak **şemada indeksleme kuralları tanımlandıysa** (`record_index`, `match_block`, `search_block`, `facet_block`, `sort_block`, `seo_block`):
+Tablolar için önceden bir `.table` şema dosyası oluşturmak **zorunlu değildir**; şemasız tablolarda da veri depolama ve ID bazlı doğrudan okuma tam verimle çalışır. Ancak **şemada indeksleme kuralları tanımlandıysa** (`record_index`, `match_block`, `search_block`, `facet_block`, `sort_block`, `slug_block`):
 1. Yapılan her `insert_id`, `modify_id` veya `delete_id` çağrısı, şemada belirtilen tüm arama, eşleştirme ve sıralama indekslerini **arka planda otomatik ve senkronize olarak oluşturur ve günceller**.
 2. Okuma, arama ve sorgulama metotları (`read_all`, `field_fetch`, `search_table`, `facet_menu` vb.) bu önceden hesaplanmış indeksleri **otomatik olarak kullanarak** disk taraması (full table scan) yapmadan doğrudan anahtar eşleşmesiyle çalışır.
 
@@ -510,9 +510,9 @@ if ($adb->exist_table("catalog_product")) {
     print "catalog_product.db dosyası diskte mevcut.\n";
 }
 
-# Belirli bir uzantının varlığını kontrol etme (örn: .rwt SEO dosyası)
-if ($adb->exist_table("catalog_product", "rwt")) {
-    print "SEO indeks dosyası mevcut.\n";
+# Belirli bir uzantının varlığını kontrol etme (örn: .slg slug dosyası)
+if ($adb->exist_table("catalog_product", "slg")) {
+    print "Slug indeks dosyası mevcut.\n";
 }
 ```
 
@@ -540,7 +540,7 @@ print "Ürün 5001 toplam $okunma_sayisi kez görüntülendi.\n";
 
 AmberDB'de **Basit Mod (`simple => 1`)**, tabloya ait hiçbir şema bilgisinin bulunmadığı (tamamen şemasız / schemaless) doğrudan dosya erişim çalışma biçimidir. Tablolarınız iç içe dizi ve sözlük referansları (ARRAY/HASH) gibi zengin veri yapılarını doğrudan saklayabilir ve okuyabilir. 
 
-Basit modda ikincil indeksleme mekanizması (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, `.rwt`, `.aut`, `.del`) tamamen devre dışıdır. Veriler doğrudan tek bir ana veri dosyasına yazılır ve okunur; filtreleme, arama ve sıralama işlemleri indeks dosyaları yerine doğrudan veri akışı üzerinden sıralı tarama (`recs_scan`) yöntemiyle gerçekleştirilir. Bu sayede indeks bakım ve güncelleme maliyeti ortadan kalkar. İndekssiz çalışırken dahi `keys_only`, `sort`, `start`/`limit` ve Türkçe normalizasyonu tam parite ile çalışır.
+Basit modda ikincil indeksleme mekanizması (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, `.slg`, `.aut`, `.del`) tamamen devre dışıdır. Veriler doğrudan tek bir ana veri dosyasına yazılır ve okunur; filtreleme, arama ve sıralama işlemleri indeks dosyaları yerine doğrudan veri akışı üzerinden sıralı tarama (`recs_scan`) yöntemiyle gerçekleştirilir. Bu sayede indeks bakım ve güncelleme maliyeti ortadan kalkar. İndekssiz çalışırken dahi `keys_only`, `sort`, `start`/`limit` ve Türkçe normalizasyonu tam parite ile çalışır.
 
 ### 5.1 Basit Modun Temel Kuralları
 
@@ -596,7 +596,7 @@ AmberDB, tablolara hızlı erişim sağlamak için veriyi şemada tanımlanan ku
 | `.src` | Tam Metin (Search) | Kelime bazlı ters indeks (`search_table`). Kelime → ID ikili dizisi. |
 | `.srt` | Sıralama (Sort) | Belirlenen bloklara göre önceden sıralanmış ikili RID dizisi (`sort_block`). |
 | `.fac` | Facet İndeksi | E-ticaret filtreleme panelleri için kayıt başına aktiflik ve özellik haritası. |
-| `.rwt` | SEO URL | `_0.rwt` (ID → Slug) ve `_1.rwt` (Slug → ID) çift yönlü URL eşleştiricisi. |
+| `.slg` | Slug Haritası | `_0.slg` (ID → Slug) ve `_1.slg` (Slug → ID) çift yönlü URL eşleştiricisi. |
 
 ### 6.2 8-Bayt İkili (Binary) Paketleme Standardı
 
@@ -690,8 +690,8 @@ AmberDB, gömülü (embedded) ve şema güdümlü mimarisine uygun olarak 4 teme
 
 | İlke | Kısaltma | AmberDB'deki Teknik Karşılığı ve Güvencesi |
 | :--- | :--- | :--- |
-| **Atomicity** | **A** (Atomiklik) | **Disk Destekli Geri Alma Günlüğü (Undo-Journal):** `transact_start` ile mikrosaniye hassasiyetinde `.txn` kütüğü açılır. Yapılan her `insert_id`, `modify_id`, `delete_id` çağrısının tersi (undo verisi) günlüğe kaydedilir. Hata veya `transact_rollback` durumunda, yapılan tüm değişiklikler ana `.db` dosyasında, `.del` arşivinde, `.aut` denetim izinde ve ilişkili ikincil indekslerde (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, `.rwt`, `.jinx`, `.jsrc`, `.jfld`) **LIFO (son yapılan ilk)** sırasıyla tamamen geri alınır. |
-| **Consistency** | **C** (Tutarlılık) | **Şema, İndeks ve Durum Bütünlüğü:** Her kayıt tanımlı şema alanlarına (`schema`), veri tiplerine ve boyut sınırlarına göre doğrulanır. Otomatik artan sayaç (`autoid`), ikincil arama/faset indeksleri ve SEO URL eşleşmeleri işlem anında eşzamanlı güncellenir. Bir işlem geri alındığında bellek önbelleği (`cache_delete`) ve tüm indeks türevleri eski temiz haline getirilerek veritabanı asla tutarsız ara durumda bırakılmaz. |
+| **Atomicity** | **A** (Atomiklik) | **Disk Destekli Geri Alma Günlüğü (Undo-Journal):** `transact_start` ile mikrosaniye hassasiyetinde `.txn` kütüğü açılır. Yapılan her `insert_id`, `modify_id`, `delete_id` çağrısının tersi (undo verisi) günlüğe kaydedilir. Hata veya `transact_rollback` durumunda, yapılan tüm değişiklikler ana `.db` dosyasında, `.del` arşivinde, `.aut` denetim izinde ve ilişkili ikincil indekslerde (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, `.slg`, `.jinx`, `.jsrc`, `.jfld`) **LIFO (son yapılan ilk)** sırasıyla tamamen geri alınır. |
+| **Consistency** | **C** (Tutarlılık) | **Şema, İndeks ve Durum Bütünlüğü:** Her kayıt tanımlı şema alanlarına (`schema`), veri tiplerine ve boyut sınırlarına göre doğrulanır. Otomatik artan sayaç (`autoid`), ikincil arama/faset indeksleri ve URL slug eşleşmeleri işlem anında eşzamanlı güncellenir. Bir işlem geri alındığında bellek önbelleği (`cache_delete`) ve tüm indeks türevleri eski temiz haline getirilerek veritabanı asla tutarsız ara durumda bırakılmaz. |
 | **Isolation** | **I** (Yalıtım) | **Strict Two-Phase Locking (Strict 2PL):** Bir transaction sırasında değiştirilen tüm kayıtlar işletim sistemi seviyesinde `flock(LOCK_EX)` ile kilitlenir. Kilitler işlem devam ederken açık tutulur; başka hiçbir sürecin bu kayıtları eşzamanlı değiştirmesine izin verilmez. Kilitler yalnızca `transact_end` veya `transact_rollback` anında topluca serbest bırakılır. Bu sayede serileştirilebilir (Serializable) seviyede yalıtım sağlanır. |
 | **Durability** | **D** (Dayanıklılık) | **Senkronize Günlükleme & Çökme Kurtarma (`transact_recover`):** Her günlük yazımında `$fh->flush` işletilir; `cfg => { txn_sync => 1 }` yapılandırıldığında çekirdek seviyesinde `fsync` (`$fh->sync`) ve Berkeley DB tampon senkronizasyonu (`DB_File->sync`) uygulanır. Süreç aniden çökse bile yetim (orphan) `.txn` dosyaları kilit durumuna göre tespit edilir ve otomatik olarak geri alınır. |
 
@@ -760,7 +760,7 @@ AmberDB'nin dosya ve işlem mimarisi kesin bir hiyerarşiye dayanır:
    - **`.aut` (Kullanıcı Denetim İzi / Audit Trail):** Hangi kullanıcının hangi tarihte hangi işlemi (ekleme, düzenleme, silme) yaptığının zamana bağlı kronolojik tarihçesidir; başka hiçbir veri kaynağından yeniden üretilemez.
 
 2. **Türetilmiş ve Yeniden Üretilebilir İndeksler (Derived & Rebuildable Indexes):**
-   - **`.inx` (Kayıt Listesi), `.fld` (Eşleştirme), `.src` (Arama), `.srt` (Sıralama), `.fac` (Facet), `.rwt` (SEO URL):** Bu dosyaların tamamı `.db` dosyasındaki otoriter veriden türetilir.
+   - **`.inx` (Kayıt Listesi), `.fld` (Eşleştirme), `.src` (Arama), `.srt` (Sıralama), `.fac` (Facet), `.slg` (Slug Haritası):** Bu dosyaların tamamı `.db` dosyasındaki otoriter veriden türetilir.
    - Herhangi bir indeks dosyası silinir, bozulur veya eksik yazılırsa `AmberDB::Tools->set_index($tablo)` çağrısıyla saniyeler içinde **sıfır veri kaybıyla %100 yeniden üretilebilir**.
 
 > **Transaction Tasarımının Temeli:** `AmberDB::Transact` mekanizması bu ilkeye göre kurgulanmıştır. Ana `.db` yazımında bir hata oluşursa (`is_index == 0`) transaction otomatik olarak geri alınır (`rollback`). Ancak ana veri `.db`'ye başarıyla yazıldıktan sonra bir indeks yazımında hata oluşursa (`is_index == 1`), geçerli ve parası ödenmiş/onaylanmış iş verisi çöpe atılmaz; transaction başarılı kabul edilir ve indeks sonradan `AmberDB::Tools` ile kolayca yeniden indekslenir.
@@ -790,6 +790,28 @@ AmberDB, şemada veya çalışma zamanında `no_transact => 1` tanımlanmış ta
 > **Nasıl Çalışır?**  
 > - `no_transact => 1` olan bir tabloya yazarken hata oluşursa, bu hata `is_index` gibi değerlendirilir ve `transact_end` ana işlemi başarıyla `commit` eder.  
 > - Ancak ana işlemde (ödeme/stok) gerçek bir hata olur ve transaction `rollback` edilirse, `no_transact` tablosundaki kayıtlar da **tutarlılık gereği `.txn` kütüğünden otomatik olarak geri alınır**. Böylece veritabanında asla hayalet/tutarsız kayıt kalmaz.
+
+### 7.8 Çoklu Süreç Eşzamanlılığı, Kilit İzolasyonu ve Stres Testi Doğrulaması
+
+AmberDB, web sunucuları (Apache, Plack/PSGI, Starman, FastCGI, Starlet) ve arka plan işçileri (cron, kuyruk yöneticileri) gibi **onlarca eşzamanlı sürecin aynı anda aynı tablolara ve indekslere eriştiği** yoğun üretim ortamları için tasarlanmıştır.
+
+#### İşletim Sistemi Seviyesinde Kilit ve Platform İzolasyonu:
+1. **Linux / POSIX Ortamı:** POSIX `fork()` mekanizması ve çekirdek seviyesindeki `flock(LOCK_EX)` / `flock(LOCK_SH)` kilitleri sayesinde her işçi süreç tamamen yalıtılmış bellek alanında çalışır ve dosya kilitleri süreçler arasında tam seri (serializable) izolasyon sağlar.
+2. **Windows / MSYS2 Ortamı:** Windows NT çekirdeğinde işletim sistemi seviyesindeki kilit bütünlüğü, bağımsız OS süreçleri üzerinden eksiksiz biçimde korunur.
+3. **Kayıt Düzeyinde Kilit (`flock_open` / `flock_close`):** Aynı anda birden fazla sürecin aynı kaydı (örneğin sınırlı stoktaki bir ürünü veya ortak bir sayacı) güncellemeye çalıştığı senaryolarda `flock_open($table, "write", $id)` kullanılarak yarış durumları (race conditions) ve kayıp güncellemeler (lost updates) %100 engellenir.
+
+#### Concurrency & Stres Test Paketi (`xt/amberdb_concurrency_stress.t`):
+Motorun aşırı yük ve eşzamanlılık altındaki dayanıklılığı yazar test paketi ile doğrulanmaktadır:
+```bash
+# Eşzamanlılık stres testlerini çalıştırmak için:
+perl -Ilib xt/amberdb_concurrency_stress.t
+```
+Bu test paketi 5 kritik senaryoyu doğrular:
+- **1. Paralel Yazıcılar:** Çoklu süreçlerin aynı anda yüzlerce kaydı ve ilgili tüm ikincil indeksleri (`.inx`, `.fld`, `.src`, `.fac`, `.srt`, `.slg`) hatasız ve çakışmasız yazması.
+- **2. Eşzamanlı Okuma & Yazma:** Süreçlerin bir yandan arama ve filtreleme yaparken diğer yandan kayıt eklemesi sırasında kilitlenme (deadlock) veya veri bozulması yaşanmaması.
+- **3. Eşzamanlı Bağımsız İşlemler ve Çökme Kurtarma:** İşlem ortasında aniden çöken süreçlerin geride bıraktığı yetim `.txn` kütüklerinin `transact_recover` ile canlı süreçleri etkilemeden temizlenmesi.
+- **4. Eşzamanlı Slug Çakışma Yönetimi:** Farklı süreçlerin aynı anda aynı ürün başlığıyla kayıt eklemesi durumunda çift yönlü benzersiz URL slug haritasının (`_0.slg` $\leftrightarrow$ `_1.slg`) deterministik korunması.
+- **5. Kayıt Kilidiyle Yüksek Eşzamanlı Stok Güncellemesi:** Birden fazla işçinin aynı kaydın stoğunu eşzamanlı düşürdüğü senaryoda atomik değer tutarlılığı.
 
 ---
 
@@ -862,7 +884,7 @@ for (my $i = 0; $i < @buyuk_veri; $i += $chunk_size) {
 
 ## 9. Şema Yapılandırması (.table ve Kod İçi / In-Memory)
 
-AmberDB şema güdümlü (schema-driven) bir veritabanı motorudur. Tablo şemaları; birincil anahtar kısıtlamalarını, alan tiplerini, çok boyutlu indeksleri, otomatik SEO URL (slug) üretimini, facet filtrelerini, yaşam döngüsü (junk) kurallarını, veri doğrulama kurallarını ve SQL `JOIN` gerektirmeyen genişleyen dinamik alt kayıtları yönetir.
+AmberDB şema güdümlü (schema-driven) bir veritabanı motorudur. Tablo şemaları; birincil anahtar kısıtlamalarını, alan tiplerini, çok boyutlu indeksleri, otomatik slug kaydı üretimini, facet filtrelerini, yaşam döngüsü (junk) kurallarını, veri doğrulama kurallarını ve SQL `JOIN` gerektirmeyen genişleyen dinamik alt kayıtları yönetir.
 
 ### 9.1 Veritabanı ve Tablo Dizin Yapısı
 
@@ -870,7 +892,7 @@ AmberDB tabloları, şemaları ve geçici/kalıcı dosyaları, belirlenen `dbsto
 
 | Dizin | Görevi |
 |---|---|
-| `dbstore/tables/` | Kalıcı `.db` ana veri, `.inx` kayıt indeksi, `.fld` eşleştirme, `.src` arama, `.fac` facet, `.srt` sıralama ve `.rwt` SEO dosyaları |
+| `dbstore/tables/` | Kalıcı `.db` ana veri, `.inx` kayıt indeksi, `.fld` eşleştirme, `.src` arama, `.fac` facet, `.srt` sıralama ve `.slg` slug dosyaları |
 | `dbstore/schema/` | Kalıcı `.table` tablo şemaları ve `.dbase` grup yapılandırma dosyaları |
 | `dbstore/conf/` | Kalıcı `.conf` düz metin ayar ve konfigürasyon dosyaları |
 | `dbstore/backup/` | Günlük CSV denetim yedekleri (`dbgun/YYYYMMDD/`) |
@@ -953,7 +975,7 @@ Aşağıda e-ticaret ürün kataloğu için kapsamlı bir `.table` şema örneğ
     search_block => [ 4, 5, 7, 9 ],         
     sort_block   => [ 4, { blk => 10, type => 'num' } ], 
     facet_block  => [ 1, 2, 3, 11 ],        
-    seo_block    => [ 2, 4 ],               
+    slug_block   => [ 2, 4 ],               
     
     use_facet    => 1,                      
     facet_rules  => [ [ 11, "eq", 1 ] ],    
@@ -995,7 +1017,7 @@ Aşağıdaki tablo, bir `.table` dosyasında kullanılabilecek tüm üst düzey 
 | `match_block` | `ARRAY` | `[]` | `fields` | `.fld` birebir eşleşme / filtrelenmiş okuma indeksine dahil edilecek blok numaraları. |
 | `sort_block` | `ARRAY` | `[]` | — | `.srt` önceden sıralanmış binary ID indeksleri oluşturulacak bloklar (`[ 4, { blk => 10, type => 'num' } ]`). |
 | `facet_block` | `ARRAY` | `[]` | `filter_block` | `.fac` çok boyutlu dinamik kategori/ürün filtreleme indeksine dahil edilecek bloklar. |
-| `seo_block` | `ARRAY` | `[]` | `rwlink` | `.rwt` otomatik iki yönlü SEO slug (URL rewrite) üretimi için birleştirilecek bloklar. |
+| `slug_block` | `ARRAY` | `[]` | `rwlink` | `.slg` otomatik iki yönlü URL slug üretimi için birleştirilecek bloklar. |
 | `use_facet` | `0 / 1` | `0` | — | Tabloda facet sayım motorunu ve `field_fltkeys` / `facet_menu` altyapısını aktif eder. |
 | `facet_rules` | `ARRAY` | `[]` | — | Facet menüsünde sadece belirli şarta uyan (örn: stokta olan) kayıtları saymak için filtre kuralları. |
 | `use_junk` | `0 / 1` | `0` | — | Pasif/arşiv kayıtları ana tablodan ayırarak iki katmanlı (Hot/Cold) indeksleme sağlar. |
@@ -1096,7 +1118,7 @@ Birden fazla doğrulama kuralı noktalı virgül (`;`) ile zincirlenebilir (örn
 
 ### 9.8 CRUD İşlemlerinde Şemanın Rolü
 
-Bir kayıt `insert_id` veya `modify_id` ile kaydedilirken geçirilen dizi argümanları blok indeksleriyle birebir eşleşir. Motor bu tek işlemde şemaya bakarak veriyi `.db` ana dosyasına yazar, `.inx` listesini günceller ve ilgili tüm `.fld`, `.src`, `.rwt` indekslerini otomatik türetir.
+Bir kayıt `insert_id` veya `modify_id` ile kaydedilirken geçirilen dizi argümanları blok indeksleriyle birebir eşleşir. Motor bu tek işlemde şemaya bakarak veriyi `.db` ana dosyasına yazar, `.inx` listesini günceller ve ilgili tüm `.fld`, `.src`, `.slg` indekslerini otomatik türetir.
 
 ### 9.9 Çalışma Zamanında Dinamik Şema Manipülasyonu (`table_attr`)
 
@@ -1319,18 +1341,18 @@ my @urun = $adb->read_id("catalog_product", $eski_urun_id);
 
 ---
 
-## 12. Otomatik SEO URL (Slug) Yönetimi
+## 12. Otomatik Slug Kaydı (URL Slug) Yönetimi
 
-Şemada `seo_block => [2, 4]` tanımlandığında (Marka + Ürün Adı), kayıt eklendiğinde veya güncellendiğinde slug otomatik oluşturulur ve çakışmalar yönetilir:
+Şemada örneğin marka (2) ve ürün adı (4) blocklarını kullanmak için `slug_block => [2, 4]` tanımlandığında, kayıt eklendiğinde veya güncellendiğinde slug otomatik oluşturulur ve çakışmalar yönetilir:
 
 ```perl
-# ID'den SEO Linki alma
-my $seo_harita = $adb->get_seourl("catalog_product", 0, 5001);
-my $slug = $seo_harita->{5001};
+# ID'den Slug alma
+my $slug_harita = $adb->get_slug("catalog_product", 0, 5001);
+my $slug = $slug_harita->{5001};
 print "Ürün Linki: /urun/$slug\n"; # Çıktı: /urun/acme-kablosuz-kulaklik
 
-# SEO Linkinden (Slug) Kayıt ID'sini bulma (Yönlendirici / Router için)
-my $id_harita = $adb->get_seourl("catalog_product", 1, "acme-kablosuz-kulaklik");
+# Slug Değerinden Kayıt ID'sini bulma (Yönlendirici / Router için)
+my $id_harita = $adb->get_slug("catalog_product", 1, "acme-kablosuz-kulaklik");
 my $id = $id_harita->{"acme-kablosuz-kulaklik"};
 print "Gelen istek Ürün ID'si: $id\n";
 ```
@@ -1341,7 +1363,7 @@ Aynı başlığa sahip birden fazla kayıt eklendiğinde (örneğin "Kablosuz Ku
 * 2. Kayıt: `kablosuz-kulaklik_2`
 * 3. Kayıt: `kablosuz-kulaklik_3`
 
-> **İlişkisel Slug Çözümleme (`rdbm`):** Eğer SEO bloğunda ilişkisel bir alan varsa (örn. Kategori ID'si), motor bağlı tablodan kategori adını otomatik okuyarak `/elektronik/acme-kulaklik` şeklinde anlamlı slug üretir.
+> **İlişkisel Slug Çözümleme (`rdbm`):** Eğer slug bloğunda ilişkisel bir alan varsa (örn. Kategori ID'si), motor bağlı tablodan kategori adını otomatik okuyarak `/elektronik/acme-kulaklik` şeklinde anlamlı slug üretir.
 
 ---
 
@@ -1763,7 +1785,7 @@ AmberDB dosya uzantıları rollerine ve yeniden üretilebilirlik durumlarına g�
 | `.src` | Tam Metin Arama (Search) |  **Evet** (`set_index`) | Kelime bazlı tersine arama indeksi (`search_block`). |
 | `.srt` | Sıralama İndeksi (Sort) |  **Evet** (`set_index`) | Belirlenen bloklara göre sıralı ID ikili indeksi (`sort_block`). |
 | `.fac` | Facet Filtreleme İndeksi |  **Evet** (`set_index`) | E-ticaret filtre sayaç ve durum haritası (`facet_block`). |
-| `.rwt` | SEO URL Slug Haritası |  **Evet** (`set_index`) | `_0.rwt` (ID→Slug) ve `_1.rwt` (Slug→ID) çift yönlü eşleştirici. |
+| `.slg` | Slug Haritası |  **Evet** (`set_index`) | `_0.slg` (ID→Slug) ve `_1.slg` (Slug→ID) çift yönlü eşleştirici. |
 | `.jinx`| Junk Birincil Kayıt İndeksi |  **Evet** (`set_index`) | Pasif/arşiv kayıtların ID ikili indeksi (`use_junk`). |
 | `.jfld`| Junk Eşleştirme İndeksi |  **Evet** (`set_index`) | Pasif kayıtların alan eşleştirme indeksi (`jnktype => 'B'/'AB'`). |
 | `.jsrc`| Junk Tam Metin Arama |  **Evet** (`set_index`) | Pasif kayıtların arama ters indeksi (`jnktype => 'B'/'AB'`). |
@@ -1791,8 +1813,8 @@ dbstore/
 │   ├── catalog_product_4.src    ← Ürün adı arama indeksi
 │   ├── catalog_product_10.srt   ← Fiyat sıralama indeksi
 │   ├── catalog_product.fac      ← Facet indeksi
-│   ├── catalog_product_0.rwt    ← SEO ID → Slug
-│   ├── catalog_product_1.rwt    ← SEO Slug → ID
+│   ├── catalog_product_0.slg    ← ID → Slug Haritası
+│   ├── catalog_product_1.slg    ← Slug → ID Haritası
 │   ├── catalog_product.aut      ← Denetim logu
 │   └── catalog_product.del      ← Silinen kayıtlar
 ├── cache/                       ← RAM-Disk Paylaşımlı Önbellek Dosyaları
@@ -1817,7 +1839,7 @@ dbstore/
 
 ## 22. Kapsamlı Uygulama Örneği (Sipariş & Stok Senaryosu)
 
-Aşağıdaki örnek; ana tabloların oluşturulması, ürünün ilişkisel ID'ler ve çoklu kategorilerle eklenmesi, SEO URL ile okuma, filtreli arama, sıralama ve güvenli bir sipariş transaction'ını baştan sona gösterir:
+Aşağıdaki örnek; ana tabloların oluşturulması, ürünün ilişkisel ID'ler ve çoklu kategorilerle eklenmesi, URL slug ile okuma, filtreli arama, sıralama ve güvenli bir sipariş transaction'ını baştan sona gösterir:
 
 ```perl
 use strict;
@@ -1854,9 +1876,9 @@ my @urun = (
 my $urun_id = $adb->insert_id("catalog_product", undef, @urun);
 print "1. Ürün Eklendi -> ID: $urun_id\n";
 
-# 4. Otomatik Üretilen SEO URL'yi Oku
-my $seo = $adb->get_seourl("catalog_product", 0, $urun_id);
-print "2. Oluşan URL -> /urun/$seo->{$urun_id}\n";
+# 4. Otomatik Üretilen URL Slug'ı Oku
+my $slug_harita = $adb->get_slug("catalog_product", 0, $urun_id);
+print "2. Oluşan URL -> /urun/$slug_harita->{$urun_id}\n";
 
 # 5. Çoklu Kategoriden (Örn: 12 nolu Taşınabilir) Fiyat Sıralı Listeleme, ilk 20 kayıt
 my ($toplam, @urunler) = $adb->field_fetch(
@@ -1934,13 +1956,13 @@ if ($mevcut[8] >= 1) { # Stok kontrolü
 | `transact_start`| — | `1/undef` | Yeni bir işlem (transaction) başlatır. |
 | `transact_end`  | — | `\%sonuc` | İşlemi tamamlar (commit veya auto-rollback). |
 | `transact_rollback` | — | `\%sonuc` | İşlemi manuel olarak hemen geri alır. |
-| **Önbellek, SEO, Şema & Denetim** | | | |
+| **Önbellek, Slug, Şema & Denetim** | | | |
 | `table_info`   | `$tablo` | `\%schema` | Tablonun tanımlı şema konfigürasyonunu döner. |
 | `table_attr`   | `$tablo, \%ozellikler` | `1` | Çalışma zamanında bellek içi şema günceller. |
 | `cache_read`   | `$tablo, $anahtar` | `@veriler` | RAM-Disk önbellekten veri okur. |
 | `cache_write`  | `$tablo, $anahtar, @veriler`| `1` | RAM-Disk önbelleğe veri yazar. |
 | `cache_delete` | `$tablo, [$anahtar]` | `1` | Önbelleği temizler. |
-| `get_seourl`   | `$tablo, $tip, @anahtarlar` | `\%harita` | ID ↔ Slug eşleşmesini getirir. |
+| `get_slug`     | `$tablo, $tip, @anahtarlar` | `\%harita` | ID ↔ Slug eşleşmesini getirir. |
 | `auth_view`    | `$tablo, $id` | `$html` | Kaydın işlem geçmişini HTML olarak döner. |
 
 ---
@@ -2001,7 +2023,7 @@ AmberDB'de tablonun `.table` şema dosyasında bir kez tanımlarsınız:
     search_block => [4],       # Tam metin arama (.src)
     facet_block  => [1, 2],    # Filtreleme yüzeyleri (.fac)
     sort_block   => [10],      # Fiyata göre sıralama indeksi (.srt)
-    seo_block    => [1, 4],    # Otomatik URL slug üretimi (.rwt)
+    slug_block   => [1, 4],    # Otomatik URL slug üretimi (.slg)
     log_owner    => 1,         # Kim, ne zaman değiştirdi denetimi (.aut)
     keep_deleted => 1,         # Soft-delete çöp kutusu (.del)
 }
@@ -2015,7 +2037,7 @@ SQL'de `SELECT id FROM orders WHERE customer_id = 'A'` sorgusu çalıştırıld�
 AmberDB'de `field_fetch` doğrudan Berkeley DB hash ve packed binary blok okumasıdır. Sorgu yorumlama veya yürütme planı maliyeti sıfırdır.
 
 ### 24.5 Dahili Yaşam Döngüsü ve Ek Özellikler
-- **Otomatik SEO Slug Yönetimi:** Başlık değiştiğinde `/urun/ahmet-umit/istanbul-hatirasi` gibi URL slug'ları ve çakışma kontrolleri motor tarafından yönetilir.
+- **Otomatik URL Slug Yönetimi:** Başlık değiştiğinde `/urun/ahmet-umit/istanbul-hatirasi` gibi URL slug'ları ve çakışma kontrolleri motor tarafından yönetilir.
 - **Yerleşik Audit Trail (.aut):** Hangi kullanıcının ne zaman kayıt eklediği veya güncellediği otomatik tutulur.
 - **Güvenli Soft-Delete (.del):** Silinen kayıtlar şema ayarına göre geri kurtarılabilir şekilde arşivlenir.
 - **Sıfır Bağımlılık & Kolay Yedekleme:** Tek bir klasörü kopyalayarak tüm veritabanını, indekslerini ve ayarlarını yedekleyebilir veya başka bir ortama taşıyabilirsiniz.
@@ -2059,4 +2081,4 @@ Dışarıdan bir kısıtlama gibi algılanabilecek, ancak AmberDB'yi geleneksel 
 
 ---
 
-*Bu doküman `AmberDB` v5.21.1 motorunun güncel kod mimarisi ve geliştirici pratikleri doğrultusunda hazırlanmıştır.*
+*Bu doküman `AmberDB` v5.21.2 motorunun güncel kod mimarisi ve geliştirici pratikleri doğrultusunda hazırlanmıştır.*

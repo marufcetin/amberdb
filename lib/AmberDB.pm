@@ -22,7 +22,7 @@ use parent qw(
 our $DB_HASH;
 our $hash_info;
 
-our $VERSION = '5.21.1';
+our $VERSION = '5.21.2';
 my $CREATED = '2005-01-28';
 
 
@@ -58,7 +58,7 @@ sub new {
     # inx: all records and lastid keys index file
     # src: search keys index file
     # fld: block matching index file
-    # rwt: rewrite for url
+    # slg: url slug map
     # del: deleted records file
     # lnk: linked records file
     $self->{db_ext} ||= $self->{ext}->{db} ||= "db";
@@ -103,7 +103,7 @@ sub new {
         qw(
             _dbase _table _cache _auth _pid _txn _db _dbm _fd _tie
             _record_lock _last_autoid _error _adb _rdbm_memo say
-            _path _cfg db_ext ext date locale seo_max_len
+            _path _cfg db_ext ext date locale slug_max_len
             day day_id dayname days hour hour_id minute minute_id
             month month_id monthname months only_time second second_id
             short str time year year_dir
@@ -247,7 +247,7 @@ sub insert_id {
     $self->sort_add( $table_path, $table_info, \@batch );
 
     # to create the url rewrite link
-    $self->set_seourl( $tableid, \@record, 1 );
+    $self->set_slug( $tableid, \@record, 1 );
 
     # authorization
     $self->auth_write( $tableid, $table_path, "add", $rid );
@@ -348,9 +348,9 @@ sub insert_list {
         $self->sort_add( $table_path, $table_info, \@batch );
     }
 
-    # Per-record operations: seourl, auth, backup
+    # Per-record operations: slug, auth, backup
     foreach my $rec (@batch) {
-        $self->set_seourl( $tableid, $rec, 1 );
+        $self->set_slug( $tableid, $rec, 1 );
         $self->auth_write( $tableid, $table_path, "add", $rec->[0] );
         $self->recs_back( "add", $tableid, $rec );
     }
@@ -439,15 +439,15 @@ sub modify_id {
     }
     $self->sort_modify( $table_path, $table_info, \@pairs );
 
-    # Update SEO URL
-    if ( $table_info->{seo_block} ) {
-        my $seo_map  = $self->get_seourl( $tableid, 0, $rid );
-        my $old_slug = $seo_map->{$rid};
-        my $new_slug = $self->set_seourl( $tableid, \@new_rec, 1 );
+    # Update URL slug
+    if ( $table_info->{slug_block} ) {
+        my $slug_map = $self->get_slug( $tableid, 0, $rid );
+        my $old_slug = $slug_map->{$rid};
+        my $new_slug = $self->set_slug( $tableid, \@new_rec, 1 );
         if ( $old_slug && $new_slug && $old_slug ne $new_slug ) {
-            if ( $self->table_write("${table_path}_1.rwt") ) {
-                $self->recs_del( "${table_path}_1.rwt", $old_slug );
-                $self->table_close("${table_path}_1.rwt");
+            if ( $self->table_write("${table_path}_1.slg") ) {
+                $self->recs_del( "${table_path}_1.slg", $old_slug );
+                $self->table_close("${table_path}_1.slg");
             }
         }
     }
@@ -531,18 +531,18 @@ sub modify_list {
     }
     $self->sort_modify( $table_path, $table_info, \@pairs );
 
-    # Per-record operations: seourl, auth, backup
+    # Per-record operations: slug, auth, backup
     foreach my $pair (@pairs) {
         my ( $rid, $old_rec, $new_rec ) = @$pair;
 
-        if ( $table_info->{seo_block} ) {
-            my $seo_map  = $self->get_seourl( $tableid, 0, $rid );
-            my $old_slug = $seo_map->{$rid};
-            my $new_slug = $self->set_seourl( $tableid, $new_rec, 1 );
+        if ( $table_info->{slug_block} ) {
+            my $slug_map = $self->get_slug( $tableid, 0, $rid );
+            my $old_slug = $slug_map->{$rid};
+            my $new_slug = $self->set_slug( $tableid, $new_rec, 1 );
             if ( $old_slug && $new_slug && $old_slug ne $new_slug ) {
-                if ( $self->table_write("${table_path}_1.rwt") ) {
-                    $self->recs_del( "${table_path}_1.rwt", $old_slug );
-                    $self->table_close("${table_path}_1.rwt");
+                if ( $self->table_write("${table_path}_1.slg") ) {
+                    $self->recs_del( "${table_path}_1.slg", $old_slug );
+                    $self->table_close("${table_path}_1.slg");
                 }
             }
         }
@@ -640,18 +640,18 @@ sub delete_id {
     }
     $self->sort_del( $table_path, $table_info, \@batch );
 
-    # Clear SEO URL
-    if ( $table_info->{seo_block} ) {
-        my $seo_map = $self->get_seourl( $tableid, 0, $rid );
-        my $slug    = $seo_map->{$rid};
+    # Clear URL slug
+    if ( $table_info->{slug_block} ) {
+        my $slug_map = $self->get_slug( $tableid, 0, $rid );
+        my $slug     = $slug_map->{$rid};
         if ($slug) {
-            if ( $self->table_write("${table_path}_0.rwt") ) {
-                $self->recs_del( "${table_path}_0.rwt", $rid );
-                $self->table_close("${table_path}_0.rwt");
+            if ( $self->table_write("${table_path}_0.slg") ) {
+                $self->recs_del( "${table_path}_0.slg", $rid );
+                $self->table_close("${table_path}_0.slg");
             }
-            if ( $self->table_write("${table_path}_1.rwt") ) {
-                $self->recs_del( "${table_path}_1.rwt", $slug );
-                $self->table_close("${table_path}_1.rwt");
+            if ( $self->table_write("${table_path}_1.slg") ) {
+                $self->recs_del( "${table_path}_1.slg", $slug );
+                $self->table_close("${table_path}_1.slg");
             }
         }
     }
@@ -759,20 +759,20 @@ sub delete_list {
         $self->sort_del( $table_path, $table_info, \@batch );
     }
 
-    # Per-record operations: seourl, auth, backup
+    # Per-record operations: slug, auth, backup
     foreach my $rec (@batch) {
         my $rid = $rec->[0];
-        if ( $table_info->{seo_block} ) {
-            my $seo_map = $self->get_seourl( $tableid, 0, $rid );
-            my $slug    = $seo_map->{$rid};
+        if ( $table_info->{slug_block} ) {
+            my $slug_map = $self->get_slug( $tableid, 0, $rid );
+            my $slug     = $slug_map->{$rid};
             if ($slug) {
-                if ( $self->table_write("${table_path}_0.rwt") ) {
-                    $self->recs_del( "${table_path}_0.rwt", $rid );
-                    $self->table_close("${table_path}_0.rwt");
+                if ( $self->table_write("${table_path}_0.slg") ) {
+                    $self->recs_del( "${table_path}_0.slg", $rid );
+                    $self->table_close("${table_path}_0.slg");
                 }
-                if ( $self->table_write("${table_path}_1.rwt") ) {
-                    $self->recs_del( "${table_path}_1.rwt", $slug );
-                    $self->table_close("${table_path}_1.rwt");
+                if ( $self->table_write("${table_path}_1.slg") ) {
+                    $self->recs_del( "${table_path}_1.slg", $slug );
+                    $self->table_close("${table_path}_1.slg");
                 }
             }
         }
@@ -891,7 +891,7 @@ sub exist_list {
 }
 
 # Checks whether physical database file exists on disk.
-# my $ok = $adb->exist_table("tableid", rwt);
+# my $ok = $adb->exist_table("tableid", "slg");
 # ------------------------------------------------
 sub exist_table {
 
@@ -2970,7 +2970,7 @@ sub index_get {
     if ( !$type ) {
         if (   $k eq 'count'
             || $k eq 'lastid'
-            || $table_path =~ /\.rwt$/
+            || $table_path =~ /\.slg$/
             || $table_path =~ /\.str$/
             || ( $table_path =~ /\.srt$/ && $k ne 'keys' )
             || ( $table_path =~ /\.fac$/ && $k ne 'active' ) )
@@ -2993,7 +2993,7 @@ sub index_get {
 
 # Writes a single index entry using direct DB_File C object methods ($db->put).
 # Automatically encodes ARRAY ref payload with bin_encode.
-# Raw/scalar index files (such as .rwt, .str, count, lastid) bypass binary encoding.
+# Raw/scalar index files (such as .slg, .str, count, lastid) bypass binary encoding.
 # Usage:
 #   $adb->index_put($table_path, $key, \@ids);         # auto-detected as 'ids'
 #   $adb->index_put($table_path, $key, \@ids, 'ids');  # explicit 'ids'
@@ -3017,8 +3017,8 @@ sub index_put {
 
     $type = lc( $type // '' );
 
-    # Raw scalar files (.rwt SEO URLs, .str strings, scalar values) bypass binary encoding
-    if ( $type eq 'raw' || $type eq 'scalar' || $type eq 'text' || $table_path =~ /\.rwt$/ || $table_path =~ /\.str$/ ) {
+    # Raw scalar files (.slg URL slugs, .str strings, scalar values) bypass binary encoding
+    if ( $type eq 'raw' || $type eq 'scalar' || $type eq 'text' || $table_path =~ /\.slg$/ || $table_path =~ /\.str$/ ) {
         $val = $self->utf_encode($val);
     }
     elsif ( $type eq 'ids' || $type eq 'bin' || ref($val) eq 'ARRAY' ) {
@@ -3331,7 +3331,7 @@ C<AmberDB> is built as a unified coordinator that incorporates all functionality
 
 =item * B<L<AmberDB::Transact>> — Multi-table ACID-compliant transaction engine with Strict Two-Phase Locking (Strict 2PL) and undo journaling (C<transact_start>, C<transact_end>, C<transact_rollback>, C<transact_recover>).
 
-=item * B<L<AmberDB::Index>> — Inverted full-text keyword indexing (C<.src>), exact field match indexing (C<.fld>), binary pre-sorted indexing (C<.srt>), and bidirectional SEO URL rewrite maps (C<.rwt>).
+=item * B<L<AmberDB::Index>> — Inverted full-text keyword indexing (C<.src>), exact field match indexing (C<.fld>), binary pre-sorted indexing (C<.srt>), and bidirectional URL slug rewrite maps (C<.slg>).
 
 =item * B<L<AmberDB::Index::Facet>> — Columnar forward indexing (C<.fac>), disjunctive count calculation, and dynamic scoped menu builder (C<facet_menu>, C<field_fltkeys>).
 
@@ -3361,7 +3361,7 @@ AmberDB enforces a strict, deterministic lowercase snake_case table naming conve
 
 =head1 SCHEMA DEFINITION & CONFIGURATION (.table & IN-MEMORY)
 
-AmberDB is schema-driven. Table schemas define primary key constraints, field blocks, multi-dimensional indexes, automatic SEO slug generation, facet filters, lifecycle junk rules, and repeating nested items.
+AmberDB is schema-driven. Table schemas define primary key constraints, field blocks, multi-dimensional indexes, automatic URL slug generation, facet filters, lifecycle junk rules, and repeating nested items.
 
 Schemas can be defined in two ways:
 
@@ -3488,7 +3488,7 @@ Inserts a new record into specified table. It automatically generates search, ma
 
 =head2 insert_list($table_id, @records)
 
-Inserts multiple records in a single bulk operation. Aside from Transact, it processes records, search, match, SEO slug, and facet indexes all at once with high performance.
+Inserts multiple records in a single bulk operation. Aside from Transact, it processes records, search, match, slug, and facet indexes all at once with high performance.
 
 =head2 modify_id($table_id, $record_id, @record)
 
@@ -3496,7 +3496,7 @@ Updates existing record data. It automatically updates the search, match, slug, 
 
 =head2 modify_list($table_id, @records)
 
-Modifies multiple records in a single bulk operation. Aside from Transact, it processes records, search, match, SEO slug, and facet indexes all at once with high performance.
+Modifies multiple records in a single bulk operation. Aside from Transact, it processes records, search, match, slug, and facet indexes all at once with high performance.
 
 =head2 delete_id($table_id, $record_id)
 
@@ -3504,7 +3504,7 @@ Deletes specified record from table. Supports transaction logging.
 
 =head2 delete_list($table_id, @records)
 
-Deletes multiple records in a single bulk operation. Aside from Transact, it processes records, search, match, SEO slug, and facet indexes all at once with high performance.
+Deletes multiple records in a single bulk operation. Aside from Transact, it processes records, search, match, slug, and facet indexes all at once with high performance.
 
 =head2 read_id($table_id, $record_id)
 
