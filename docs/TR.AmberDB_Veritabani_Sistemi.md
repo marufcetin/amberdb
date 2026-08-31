@@ -1,6 +1,6 @@
 # AmberDB — Geliştirici Kılavuzu ve Dokümantasyon
 
-> **Sürüm:** 5.21.2 · **İlk Tasarım:** 2005 · **Son Güncelleme:** 2026  
+> **Sürüm:** 5.22.0 · **İlk Tasarım:** 2005 · **Son Güncelleme:** 2026  
 > **Namespace:** `AmberDB`  
 > **Dahili Modüller:** `Base`, `Index`, `Transact`, `Cache`, `Array`, `String`, `Date`, `Locale`, `Tools`
 
@@ -538,47 +538,215 @@ print "Ürün 5001 toplam $okunma_sayisi kez görüntülendi.\n";
 
 ## 5. Basit Mod ve İndekssiz Doğrudan Erişim (Simple Mode)
 
-AmberDB'de **Basit Mod (`simple => 1`)**, tabloya ait hiçbir şema bilgisinin bulunmadığı (tamamen şemasız / schemaless) doğrudan dosya erişim çalışma biçimidir. Tablolarınız iç içe dizi ve sözlük referansları (ARRAY/HASH) gibi zengin veri yapılarını doğrudan saklayabilir ve okuyabilir. 
+AmberDB'de **Basit Mod (`simple => 1`)**, tabloya ait hiçbir şema dosyasının (`.table` / `.dbase`) ve ikincil indeks dosyalarının (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, `.slg`, `.aut`, `.del`) kullanılmadığı; veritabanının tamamen **şemasız (schemaless), hafif ve doğrudan düz dosya NoSQL anahtar-değer deposu** olarak çalıştığı işletim biçimidir.
 
-Basit modda ikincil indeksleme mekanizması (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, `.slg`, `.aut`, `.del`) tamamen devre dışıdır. Veriler doğrudan tek bir ana veri dosyasına yazılır ve okunur; filtreleme, arama ve sıralama işlemleri indeks dosyaları yerine doğrudan veri akışı üzerinden sıralı tarama (`recs_scan`) yöntemiyle gerçekleştirilir. Bu sayede indeks bakım ve güncelleme maliyeti ortadan kalkar. İndekssiz çalışırken dahi `keys_only`, `sort`, `start`/`limit` ve Türkçe normalizasyonu tam parite ile çalışır.
+Basit modda kayıtlar iç içe dizi ve sözlük referansları (`ARRAY`/`HASH`) dahil zengin veri yapılarını doğrudan saklayabilir. İkincil indeks bakım maliyeti ortadan kalkar; tekil anahtar okuma ve yazma işlemleri (`read_id`, `insert_id`) maksimum disk/bellek hızında $O(1)$ olarak gerçekleşir.
 
-### 5.1 Basit Modun Temel Kuralları
+---
 
-1. **Dizin ve Dosya Yolu Davranışı:**  
-   Standart modda root dizini `dbstore` olmasına rağmen tablolar `dbstore/tables/` altında aranır ve oluşturulur. Ancak `simple` modunda motor `tables/` alt klasörünü aramaz; dosyaları doğrudan `dbase_dir` yolunun kökünde arar ve yazar (`$dbase_dir/<tablo>.<uzanti>`). Dolayısıyla, standart modda oluşturulmuş tabloları `simple` mod ile açmak istediğinizde, `dbase_dir` yolunu doğrudan **`dbstore/tables`** olarak belirtmelisiniz:
+### 5.1 Basit Modu Başlatma ve Aktif Etme
+
+Basit mod 4 farklı şekilde etkinleştirilebilir:
+
+1. **`new()` Başlatıcısında Yapılandırma:**
    ```perl
-   # Standart tabloları simple mod ile açma:
    my $adb = AmberDB->new(
-       path => { dbase_dir => "/var/data/eticaretim/dbstore/tables" },
+       path => { dbase_dir => "/var/data/sessions" },
        cfg  => { simple    => 1 },
    );
    ```
 
-2. **Yapılandırma Üzerinden Basit Moda Geçiş (`simple => 1`):**  
-   Basit mod, nesne başlatılırken veya çalışma zamanında dinamik olarak aktif edilebilir:
+2. **`AmberDB::Tools` Üzerinden Kısayol Başlatıcı (`db_simple`):**
    ```perl
-   # 1. new() başlatıcısında cfg ile tanımlama:
-   my $adb = AmberDB->new(
-       path => { dbase_dir => "/var/data/eticaretim/dbstore/tables" },
-       cfg  => { simple    => 1 },
-   );
+   use AmberDB::Tools;
+   my $tools = AmberDB::Tools->new();
+   my $adb   = $tools->db_simple("/var/data/sessions");
+   ```
 
-   # 2. Çalışma zamanında config() ile basit moda geçiş:
+3. **Çalışma Zamanında Dinamik Geçiş (`config`):**
+   ```perl
    $adb->config( simple => 1 );
    ```
 
-3. **Özel Dosya Uzantısı ile Otomatik Basit Moda Geçiş (`db_ext`):**  
-   AmberDB'de varsayılan tablo dosya uzantısı `.db`'dir. Eğer yapılandırmada `db_ext` için `"db"` dışında farklı bir uzantı tanımlarsanız (örneğin `"dat"`, `"txt"`, `"idx"` veya `""`), motor **otomatik olarak `simple` moduna geçer**:
+4. **Özel Dosya Uzantısı ile Otomatik Basit Mod:**  
+   AmberDB'de `db_ext` ayarına `"db"` dışında herhangi bir uzantı verildiğinde (örneğin `"dat"`, `"cache"`, `"session"`) motor **otomatik olarak basit moda** geçer:
    ```perl
-   # 1. new() başlatıcısında özel uzantı tanımlama (otomatik simple mod):
    my $adb = AmberDB->new(
-       path => { dbase_dir => "/var/data/dizin" },
-       cfg  => { db_ext    => "dat" },  # 'dat' uzantısı motoru otomatik simple moda alır
+       path => { dbase_dir => "/var/data/cache" },
+       cfg  => { db_ext    => "dat" },  # Farklı uzantı tanımlamak, otomatik simple => 1 tetikler
    );
-
-   # 2. Çalışma zamanında config() ile uzantı değiştirme:
-   $adb->config( db_ext => "dat" );     # Otomatik olarak simple => 1 uygulanır
    ```
+
+> **Dizin Yapısı Notu:** Standart modda tablolar `$dbase_dir/tables/` altında yer alırken, Basit Modda hiçbir alt dizin hiyerarşisi aranmaz; tablolar doğrudan kök `$dbase_dir/<tablo>.<uzanti>` olarak oluşturulur ve açılır. Standart moddaki bir tabloyu basit modda açmak için `dbase_dir` yolu olarak doğrudan `dbstore/tables` dizini verilmelidir.
+
+---
+
+### 5.2 Esnek ve Kısıtlamasız ID Yapısı (Arbitrary Keys)
+
+Standart moddaki **8-baytlık sabit uzunluk** ve **katı ASCII/sayısal şema kısıtlamaları** basit modda esnetilmiştir (`id_check` serbest skalar anahtarları kabul eder ve güvenli anahtar sanitizasyonu uygular):
+
+- **E-Posta ve Özel Karakterler:** `user@example.com`, `api:v1:user:1005`
+- **Uzun Belirteçler ve UUID'ler:** `sess_99999_abcdef_1234567890_extra_long_token` (en fazla 255 bayt)
+- **Tireli Kodlar ve Özel Formatlar:** `TR-2026-08-31-INVOICE-001`
+- **Türkçe / Çok Dilli Karakterli Anahtarlar:** `prod_özellik_kırmızı_xl`
+- **Güvenli Anahtar Sanitizasyonu:** Baş ve sondaki boşluklar otomatik kırpılır (`trim_space`); C katmanı veya CSV yedekleme bütünlüğünü bozan Null Byte (`\0`) ve kontrol karakterleri (`\r`, `\n`, `\t`) ile referanslar (dizi/hash ref) kesinlikle reddedilir.
+- **Otomatik ID Esnekliği:** Özel ID'lerin son ID'den (`lastid`) büyük olma zorunluluğu yoktur.
+
+```perl
+$adb->insert_id( 'sessions', 'user@example.com', 'Aktif', 'Chrome', time() );
+my @sess = $adb->read_id( 'sessions', 'user@example.com' );
+```
+
+---
+
+### 5.3 Veri İşlemleri (CRUD ve Toplu İşlemler)
+
+Tüm standart CRUD ve toplu metotlar basit modda eksiksiz çalışır:
+
+```perl
+# Tekil Ekleme, Okuma, Güncelleme, Silme
+$adb->insert_id( 'orders', 'order_101', 'Beklemede', '150.00' );
+my @order = $adb->read_id( 'orders', 'order_101' );
+$adb->modify_id( 'orders', 'order_101', 'Tamamlandı', '175.50' );
+$adb->delete_id( 'orders', 'order_101' );
+my $var_mi = $adb->exist_id( 'orders', 'order_101' );
+
+# Toplu İşlemler (Bulk CRUD)
+my $ins_status = $adb->insert_list( 'orders', [ 'o_1', 'A', 50 ], [ 'o_2', 'B', 75 ] );
+my $mod_status = $adb->modify_list( 'orders', [ 'o_1', 'A+', 55 ] );
+my $del_status = $adb->delete_list( 'orders', 'o_1', 'o_2' );
+```
+
+---
+
+### 5.4 İndekssiz Doğrudan Sorgulama ve Filtreleme
+
+İkincil indeks dosyaları üretilmediği için sorgular doğrudan `.db` veri akışı üzerinden sıralı tarama (`recs_scan`) ile yürütülür:
+
+1. **Tüm Tabloyu Okuma ve Sayfalama (`read_all`):**
+   ```perl
+   # Tüm kayıtlar veya sayfalama (start => 0, limit => 10)
+   my ( $toplam, @kayitlar ) = $adb->read_all( 'items', 0, 10 );
+   
+   # Sadece anahtar listesi alma
+   my @anahtarlar = $adb->read_all( 'items', keys_only => 1 );
+   
+   # Bellek içi sıralama (Blok 3'e göre artan: -3, azalan: 3)
+   my @sirali = $adb->read_all( 'items', sort => -3, keys_only => 1 );
+   ```
+
+2. **Alana Göre Eşleştirme (`field_fetch`):**
+   ```perl
+   # Blok 2: Kategori = 'Giyim' olanları getir
+   my @giyimler = $adb->field_fetch( 'catalog', 2, 'Giyim' );
+   
+   # Çoklu değer eşleme (Blok 3: Renk in ['Mavi', 'Siyah'])
+   my ( $adet, @sonuclar ) = $adb->field_fetch( 'catalog', 3, [ 'Mavi', 'Siyah' ], 0, 20, sort => -4 );
+   ```
+
+3. **Tam Metin Arama (`search_table`):**
+   ```perl
+   # Türkçe normalizasyonlu kelime araması (AND mantığı)
+   my @haberler = $adb->search_table( 'articles', 'türkiye ekonomi' );
+   
+   # Alan filtresiyle birlikte arama (Blok 2: Kategori = 'Finans')
+   my ( $sayi, @filtrelenmis ) = $adb->search_table( 'articles', 'faiz', 0, 10, filter => [ 2, 'Finans' ] );
+   ```
+
+---
+
+### 5.5 İşlemler (Transactions - ACID Desteği)
+
+Basit modda `transact_start`, `transact_commit` ve `transact_rollback` ACID desteği tam olarak çalışır. Geri alma (`rollback`) tetiklendiğinde ham `.db` dosyasındaki ekleme, düzenleme ve silmeler anında eski haline döndürülür:
+
+```perl
+$adb->transact_start();
+eval {
+    $adb->insert_id( 'sessions', 'token_123', 'GeciciVeri', time() );
+    # Beklenmeyen bir hata oluştuğunda:
+    die "Kritik islem hatasi" if $hata_var;
+    $adb->transact_end();
+};
+if ($@) {
+    $adb->transact_rollback(); # token_123 kaydı .db dosyasından tamamen silinir
+}
+```
+
+---
+
+### 5.6 Günlük Sürekli Yedekleme Günlükleri (Daily Backup Logs - `recs_back`)
+
+Basit mod şemadan bağımsız olduğundan, **metin tabanlı sürekli denetim ve kurtarma akışı (`recs_back`)** basit modda da varsayılan olarak devrededir.
+
+Basit modun düz dizin yapısı gereği ayrı bir `backup/` veya `YYYY/` alt klasörü oluşturulmaz; yapılan her `insert_id` (`add`), `modify_id` (`edit`) ve `delete_id` (`del`) işlemi doğrudan tablolarla aynı dizinde bulunan **`$dbase_dir/YYYY-MM-DD.csv`** günlük dosyasına CSV formatında işlenir:
+
+```text
+2026-08-31 14:30:00    admin    add     sessions    sess_token_99999    Aktif\x1f192.168.1.50
+2026-08-31 14:31:15    admin    edit    sessions    sess_token_99999    Kapali\x1f192.168.1.50
+2026-08-31 14:32:00    admin    del     sessions    sess_token_99999    
+```
+
+- İstenirse `cfg => { no_backup => 1 }` veya `$adb->config(no_backup => 1)` ile yedekleme günlükleri devre dışı bırakılabilir.
+- Özel bir yedek dizini tanımlanmak istendiğinde `path => { backup_dir => "/harici/yedek/yolu" }` verilebilir.
+
+---
+
+### 5.7 Basit Modda RAM-Disk Mimarisi ve Önbellekleme
+
+AmberDB standart modda RAM-disk önbelleğini şemadaki `use_cache => 2` kuralı ile `dbstore/cache` alt dizinine kopyalayarak yönetir.
+
+**Basit modda ise RAM-disk kullanımı çok daha doğrudan ve esnektir:**  
+Basit mod şemaya ihtiyaç duymadığından, yüksek performanslı bir bellek önbelleği / geçici oturum deposu oluşturmak için ikinci bir AmberDB basit nesnesi doğrudan RAM-disk yoluna bağlanır:
+
+```perl
+# 1. Kalıcı disk nesnesi (Kalıcı veriler için)
+my $db_kalici = AmberDB->new(
+    path => { dbase_dir => "/var/data/eticaret/dbstore/tables" },
+    cfg  => { simple => 1 },
+);
+
+# 2. RAM-Disk nesnesi (Sıfır gecikmeli hızlı oturum/önbellek tabloları için)
+# (Linux: /dev/shm veya tmpfs, Windows: ImDisk / RamDisk sürücüsü)
+my $db_ramdisk = AmberDB->new(
+    path => { dbase_dir => "/dev/shm/amber_cache" },
+    cfg  => { simple => 1, no_backup => 1 }, # Önbellek için yedekleme kapatılabilir
+);
+
+# RAM üzerinde nanosaniye hızında oturum okuma/yazma:
+$db_ramdisk->insert_id( "oturumlar", $session_token, $user_id, time() );
+my @oturum = $db_ramdisk->read_id( "oturumlar", $session_token );
+```
+
+Bu çift nesneli mimari sayesinde:
+- RAM-disk üzerindeki tablolar disk I/O darboğazına takılmadan bellek hızında çalışır.
+- Kalıcı tablolar ana depolama alanında güvenle tutulmaya devam eder.
+- Şema dosyası hazırlama zorunluluğu olmadan saniyeler içinde dinamik önbellek tabloları açılabilir.
+
+---
+
+### 5.8 Basit Mod: Yetenekler ve Kısıtlamalar Karşılaştırması
+
+| Özellik / Mekanizma | Standart Mod (`simple => 0`) | Basit Mod (`simple => 1`) |
+| :--- | :---: | :---: |
+| **Şema Dosyaları (`.table`, `.dbase`)** | Zorunlu / Kullanılır | Yok / Şemasız |
+| **Özel ve Uzun ID'ler (UUID, E-posta, vb.)** | 8 Bayt / ASCII Kısıtlı | **Tamamen Serbest** |
+| **Tekil CRUD (`insert_id`, `read_id`, vb.)** | $O(1)$ | **$O(1)$ (Maksimum Hız)** |
+| **Toplu İşlemler (`insert_list`, vb.)** | Desteklenir | Desteklenir |
+| **Tüm Tablo Okuma (`read_all`)** | `.inx` veya doğrudan | Doğrudan Dosya Taraması |
+| **Sayfalama (`start`/`limit`) ve `keys_only`** | Desteklenir | Desteklenir |
+| **Bellek İçi Sıralama (`sort => 2`)** | Desteklenir | Desteklenir |
+| **Alana Göre Filtre (`field_fetch`)** | `.fld` İndeksli $O(1)$ | Sıralı Dosya Taraması |
+| **Tam Metin Arama (`search_table`)** | `.src` Ters İndeksli | Sıralı Dosya Taraması (Türkçe Normalizasyonlu) |
+| **ACID İşlemler (`transact_*`)** | Desteklenir (İndeks Geri Alma Dahil) | **Desteklenir (Ham Veri Geri Alma)** |
+| **Sürekli Yedekleme Akışı (`recs_back`)** | Desteklenir (`backup/YYYY/`) | **Desteklenir (Aynı Dizinde `YYYY-MM-DD.csv`)** |
+| **İkincil İndeksler (`.inx, .fld, .src, .srt, .fac`)** | Oluşturulur ve Güncellenir | **Oluşturulmaz (Sıfır İndeks Maliyeti)** |
+| **URL Slug Rewrite (`.slg`)** | Otomatik Üretilir | Devre Dışı |
+| **Denetim İzi (`.aut`) ve Arşiv (`.del`)** | Şema Kuralına Göre Tutulur | Devre Dışı |
+| **Dizin Yapısı** | `tables/`, `schema/`, `backup/` vb. | **Düz Kök Dizin (`$dbase_dir/<tablo>.db`)** |
+| **İkincil İndeksler (`.inx, .fld, .src, .srt, .fac`)** | Oluşturulur ve Güncellenir | **Oluşturulmaz (Sıfır İndeks Maliyeti)** |
+| **URL Slug Rewrite (`.slg`)** | Otomatik Üretilir | Devre Dışı |
+| **Denetim İzi (`.aut`) ve Arşiv (`.del`)** | Şema Kuralına Göre Tutulur | Devre Dışı |
+| **Dizin Yapısı** | `tables/`, `schema/`, `backup/` vb. | **Düz Kök Dizin (`$dbase_dir/<tablo>.db`)** |
 
 ---
 
@@ -1038,7 +1206,7 @@ Aşağıdaki tablo, bir `.table` dosyasında kullanılabilecek tüm üst düzey 
 | `use_menu` | `0 / 1` | `1` | — | Arayüz yönetim panelinde tablo için menü sekmesi gösterilip gösterilmeyeceği. |
 | `no_transact` | `0 / 1` | `0` | — | `1` ise tablo transaction hata zincirinden ve otomatik rollback işleminden muaf tutulur. |
 
-### 9.7 Blok (Alan) Nitelikleri, Veri Tipleri, Giriş Bileşenleri ve Doğrulama Referansı
+### 9.7 Blok (Alan) Nitelikleri, 8 Çekirdek Veri Tipi, Giriş Bileşenleri ve Doğrulama Referansı
 
 Şema içindeki `blocks` dizisinde tanımlanan her bir alan bloğu şu nitelikleri alabilir:
 
@@ -1048,36 +1216,34 @@ Aşağıdaki tablo, bir `.table` dosyasında kullanılabilecek tüm üst düzey 
 | :--- | :--- | :--- | :--- |
 | `id` | `string` | Alanın programatik anahtar adı | `id => "email"` |
 | `name` | `string` | Formlarda ve tablolarda gösterilecek etiket adı | `name => "E-Posta Adresi"` |
-| `type` | `string` | Veri depolama ve indeksleme veri tipi | `type => "text"` |
-| `input` | `string` | Form giriş bileşeni tipi | `input => "select"` |
+| `type` | `string` | Veri depolama, tip doğrulama ve indeksleme veri tipi | `type => "text"` |
+| `input` | `string` | Form giriş bileşeni (UI) tipi | `input => "select"` |
 | `valid` | `string` | Otomatik doğrulama kuralı | `valid => "not_null;email"` |
 | `option` | `string` | Seçenek listesi (`değer:etiket` çiftleri) | `option => "1:Aktif,0:Pasif"` |
 | `rdbm` | `string / HASH`| Başka tablodan veri çekme (`hedef_tablo;gösterilecek_blok`) | `rdbm => "catalog_category;2"` |
 | `extend` | `HASH` | 1:1 dikey genişletme tablosu | `extend => { table => "catalog_price", join => "id" }` |
 
-#### 9.7.2 Desteklenen Veri Tipleri (`type`)
+#### 9.7.2 Desteklenen 8 Çekirdek Veri Tipi (`type`)
 
-| Veri Tipi (`type`) | Etiket | Açıklama ve Motor Davranışı |
-| :--- | :--- | :--- |
-| `auto_id` | Otomatik ID | Otomatik artan 64-bit birincil anahtar (Blok 0 için zorunlu). |
-| `text` | Metin | Standart skaler UTF-8 metin verisi. |
-| `tinytext` | Kısa Metin | Hafif metinler, bayraklar veya durum etiketleri. |
-| `number` | Sayı | Tamsayı veya ondalıklı sayılar (`.srt` sıralamasında sayısal karşılaştırılır). |
-| `email` | E-Posta | RFC uyumlu e-posta adresleri. |
-| `ascii` | ASCII Metin | Sadece ASCII karakterlerden oluşan alanlar (kullanıcı adları, kodlar). |
-| `password` | Şifre | Kimlik doğrulama için tek yönlü tuzlanmış (salted hash) şifre saklama. |
-| `date_short` | Kısa Tarih | `YYYY-MM-DD` veya `YYYYMMDD` formatında tarih. |
-| `date_long` | Uzun Tarih | `YYYY-MM-DD HH:MM:SS` formatında zaman damgası. |
-| `html` | Zengin HTML | Çok satırlı HTML içeriği (Arama indeksinde etiketler otomatik temizlenir). |
-| `array` | Liste (Dizi) | İç içe Perl ARRAY referansı veya virgülle ayrılmış liste (`[ "a", "b" ]`). |
-| `hash` | Liste (Sözlük) | İç içe Perl HASH referansı (`{ k1 => "v1", k2 => "v2" }`). |
-| `binary` | İkili Veri | Ham paketlenmiş binary veri akışı. |
-| `base64` | Base64 | Base64 ile kodlanmış binary veri. |
-| `extend` | Harici Tablo | Aynı ID'yi paylaşan 1:1 dikey genişletme tablosu. |
-| `tables` | Birleşik Tablo | Çok tablolu kompozit ilişkiler ve agregasyon blokları. |
-| `loop` / `repeat` | Tekrarlayan Satırlar | Dinamik tekrarlayan alt satırlar (`repeat_start` ile birlikte kullanılır). |
+AmberDB motoru, serileştirme (`db_encode`/`db_decode`), indeksleme ve sıralama katmanlarında **8 temel çekirdek veri tipi** kullanır:
+
+| Veri Tipi (`type`) | Tanım | `enc_validate` (Yazma Anı) | `dec_validate` (Okuma Anı) | İndeks ve Sıralama Davranışı |
+| :--- | :--- | :--- | :--- | :--- |
+| **`auto_id`** | Otomatik artan ID (Blok 0) | ID format kontrolü ve sıralama | ID skaler dönüş | Birincil anahtar dizini (`.inx`) |
+| **`text`** | Standart UTF-8 Metin | UTF-8 kaçış / metin doğrulaması | Dize (`$val // ''`) | `.src` ters indeksinde aranır, `.str` sözlüğü |
+| **`num`** / **`number`** | Sayısal (Tamsayı / Ondalık / Boolean) | Sayısal doğrulama (`^[+-]?[0-9]+(?:\.[0-9]+)?$`), boşsa `0` | Sayı dönüşümü (`0 + $val`) | `.srt` sayısal (`<=>`) sıralama, `.fld` filtre |
+| **`ascii`** | Salt ASCII karakterli metin | `to_ascii` ile ASCII normalizasyonu | ASCII metin | `.slg` slug haritası, `.srt` ASCII sıralama |
+| **`date`** | Tarih ve Zaman | `auto_date` ise sistem tarihi atama | Tarih dizesi | `str2dateid` ile tarihsel kronolojik sıralama |
+| **`array`** / **`repeat`** | Dizi / Tekrarlayan Satırlar | ARRAY ref veya `[split /,/]` | Perl `ARRAY` ref (`[]`) | Çoklu değer eşleşmesi (`field_fetch` multi-value) |
+| **`hash`** | Sözlük / Nesne (HASH ref) | HASH ref kontrolü | Perl `HASH` ref (`{}`) | İç içe şemasız nesne saklama |
+| **`binary`** | İkili Veri / Base64 | Ham binary bayt veya Base64 | Ham / Base64 skaler | Doğrudan dosya depolaması |
+
+> [!NOTE]
+> **Sayı ve Boolean Yönetimi:** `num` (veya `number`) tipi hem pozitif (`150`, `+25`), negatif (`-50`, `-12.75`), ondalıklı sayıları hem de `0 / 1` boolean bayraklarını yönetir. HTML formlarında işaretlenmeyen (`checkbox`) alanlar veya boş bırakılan sayısal girdiler `enc_validate` ve `dec_validate` tarafından otomatik olarak **`0`** olarak güvenle işlenir.
 
 #### 9.7.3 Form Giriş Bileşenleri (`input`)
+
+UI ve yönetim paneli katmanında form elemanının nasıl görüntüleneceğini belirler:
 
 | Bileşen (`input`) | UI Elemanı | Açıklama |
 | :--- | :--- | :--- |
@@ -1085,7 +1251,7 @@ Aşağıdaki tablo, bir `.table` dosyasında kullanılabilecek tüm üst düzey 
 | `textarea` | Metin Alanı | Çok satırlı düz metin kutusu `<textarea>`. |
 | `summernote` | Summernote | Zengin WYSIWYG görsel HTML editörü. |
 | `select` | Açılır Menü | Tekli seçim kutusu `<select>`. |
-| `checkbox` | Onay Kutusu | Çoklu seçim onay kutuları `<input type="checkbox">`. |
+| `checkbox` | Onay Kutusu | Çoklu seçim onay kutuları `<input type="checkbox">` (Boolean için `type => "num"`). |
 | `radio` | Radyo Butonu | Tekli seçim radyo butonları `<input type="radio">`. |
 | `file` | Dosya Yükleme | Dosya veya görsel yükleme bileşeni `<input type="file">`. |
 | `hidden` | Gizli Alan | Gizli form elemanı `<input type="hidden">` (birincil ID için). |
@@ -1094,11 +1260,40 @@ Aşağıdaki tablo, bir `.table` dosyasında kullanılabilecek tüm üst düzey 
 | `number` | Sayı Kutusu | Sayısal giriş kutusu `<input type="number">`. |
 | `date` | Tarih Seçici | Etkileşimli takvim tarih seçici `<input type="date">`. |
 | `password` | Şifre Kutusu | Maskeli şifre giriş alanı `<input type="password">`. |
+| `repeat` / `repeats` | Tekrarlayan Tablo | Dinamik alt satır ekleme/çıkarma formu (Sipariş kalemleri, fatura satırları). |
 | `search_block` | Arama Kutusu | Arama destekli dinamik filtre giriş alanı. |
 | `selectbyfind` | Arayarak Seç | İlişkili tablodan dinamik arama ile seçim bileşeni. |
 | `selectbylist` | Listeden Seç | Listeden çoklu seçim bileşeni. |
 
-#### 9.7.4 Otomatik Doğrulama Kuralları (`valid`)
+#### 9.7.4 Tekrarlayan Alt Satır Blokları (`repeat_start` ve `repeat_ids`)
+
+AmberDB, ilişkisel alt tablolara (child table) ve `JOIN` sorgularına ihtiyaç duymadan, ana kayıt içerisine gömülü tekrarlayan dinamik alt satırları (örn. sipariş kalemleri, fatura ürün satırları) yatay düzende doğrudan destekler:
+
+- **Yatay Dizi Yapısı (`@record[15..$#record]`):** Tekrarlayan alt satırlar, sabit bloklardan sonra gelen her bir indeks (`$record[15]`, `$record[16]`, `$record[17]`, ...), bağımsız birer alt satır kaydıdır (örn: `[ 101, 'Kitap', 2, 150.00 ]`).
+- **`repeat_start`**: Tekrarlayan dinamik blokların başladığı blok indeksini belirtir (örn. `repeat_start => 15`). Şemada 15. blok şablon olarak tanımlanır ve 15 ve sonraki tüm alanlar bu şablonun tip kurallarıyla doğrulanır.
+- **`repeat_ids`**: Motor (`repeat_fields`), `@record[15..$#record]` dilimindeki tüm alt satırların birinci elemanını (sayısal ürün ID'si) otomatik olarak toplayıp virgülle birleştirir (`"101,102,103"`) ve `repeat_ids` (örn. 12) bloğuna yazar. Bu blok numarası `match_block` içine eklenerek alt kalem ID'leri üzerinden anında hızlı eşleşme ve arama sağlanır.
+
+```perl
+# Şema Tanımı Örneği (Sipariş Tablosu):
+repeat_ids   => 12,    # Alt ürün ID'lerinin toplanacağı indeks bloğu (Örn: "101,102,103")
+repeat_start => 15,    # 15. bloktan itibaren başlayan tekrarlayan satırlar
+blocks => [
+    { id => "id",         name => "Sipariş No",    type => "auto_id", input => "hidden" },  # 0
+    # ... sabit sipariş üst bilgileri (tarih, müşteri, adres vb.) ...
+    { id => "prod_ids",   name => "Ürün Listesi",  type => "text",    input => "hidden" },  # 12 (repeat_ids hedefi)
+    # ...
+    { id => "products",   name => "Ürün Kalemleri",type => "repeat",  input => "repeats" }, # 15 (repeat_start şablonu)
+];
+
+# Veri Satırı Yapısı (Kayıt Örneği):
+# $record[0]  = 1001;               # Sipariş ID (Sayısal anahtar)
+# $record[12] = "101,102,103";      # Motor tarafından repeat_fields ile otomatik üretilir
+# $record[15] = [ 101, 'Kitap', 2, '150.00' ]; # 1. Ürün
+# $record[16] = [ 102, 'Defter', 1, '85.00' ];  # 2. Ürün
+# $record[17] = [ 103, 'Kalem', 5, '20.00' ];   # 3. Ürün
+```
+
+#### 9.7.5 Otomatik Doğrulama Kuralları (`valid`)
 
 Birden fazla doğrulama kuralı noktalı virgül (`;`) ile zincirlenebilir (örn: `valid => "not_null;email"`):
 
@@ -1110,15 +1305,47 @@ Birden fazla doğrulama kuralı noktalı virgül (`;`) ile zincirlenebilir (örn
 | `email` | E-posta | Geçerli bir RFC e-posta deseni kontrolü yapar. |
 | `telefon` | Telefon | Geçerli sabit/GSM telefon numarası formatı kontrolü yapar. |
 | `ascii` | ASCII | Değerin yalnızca ASCII karakterler içermesini zorunlu kılar. |
+| `numeric` | Sayısal | Değerin geçerli bir sayı olmasını zorunlu kılar. |
 | `regex` | Regex | Özel tanımlı düzenli ifade desenine uyumu denetler. |
 | `auto_num` | Otomatik Sayı | Değeri otomatik artan sayı olarak üretir. |
 | `auto_pass` | Otomatik Şifre | Rastgele güvenli şifre üretir ve tuzlu hash olarak kaydeder. |
-| `auto_date` | Otomatik Tarih | O anki sistem tarih/zaman damgasını otomatik atar. |
+| `auto_date` | Otomatik Tarih | Değer boşsa o anki sistem tarih/zaman damgasını otomatik atar. |
 | `auto_str` | Hazır Metin | Önceden tanımlı şablon metnini otomatik uygular. |
 
-### 9.8 CRUD İşlemlerinde Şemanın Rolü
+#### 9.7.6 Benzersizlik ve Dize/ID Sözlük İndeksi (`.unq`)
 
-Bir kayıt `insert_id` veya `modify_id` ile kaydedilirken geçirilen dizi argümanları blok indeksleriyle birebir eşleşir. Motor bu tek işlemde şemaya bakarak veriyi `.db` ana dosyasına yazar, `.inx` listesini günceller ve ilgili tüm `.fld`, `.src`, `.slg` indekslerini otomatik türetir.
+AmberDB'de `.unq` (Unique) dizini, hem **tekillik güvencesini** hem de **ilişkisel metin $\leftrightarrow$ sayısal ID dönüşümünü** $O(1)$ disk arama hızında yöneten çift yönlü bir sözlük dosyasıdır (`${tablo}_${blok}.unq`):
+
+1. **İsimlendirme Netliği:** `.srt` (Sort / Sıralama) ile eski `.str` (String) karışıklığını önlemek için tekillik ve sözlük dosyaları `.unq` uzantısıyla tutulur.
+2. **$O(1)$ Tekillik Denetimi (`valid => "unique"`):**
+   - Bir alanda `valid => "unique"` tanımlandığında (örn. `username`, `email`, `barkod`), motor `insert_id` veya `modify_id` anında `.unq` dosyasından `s:$değer` anahtarını kontrol eder.
+   - Değer başka bir kayda aitse işlem anında durdurulur ve hata fırlatılır.
+   - Başarılı ekleme ve güncellemelerde çift yönlü anahtarlar (`s:$değer => $rid` ve `n:$rid => $değer`) kaydedilir. Kayıt silindiğinde bu anahtarlar `.unq` dosyasından temizlenir.
+3. **RDBM ve `match_block` Metin $\leftrightarrow$ Sayısal ID Dönüşümü:**
+   - İlişkisel bir alana (`rdbm => "catalog_brand;1"`) veya metin filtre bloğuna string geldiğinde (örn. `"Can Yayınları"`), motor hedef tablonun `catalog_brand_1.unq` dosyasından `s:Can Yayınları` anahtarını sorgular.
+   - Kayıtlıysa mevcut sayısal ID'yi alır; kayıtlı değilse yeni otomatik ID üreterek `.unq` sözlüğüne ve hedef tabloya ekler.
+   - Ters indeks dosyası (`.fld`) içerisine **daima saf sayısal ID** yazılarak indekslerin hafif ve hızlı taranması sağlanır.
+
+---
+
+### 9.8 CRUD İşlemlerinde Tip Doğrulama ve Dönüşümü (`enc_validate` & `dec_validate`)
+
+AmberDB, veri tutarlılığını sağlamak için iki yönlü şema doğrulama ve dönüşüm mekanizması uygular:
+
+1. **Yazma Anında Doğrulama (`enc_validate`):**
+   - `insert_id`, `modify_id`, `insert_list` ve `modify_list` metotlarında veri diske ve ikincil indekslere yazılmadan **hemen önce** çalışır.
+   - `num` alanları için sayısal temizlik yapılır, boşluklar ayıklanır ve boş değerlere `0` atanır.
+   - `ascii` alanlarında Türkçe ve özel karakterler `to_ascii` ile normalize edilir.
+   - `valid => "auto_date"` kuralı olan boş tarih alanlarına otomatik güncel sistem tarihi atanır.
+   - `array` alanlarında virgüllü dizeler otomatik `ARRAY` referansına (`[ ... ]`), `hash` alanları `HASH` referansına (`{ ... }`) dönüştürülür.
+
+2. **Okuma Anında Dönüşüm (`dec_validate`):**
+   - `read_id`, `read_list` ve `read_all` metotlarında diskten `db_decode` ile çözülen alanlar kullanıcıya dönmeden **hemen önce** çalışır.
+   - `num` alanları Perl'de `0 + $val` yapılarak sayısal skaler olarak döndürülür (`undef` uyarıları önlenir).
+   - `array` alanları boşsa `[]`, `hash` alanları `{}` olarak garanti edilir.
+
+3. **Simple Mod Uyumu:**
+   - Şemasız (`simple => 1`) modda veya `blocks` tanımlanmamış tablolarda `enc_validate` ve `dec_validate` hiçbir ek döngü çalıştırmadan veriyi doğrudan döndürür (sıfır ek maliyet).
 
 ### 9.9 Çalışma Zamanında Dinamik Şema Manipülasyonu (`table_attr`)
 
@@ -2081,4 +2308,4 @@ Dışarıdan bir kısıtlama gibi algılanabilecek, ancak AmberDB'yi geleneksel 
 
 ---
 
-*Bu doküman `AmberDB` v5.21.2 motorunun güncel kod mimarisi ve geliştirici pratikleri doğrultusunda hazırlanmıştır.*
+*Bu doküman `AmberDB` v5.22.0 motorunun güncel kod mimarisi ve geliştirici pratikleri doğrultusunda hazırlanmıştır.*

@@ -5,7 +5,7 @@ use warnings;
 use Carp qw(croak cluck);
 use File::Spec;
 
-our $VERSION = '5.21.2';
+our $VERSION = '5.22.0';
 my $CREATED = '2018-10-08';
 
 # Constructor
@@ -286,13 +286,13 @@ sub set_fields {
     exists( $table_info->{match_block} ) or return;
 
     foreach my $line ( @{ $table_info->{match_block} } ) {
-        my $str_path = "${table_path}_$line.str";
-        my $is_rdbm = $adb->is_rdbm_block( $table_info, $line );
+        my $unq_path = "${table_path}_$line.unq";
+        my ( $is_rdbm ) = $adb->rdbm_target( $table_info, $line );
 
-        my $str_opened = 0;
+        my $unq_opened = 0;
         if ( !$is_rdbm ) {
-            $adb->table_write($str_path);
-            $str_opened = 1;
+            $adb->table_write($unq_path);
+            $unq_opened = 1;
         }
 
         foreach my $record (@records) {
@@ -312,8 +312,8 @@ sub set_fields {
             }
         }
 
-        if ($str_opened) {
-            $adb->table_close($str_path);
+        if ($unq_opened) {
+            $adb->table_close($unq_path);
         }
     }
 
@@ -1391,9 +1391,9 @@ sub dump {
             }
         }
 
-        # D. Collect Authoritative String Dictionaries (_*.str)
-        my @str_files = glob "${tpath}_*.str";
-        foreach my $fpath (@str_files) {
+        # D. Collect Authoritative String Dictionaries (_*.unq)
+        my @unq_files = glob "${tpath}_*.unq";
+        foreach my $fpath (@unq_files) {
             next unless -e $fpath;
             open my $dfh, "<:raw", $fpath or next;
             local $/ = undef;
@@ -1717,7 +1717,7 @@ Builds inverted exact match index files (C<_${blk}.fld>) for fields specified in
 
 =head2 set_filters($table_id, [@records])
 
-Builds columnar facet forward index files (C<_${blk}.fac>) and bidirectional string dictionaries (C<_${blk}.str>) for blocks configured in schema C<facet_block>.
+Builds columnar facet forward index files (C<_${blk}.fac>) and bidirectional string dictionaries (C<_${blk}.unq>) for blocks configured in schema C<facet_block>.
 
   $tools->set_filters("catalog_product");
 

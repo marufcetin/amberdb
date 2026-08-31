@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 
-# t/amberdb/amberdb_facet_columnar.t - Tests for Columnar Facet, .str Dictionary Prefixes, and Dynamic Scoping (base_ids)
+# t/amberdb/amberdb_facet_columnar.t - Tests for Columnar Facet, .unq Dictionary Prefixes, and Dynamic Scoping (base_ids)
 
 use 5.016000;
 use strict;
@@ -32,7 +32,7 @@ $adb->table_attr( 'catalog_product', {
 } );
 
 # ---------------------------------------------------------------------------
-subtest '1. .str dictionary prefix architecture (s: and n:)' => sub {
+subtest '1. .unq dictionary prefix architecture (s: and n:)' => sub {
     plan tests => 6;
 
     my $table_path = $adb->table_path('catalog_product');
@@ -45,12 +45,12 @@ subtest '1. .str dictionary prefix architecture (s: and n:)' => sub {
     ok( $elek_id =~ /^\d+$/, "ID is numeric" );
 
     # Check forward key s:Elektronik
-    my $str_file = "${table_path}_1.str";
-    my ($stored_id) = $adb->index_get( $str_file, "s:Elektronik", 'raw' );
+    my $unq_file = "${table_path}_1.unq";
+    my ($stored_id) = $adb->index_get( $unq_file, "s:Elektronik", 'raw' );
     is( $stored_id, $elek_id, "s:Elektronik maps to numeric ID $elek_id" );
 
     # Check reverse key n:$elek_id
-    my ($stored_name) = $adb->index_get( $str_file, "n:$elek_id", 'raw' );
+    my ($stored_name) = $adb->index_get( $unq_file, "n:$elek_id", 'raw' );
     is( $stored_name, 'Elektronik', "n:$elek_id maps back to 'Elektronik'" );
 
     # Test reading mode (read mode)

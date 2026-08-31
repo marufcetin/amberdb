@@ -6,7 +6,7 @@ use Carp qw(croak cluck);
 use Fcntl qw(:flock);
 use IO::Handle;
 
-our $VERSION = '5.21.2';
+our $VERSION = '5.22.0';
 
 # Journal field separator — ASCII Record Separator (0x1E).
 # Tab cannot be used because raw DB values contain literal tabs.
@@ -73,6 +73,10 @@ sub transact_start {
     $self->transact_recover();
 
     my $txn_dir = $self->path('txn_dir') || ( ( $self->path('dbase_dir') || "." ) . "/txn" );
+    unless ( -d $txn_dir ) {
+        $self->transact_error( "transaction", "Transaction directory does not exist: $txn_dir" );
+        return;
+    }
 
     our $TXN_SEQ;
     $TXN_SEQ = 0 unless defined $TXN_SEQ;
@@ -467,7 +471,7 @@ sub _txn_raw_restore {
 sub transact_recover {
     my ( $self ) = @_;
 
-    my $txn_dir = ( $self->path('dbase_dir') || "." ) . "/txn";
+    my $txn_dir = $self->path('txn_dir') || ( ( $self->path('dbase_dir') || "." ) . "/txn" );
     return unless -d $txn_dir;
 
     my @orphans = glob "$txn_dir/txn_*.txn";

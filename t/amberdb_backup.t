@@ -97,7 +97,7 @@ subtest "2. Native Database Archive Dump (.amberdb)" => sub {
     $adb->insert_id( 'catalog_products', undef, 'Desk Lamp', 'Furniture', 350 );
     $adb->insert_id( 'catalog_products', undef, 'Office Chair', 'Furniture', 1200 );
 
-    # Create a string dictionary (.str) for block 2
+    # Create a unique/dictionary index (.unq) for block 2
     $adb->insert_strs( 'catalog_products', 2, [ 10, 'Electronics' ], [ 20, 'Furniture' ] );
 
     $adb->insert_id( 'orders', undef, 'Alice', 15350 );
@@ -136,7 +136,7 @@ subtest "3. Archive Package Inspection & Integrity" => sub {
     ok( grep { $_ eq 'schema/catalog.dbase' } @files, "Archive contains schema/catalog.dbase" );
     ok( grep { $_ eq 'schema/catalog_products.table' } @files, "Archive contains schema/catalog_products.table" );
     ok( grep { $_ eq 'tables/catalog_products.db' } @files, "Archive contains tables/catalog_products.db" );
-    ok( grep { $_ eq 'tables/catalog_products_2.str' } @files, "Archive contains tables/catalog_products_2.str" );
+    ok( grep { $_ eq 'tables/catalog_products_2.unq' } @files, "Archive contains tables/catalog_products_2.unq" );
 
     # Verify that derived index files are NOT packaged in the archive
     my @inx_files = grep { /\.inx$|\.src$|\.fac$|\.fld$|\.srt$/ } @files;
@@ -178,10 +178,10 @@ subtest "4. Database Restore and Index Reconstruction" => sub {
     is( $res->{ok}, 1, "Result ok is 1" );
     is( $res->{reindexed}, 1, "Reindexing completed successfully" );
 
-    # 4.4 Verify .dbase, .table, and .str files were restored
+    # 4.4 Verify .dbase, .table, and .unq files were restored
     my $stage_schema_dir = $stage_adb->path('schema_dir') || "$stagedir/schema";
     ok( -e "$stage_schema_dir/catalog.dbase", "catalog.dbase restored to schema directory" );
-    ok( -e "$stagedir/tables/catalog_products_2.str", "catalog_products_2.str restored to tables directory" );
+    ok( -e "$stagedir/tables/catalog_products_2.unq", "catalog_products_2.unq restored to tables directory" );
 
     my $restored_dbase = $stage_adb->dbase_info('catalog');
     ok( defined $restored_dbase, "catalog dbase_info loaded" );

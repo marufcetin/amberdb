@@ -1,6 +1,6 @@
 # AmberDB — Developer Guide and Comprehensive Documentation
 
-> **Version:** 5.21.2 · **Initial Design:** 2005 · **Last Updated:** 2026  
+> **Version:** 5.22.0 · **Initial Design:** 2005 · **Last Updated:** 2026  
 > **Namespace:** `AmberDB`  
 > **Built-in Modules:** `Base`, `Index`, `Transact`, `Cache`, `Array`, `String`, `Date`, `Locale`, `Tools`
 
@@ -541,47 +541,214 @@ print "Product 5001 viewed $views times.\n";
 
 ## 5. Simple Mode and Direct Schemaless Access (Simple Mode)
 
-In AmberDB, **Simple Mode (`simple => 1`)** represents the entirely schemaless direct file access operational mode where no `.table` schema metadata exists or is loaded. Records can store rich, nested data structures directly, including array and hash references (ARRAY/HASH).
+In AmberDB, **Simple Mode (`simple => 1`)** represents the entirely schemaless, lightweight, direct flat-file NoSQL operational mode where no `.table` or `.dbase` schema files and no secondary binary indexes (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, `.slg`, `.aut`, `.del`) are generated or maintained.
 
-In Simple Mode, secondary binary indexing (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, `.slg`, `.aut`, `.del`) is completely disabled. Data is written to and read from a single database file, with searches, matching, and sorting evaluated via sequential streaming scans (`recs_scan`). This eliminates index generation and maintenance overhead while preserving full feature parity for `keys_only`, `sort`, `start`/`limit`, and language collation.
+In Simple Mode, records can store rich, nested data structures directly, including array and hash references (`ARRAY`/`HASH`). The index generation and maintenance overhead is completely eliminated; single-key read and write operations (`read_id`, `insert_id`) execute at maximum hardware speed ($O(1)$).
 
-### Core Rules of Simple Mode:
+---
 
-1. **Directory and Path Resolution Behavior:**  
-   In standard mode, although the root directory is `dbstore`, tables are located and created under `dbstore/tables/`. In `simple` mode, the engine does not look for a `tables/` subdirectory; it creates and reads database files directly inside the root of `dbase_dir` (`$dbase_dir/<table_name>.<ext>`). Consequently, if you want to open tables created under standard mode with `simple` mode, you must explicitly point `dbase_dir` to **`dbstore/tables`**:
+### 5.1 Initializing and Activating Simple Mode
+
+Simple Mode can be activated in four distinct ways:
+
+1. **Constructor Initialization via `cfg`:**
    ```perl
-   # Accessing standard database tables in simple mode:
    my $adb = AmberDB->new(
-       path => { dbase_dir => "/var/data/myapp/dbstore/tables" },
+       path => { dbase_dir => "/var/data/sessions" },
        cfg  => { simple    => 1 },
    );
    ```
 
-2. **Switching to Simple Mode via Configuration (`simple => 1`):**  
-   Simple Mode can be activated either upon object instantiation or dynamically at runtime:
+2. **Quick Shortcut Helper via `AmberDB::Tools` (`db_simple`):**
    ```perl
-   # 1. Activation during constructor initialization via cfg:
-   my $adb = AmberDB->new(
-       path => { dbase_dir => "/var/data/myapp/dbstore/tables" },
-       cfg  => { simple    => 1 },
-   );
+   use AmberDB::Tools;
+   my $tools = AmberDB::Tools->new();
+   my $adb   = $tools->db_simple("/var/data/sessions");
+   ```
 
-   # 2. Dynamic runtime switch via config():
+3. **Dynamic Runtime Switch via `config`:**
+   ```perl
    $adb->config( simple => 1 );
    ```
 
-3. **Automatic Simple Mode Trigger via Custom Extensions (`db_ext`):**  
-   AmberDB defaults to the `.db` extension. If `db_ext` is configured with any extension other than `"db"` (e.g. `"dat"`, `"txt"`, `"idx"`, or `""`), the engine **automatically switches into `simple` mode**:
+4. **Automatic Simple Mode Trigger via Custom Extensions (`db_ext`):**  
+   AmberDB defaults to `.db`. If `db_ext` is configured with any extension other than `"db"` (e.g. `"dat"`, `"cache"`, `"session"`), the engine **automatically switches into Simple Mode**:
    ```perl
-   # 1. Automatic simple mode on constructor initialization:
    my $adb = AmberDB->new(
-       path => { dbase_dir => "/var/data/files" },
-       cfg  => { db_ext    => "dat" },  # 'dat' automatically activates simple => 1
+       path => { dbase_dir => "/var/data/cache" },
+       cfg  => { db_ext    => "dat" },  # Automatically activates simple => 1
    );
-
-   # 2. Dynamic runtime extension configuration via config():
-   $adb->config( db_ext => "dat" );     # Automatically enforces simple => 1
    ```
+
+> **Directory Layout Note:** In standard mode, tables reside under `$dbase_dir/tables/`. In Simple Mode, the engine creates and reads database files directly inside the root of `dbase_dir` (`$dbase_dir/<table_name>.<ext>`). To open existing standard-mode tables in simple mode, set `dbase_dir` directly to `dbstore/tables`.
+
+---
+
+### 5.2 Flexible & Arbitrary Record IDs (No 8-Byte Limit)
+
+The standard mode **8-byte limit** and **strict ASCII/numeric format constraints** are relaxed in Simple Mode (`id_check` accepts arbitrary scalar keys and applies safe key sanitization):
+
+- **Emails and Special Characters:** `user@example.com`, `api:v1:user:1005`
+- **Long Tokens and UUIDs:** `sess_99999_abcdef_1234567890_extra_long_token` (up to 255 bytes)
+- **Hyphenated Codes and Prefixes:** `TR-2026-08-31-INVOICE-001`
+- **Unicode / Multilingual Keys:** `prod_özellik_kırmızı_xl`
+- **Safe Key Sanitization:** Automatically trims leading/trailing whitespace (`trim_space`); strictly rejects NUL bytes (`\0`), control characters (`\r`, `\n`, `\t`), and references (ARRAY/HASH refs) to protect Berkeley DB C layers and CSV backup integrity.
+- **Auto-ID Flexibility:** Custom IDs are not constrained to be strictly greater than `lastid`.
+
+```perl
+$adb->insert_id( 'sessions', 'user@example.com', 'Active', 'Chrome', time() );
+my @sess = $adb->read_id( 'sessions', 'user@example.com' );
+```
+
+---
+
+### 5.3 Data Operations (CRUD & Bulk)
+
+All standard CRUD and bulk methods operate seamlessly in Simple Mode:
+
+```perl
+# Single Insert, Read, Modify, Delete
+$adb->insert_id( 'orders', 'order_101', 'Pending', '150.00' );
+my @order = $adb->read_id( 'orders', 'order_101' );
+$adb->modify_id( 'orders', 'order_101', 'Completed', '175.50' );
+$adb->delete_id( 'orders', 'order_101' );
+my $exists = $adb->exist_id( 'orders', 'order_101' );
+
+# Bulk Operations (Bulk CRUD)
+my $ins_status = $adb->insert_list( 'orders', [ 'o_1', 'A', 50 ], [ 'o_2', 'B', 75 ] );
+my $mod_status = $adb->modify_list( 'orders', [ 'o_1', 'A+', 55 ] );
+my $del_status = $adb->delete_list( 'orders', 'o_1', 'o_2' );
+```
+
+---
+
+### 5.4 Unindexed Direct Queries & Filtering
+
+Since secondary index files are omitted, queries stream sequentially across the raw database file (`recs_scan`):
+
+1. **Table Scan and Pagination (`read_all`):**
+   ```perl
+   # Paged scan (start => 0, limit => 10)
+   my ( $total_count, @records ) = $adb->read_all( 'items', 0, 10 );
+   
+   # Retrieve keys only
+   my @keys = $adb->read_all( 'items', keys_only => 1 );
+   
+   # In-memory sorting (Block 3 ASC: -3, DESC: 3)
+   my @sorted = $adb->read_all( 'items', sort => -3, keys_only => 1 );
+   ```
+
+2. **Field Value Fetching (`field_fetch`):**
+   ```perl
+   # Block 2: Category = 'Apparel'
+   my @apparel = $adb->field_fetch( 'catalog', 2, 'Apparel' );
+   
+   # Multi-value matching (Block 3: Color in ['Blue', 'Black'])
+   my ( $cnt, @results ) = $adb->field_fetch( 'catalog', 3, [ 'Blue', 'Black' ], 0, 20, sort => -4 );
+   ```
+
+3. **Full-Text Word Search (`search_table`):**
+   ```perl
+   # Collation-aware word search (AND logic)
+   my @articles = $adb->search_table( 'articles', 'market economy' );
+   
+   # Combined search with field filter (Block 2: Category = 'Finance')
+   my ( $cnt, @filtered ) = $adb->search_table( 'articles', 'rates', 0, 10, filter => [ 2, 'Finance' ] );
+   ```
+
+---
+
+### 5.5 ACID Transactions
+
+In Simple Mode, `transact_start`, `transact_commit`, and `transact_rollback` provide full ACID transaction safety. When a `rollback` is triggered, raw modifications in the `.db` file are restored:
+
+```perl
+$adb->transact_start();
+eval {
+    $adb->insert_id( 'sessions', 'token_123', 'TempData', time() );
+    die "Critical error" if $failed;
+    $adb->transact_end();
+};
+if ($@) {
+    $adb->transact_rollback(); # token_123 is cleanly reverted from the .db file
+}
+```
+
+---
+
+### 5.6 Continuous Daily Backup Logs (`recs_back`)
+
+Because text backup is schema-independent, **daily audit and continuous recovery streaming (`recs_back`)** is fully active in Simple Mode.
+
+In accordance with Simple Mode's flat directory structure, no separate `backup/` or `YYYY/` subfolder is created. Every `insert_id` (`add`), `modify_id` (`edit`), and `delete_id` (`del`) operation is logged directly to **`$dbase_dir/YYYY-MM-DD.csv`** in the same directory alongside database tables:
+
+```text
+2026-08-31 14:30:00    admin    add     sessions    sess_token_99999    Active\x1f192.168.1.50
+2026-08-31 14:31:15    admin    edit    sessions    sess_token_99999    Closed\x1f192.168.1.50
+2026-08-31 14:32:00    admin    del     sessions    sess_token_99999    
+```
+
+- To disable backup logging for volatile caches, configure `cfg => { no_backup => 1 }` or `$adb->config(no_backup => 1)`.
+- Custom backup targets can be set via `path => { backup_dir => "/custom/backup/path" }`.
+
+---
+
+### 5.7 RAM-Disk Architecture & Caching in Simple Mode
+
+In standard mode, AmberDB manages RAM-disk staging via schema `use_cache => 2` rules.
+
+**In Simple Mode, RAM-disk utilization is direct and flexible:**  
+Since Simple Mode requires no schema files, creating a high-performance in-memory cache or session store simply involves binding a second AmberDB instance directly to the RAM-disk / tmpfs mount:
+
+```perl
+# 1. Persistent disk instance (For durable storage)
+my $db_disk = AmberDB->new(
+    path => { dbase_dir => "/var/data/app/dbstore/tables" },
+    cfg  => { simple => 1 },
+);
+
+# 2. RAM-Disk instance (Zero-latency in-memory cache/session store)
+# (Linux: /dev/shm or tmpfs, Windows: ImDisk / RamDisk volume)
+my $db_ramdisk = AmberDB->new(
+    path => { dbase_dir => "/dev/shm/amber_cache" },
+    cfg  => { simple => 1, no_backup => 1 }, # Disable backup for pure transient cache
+);
+
+# In-memory reads and writes at nanosecond speed:
+$db_ramdisk->insert_id( "sessions", $session_token, $user_id, time() );
+my @sess = $db_ramdisk->read_id( "sessions", $session_token );
+```
+
+Benefits of this dual-instance design:
+- In-memory tables run without disk I/O bottlenecks.
+- Persistent tables remain safely on durable physical storage.
+- Dynamic temporary tables can be spun up in seconds without schema files.
+
+---
+
+### 5.8 Feature Comparison: Standard vs. Simple Mode
+
+| Feature / Subsystem | Standard Mode (`simple => 0`) | Simple Mode (`simple => 1`) |
+| :--- | :---: | :---: |
+| **Schema Files (`.table`, `.dbase`)** | Required & Enforced | None / Schemaless |
+| **Arbitrary & Long Record IDs** | 8-Byte / Strict ASCII Limits | **Completely Unrestricted** |
+| **Direct CRUD (`insert_id`, `read_id`)** | $O(1)$ | **$O(1)$ (Max Throughput)** |
+| **Bulk Operations (`insert_list`, etc.)** | Supported | Supported |
+| **Table Scan (`read_all`)** | Binary `.inx` or Direct | Direct Streaming Scan |
+| **Pagination (`limit`) & `keys_only`** | Supported | Supported |
+| **In-Memory Sorting (`sort => 2`)** | Supported | Supported |
+| **Field Matching (`field_fetch`)** | Indexed `.fld` $O(1)$ | Sequential Streaming Scan |
+| **Word Search (`search_table`)** | Inverted Index `.src` | Collation Streaming Scan |
+| **ACID Transactions (`transact_*`)** | Supported (Index Undo) | **Supported (Raw Undo)** |
+| **Continuous Daily Backup (`recs_back`)** | Supported (`backup/YYYY/`) | **Supported (Same Directory `YYYY-MM-DD.csv`)** |
+| **Secondary Indexes (`.inx, .fld, .src, .srt, .fac`)** | Generated & Maintained | **Disabled (Zero Index Cost)** |
+| **URL Slug Mapping (`.slg`)** | Auto Generated | Disabled |
+| **Audit Logs (`.aut`) & Archive (`.del`)** | Schema-Driven | Disabled |
+| **Directory Hierarchy** | `tables/`, `schema/`, `backup/`, etc. | **Flat Single Directory (`$dbase_dir/<table_name>.db`)** |
+| **Secondary Indexes (`.inx, .fld, .src, .srt, .fac`)** | Generated & Maintained | **Disabled (Zero Index Cost)** |
+| **URL Slug Mapping (`.slg`)** | Auto Generated | Disabled |
+| **Audit Logs (`.aut`) & Archive (`.del`)** | Schema-Driven | Disabled |
+| **Directory Hierarchy** | `tables/`, `schema/`, `backup/`, etc. | **Flat Single Directory (`$dbase_dir/<table_name>.db`)** |
 
 ---
 
@@ -1014,7 +1181,7 @@ The following reference table details all top-level parameters supported in `.ta
 
 ---
 
-### 9.7 Block (Field) Definitions, Supported Field Types, UI Inputs, and Validation Reference
+### 9.7 Block (Field) Definitions, 8 Core Field Types, UI Inputs, and Validation Reference
 
 Each block definition inside the `blocks` array supports the following attributes:
 
@@ -1024,36 +1191,34 @@ Each block definition inside the `blocks` array supports the following attribute
 | :--- | :--- | :--- | :--- |
 | `id` | `string` | Programmatic field identifier | `id => "email"` |
 | `name` | `string` | Display label for UI forms and table headers | `name => "Email Address"` |
-| `type` | `string` | Data storage and indexing type | `type => "text"` |
+| `type` | `string` | Data storage, type validation, and indexing type | `type => "text"` |
 | `input` | `string` | HTML/UI Form input component type | `input => "select"` |
 | `valid` | `string` | Automated data validation rule | `valid => "not_null;email"` |
 | `option` | `string` | Enumerated choice options (`value:label` pairs) | `option => "1:Active,0:Inactive"` |
 | `rdbm` | `string / HASH`| Foreign table lookup mapping (`foreign_table;display_block`) | `rdbm => "catalog_category;2"` |
 | `extend` | `HASH` | 1:1 vertical table extension | `extend => { table => "catalog_price", join => "id" }` |
 
-#### 9.7.2 Supported Field Types (`type`)
+#### 9.7.2 Supported 8 Core Field Types (`type`)
 
-| Type (`type`) | Label | Description & Engine Behavior |
-| :--- | :--- | :--- |
-| `auto_id` | Auto ID | Auto-incrementing 64-bit primary key (Mandatory for Block 0). |
-| `text` | Text | Standard scalar UTF-8 string data. |
-| `tinytext` | Short Text | Lightweight strings, flags, or status tags. |
-| `number` | Number | Numeric integers or floats (compared numerically in `.srt` sorting). |
-| `email` | Email | RFC-compliant email address fields. |
-| `ascii` | ASCII Text | Restricted ASCII-only character strings (usernames, codes). |
-| `password` | Password | One-way salted hash storage for authentication. |
-| `date_short` | Short Date | `YYYY-MM-DD` or `YYYYMMDD` date format string. |
-| `date_long` | Long Date | `YYYY-MM-DD HH:MM:SS` timestamp string. |
-| `html` | Rich HTML | Multi-line HTML content (tags stripped automatically during search indexing). |
-| `array` | List (Array) | Nested Perl array reference or comma-delimited strings (`[ "a", "b" ]`). |
-| `hash` | List (Hash) | Nested Perl hash reference (`{ k1 => "v1", k2 => "v2" }`). |
-| `binary` | Binary | Raw packed binary byte stream. |
-| `base64` | Base64 | Base64-encoded binary payload. |
-| `extend` | External Table | 1:1 vertical extension table sharing the exact same ID. |
-| `tables` | Combined Tables | Multi-table composite relations and aggregation blocks. |
-| `loop` / `repeat` | Repeating Sub-Rows | Dynamic repeating child rows (used in conjunction with `repeat_start`). |
+AmberDB uses **8 unified core storage types** across serialization (`db_encode`/`db_decode`), indexing, and sorting layers:
+
+| Field Type (`type`) | Description | `enc_validate` (Write Phase) | `dec_validate` (Read Phase) | Indexing & Sorting Behavior |
+| :--- | :--- | :--- | :--- | :--- |
+| **`auto_id`** | Auto-increment ID (Block 0) | Primary key format validation | ID scalar return | Primary key index (`.inx`) |
+| **`text`** | Standard UTF-8 Text | UTF-8 string validation | String scalar (`$val // ''`) | Inverted index (`.src`), dictionary (`.str`) |
+| **`num`** / **`number`** | Numeric (Integer / Float / Boolean) | Numeric validation (`^[+-]?[0-9]+(?:\.[0-9]+)?$`), defaults empty to `0` | Numeric scalar cast (`0 + $val`) | Numerical sorting (`<=>`) in `.srt`, `.fld` filters |
+| **`ascii`** | ASCII-Only Text | ASCII normalization via `to_ascii` | Clean ASCII text | URL slug map (`.slg`), ASCII `.srt` sorting |
+| **`date`** | Date and Time | Assigns system date if `auto_date` is active | Date string | Chronological sort in `.srt` via `str2dateid` |
+| **`array`** / **`repeat`** | List / Repeating Rows | ARRAY ref or `[split /,/]` | Perl `ARRAY` ref (`[]`) | Multi-value matching (`field_fetch`) |
+| **`hash`** | Dictionary / Object (HASH ref) | HASH ref validation | Perl `HASH` ref (`{}`) | Schemaless nested key-value store |
+| **`binary`** | Binary Payload / Base64 | Raw bytes or Base64 string | Raw binary scalar | Direct flat file storage |
+
+> [!NOTE]
+> **Numeric and Boolean Management:** The `num` (or `number`) type handles positive (`150`, `+25`), negative (`-50`, `-12.75`), floating-point values, and `0 / 1` boolean flags. Unchecked HTML checkboxes or empty numerical inputs are automatically normalized to **`0`** by `enc_validate` and `dec_validate`.
 
 #### 9.7.3 UI Form Input Components (`input`)
+
+Determines how the field is rendered in UI forms and administration panels:
 
 | Component (`input`) | UI Element | Description |
 | :--- | :--- | :--- |
@@ -1061,7 +1226,7 @@ Each block definition inside the `blocks` array supports the following attribute
 | `textarea` | Textarea | Multi-line plain text box `<textarea>`. |
 | `summernote` | Summernote | Rich WYSIWYG HTML visual editor for articles/descriptions. |
 | `select` | Dropdown Select | Single-selection dropdown list `<select>`. |
-| `checkbox` | Checkbox | Multi-selection checkboxes `<input type="checkbox">`. |
+| `checkbox` | Checkbox | Multi-selection checkboxes `<input type="checkbox">` (Use `type => "num"` for Boolean). |
 | `radio` | Radio Buttons | Single-selection radio options `<input type="radio">`. |
 | `file` | File Upload | Attachment or image file uploader `<input type="file">`. |
 | `hidden` | Hidden Field | Hidden form element `<input type="hidden">` (for primary IDs). |
@@ -1070,11 +1235,40 @@ Each block definition inside the `blocks` array supports the following attribute
 | `number` | Number Input | Numeric stepper `<input type="number">`. |
 | `date` | Date Picker | Interactive date calendar selector `<input type="date">`. |
 | `password` | Password Field | Obscured security input `<input type="password">`. |
+| `repeat` / `repeats` | Repeater Table | Dynamic sub-row table input with add/remove row buttons (Order items, invoice lines). |
 | `search_block` | Search Box | Search-assisted dynamic filter input. |
 | `selectbyfind` | SelectByFind | Foreign relation selector populated via dynamic search. |
 | `selectbylist` | SelectByList | Multi-item picker component from list. |
 
-#### 9.7.4 Automated Validation Rules (`valid`)
+#### 9.7.4 Repeating Child Row Blocks (`repeat_start` and `repeat_ids`)
+
+AmberDB natively supports dynamic repeating child rows (e.g. order line items, invoice product rows) horizontally across the flat parent record without relational child tables or `JOIN` operations:
+
+- **Horizontal Row Slicing (`@record[15..$#record]`):** Repeating items, each field index beyond fixed blocks (`$record[15]`, `$record[16]`, `$record[17]`, ...) holds an individual repeating record item (e.g. `[ 101, 'Book', 2, '150.00' ]`).
+- **`repeat_start`**: Specifies the starting block index where dynamic repeating rows begin (e.g. `repeat_start => 15`). In the schema, block 15 acts as the prototype template for all succeeding indices.
+- **`repeat_ids`**: The engine (`repeat_fields`) scans `@record[15..$#record]`, extracts the first element (numeric item ID) of each repeating row, joins them with commas (`"101,102,103"`), and stores the string in `repeat_ids` (e.g. block 12). Including this index in `match_block` enables instant lookup on child item IDs.
+
+```perl
+# Example Schema Definition (Order Table):
+repeat_ids   => 12,    # Aggregated item IDs block (e.g. "101,102,103")
+repeat_start => 15,    # Repeating child rows start at block 15
+blocks => [
+    { id => "id",         name => "Order ID",      type => "auto_id", input => "hidden" },  # 0
+    # ... fixed header fields (date, customer, address) ...
+    { id => "prod_ids",   name => "Product IDs",   type => "text",    input => "hidden" },  # 12 (repeat_ids target)
+    # ...
+    { id => "products",   name => "Order Items",   type => "repeat",  input => "repeats" }, # 15 (repeat_start template)
+];
+
+# In-Memory Record Layout:
+# $record[0]  = 1001;               # Order Primary ID (Numeric primary key)
+# $record[12] = "101,102,103";      # Auto-populated by engine via repeat_fields
+# $record[15] = [ 101, 'Book', 2, '150.00' ];  # 1st Product Row
+# $record[16] = [ 102, 'Pad', 1, '85.00' ];    # 2nd Product Row
+# $record[17] = [ 103, 'Pen', 5, '20.00' ];    # 3rd Product Row
+```
+
+#### 9.7.5 Automated Validation Rules (`valid`)
 
 Multiple validation rules can be chained using semicolon (`;`) (e.g. `valid => "not_null;email"`):
 
@@ -1086,15 +1280,49 @@ Multiple validation rules can be chained using semicolon (`;`) (e.g. `valid => "
 | `email` | Email Format | Validates RFC-compliant email pattern. |
 | `telefon` | Phone Number | Validates national/international phone format. |
 | `ascii` | ASCII Only | Restricts character set strictly to ASCII [0-127]. |
+| `numeric` | Numeric Only | Enforces that value is a valid numeric scalar. |
 | `regex` | Regular Expression | Tests against custom regex pattern rule. |
 | `auto_num` | Auto Number | Automatically assigns an incrementing numerical sequence. |
 | `auto_pass` | Auto Password | Generates random secure password and stores salted hash. |
 | `auto_date` | Auto Date | Automatically populates with current system timestamp. |
 | `auto_str` | Template String | Pre-populates predefined template text. |
 
+#### 9.7.6 Unique Constraints & Bidirectional String/ID Dictionary (`.unq`)
+
+AmberDB uses `.unq` (Unique & Dictionary) index files (`${table}_${block}.unq`) to manage both **uniqueness validation** and **relational string $\leftrightarrow$ numeric ID translation** with $O(1)$ disk lookup speed:
+
+1. **Extension Clarity:** Renamed from legacy `.str` to `.unq` to eliminate any visual ambiguity with `.srt` (Sort indexes).
+2. **$O(1)$ Duplicate Enforcement (`valid => "unique"`):**
+   - When `valid => "unique"` is specified (e.g. `username`, `email`, `barcode`), `insert_id` and `modify_id` perform an instantaneous $O(1)$ check on `s:$value` in `${table}_${blk}.unq`.
+   - If another record holds this value, the transaction is rejected with a unique constraint error.
+   - Successfully written records store bidirectional mappings (`s:$value => $rid` and `n:$rid => $value`), which are automatically cleaned up when records are deleted.
+3. **RDBM & `match_block` String-to-ID Auto-Resolution:**
+   - When a string name is passed to a relational field (e.g. `"Can Publishing"` for `rdbm => "catalog_brand;1"`), AmberDB queries `s:Can Publishing` in `catalog_brand_1.unq`.
+   - If present, it resolves to the existing numeric ID; if absent in `write` mode, it auto-registers the entry in `.unq` and the foreign table with an incremented ID.
+   - The inverted filter index (`.fld`) always stores **pure numeric IDs**, ensuring lightweight index storage and fast integer comparisons.
+
 ---
 
-### 9.8 How Schemas Coordinate with CRUD Operations
+### 9.8 Schema-Driven Type Validation & Casting (`enc_validate` & `dec_validate`)
+
+AmberDB enforces two-way data integrity between Perl runtime types and database storage:
+
+1. **Write Phase Validation (`enc_validate`):**
+   - Invoked in `insert_id`, `modify_id`, `insert_list`, and `modify_list` right before records are written to disk and secondary indexes.
+   - Cleans numeric fields, trims whitespace, and converts empty/invalid inputs to `0`.
+   - Normalizes non-ASCII characters for `ascii` fields using `to_ascii`.
+   - Fills empty `valid => "auto_date"` fields with the current ISO date.
+   - Converts comma-separated strings into Perl `ARRAY` refs for `array` fields and enforces `HASH` refs for `hash` fields.
+
+2. **Read Phase Casting (`dec_validate`):**
+   - Invoked in `read_id`, `read_list`, and `read_all` immediately after `db_decode`.
+   - Casts numeric fields to numeric scalars (`0 + $val`), eliminating uninitialized value warnings in mathematical expressions.
+   - Guarantees `array` fields return `[]` and `hash` fields return `{}` even when empty.
+
+3. **Simple Mode Performance:**
+   - In Schemaless (`simple => 1`) mode or for tables without block definitions, `enc_validate` and `dec_validate` return input data immediately with zero CPU overhead.
+
+### 9.8.1 How Schemas Coordinate with CRUD Operations
 
 When a record is added or modified via `insert_id` or `modify_id`, the passed array elements map directly to block indices:
 
@@ -1122,11 +1350,12 @@ my $new_id = $adb->insert_id("catalog_product", 0, @product);
 ```
 
 In a single atomic pass, the engine consults the schema and:
-1. Writes the raw record to `catalog_product.db`.
-2. Updates `catalog_product.inx` primary index (since `record_index => 1`).
-3. Indexes Category (5), Brand (12), and Status (1) in `catalog_product_*.fld` match indexes (since `match_block => [1, 2, 3, 11]`).
-4. Extracts, tokenizes, normalizes, and indexes Title, Subtitle, Description, and Barcode in `catalog_product_*.src` inverted search indexes.
-5. Generates the URL slug `sony-wireless-headphones` into `catalog_product.slg` (since `slug_block => [2, 4]`).
+1. Validates and normalizes field types via `enc_validate`.
+2. Writes the raw record to `catalog_product.db`.
+3. Updates `catalog_product.inx` primary index (since `record_index => 1`).
+4. Indexes Category (5), Brand (12), and Status (1) in `catalog_product_*.fld` match indexes (since `match_block => [1, 2, 3, 11]`).
+5. Extracts, tokenizes, normalizes, and indexes Title, Subtitle, Description, and Barcode in `catalog_product_*.src` inverted search indexes.
+6. Generates the URL slug `sony-wireless-headphones` into `catalog_product.slg` (since `slug_block => [2, 4]`).
 
 ---
 
@@ -2083,5 +2312,5 @@ The following architectural choices might appear restrictive from an ad-hoc SQL 
 
 ---
 
-*This documentation is maintained for `AmberDB` v5.21.2 and aligns with active codebase architecture and developer practices.*
+*This documentation is maintained for `AmberDB` v5.22.0 and aligns with active codebase architecture and developer practices.*
 

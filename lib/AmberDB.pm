@@ -22,7 +22,7 @@ use parent qw(
 our $DB_HASH;
 our $hash_info;
 
-our $VERSION = '5.21.2';
+our $VERSION = '5.22.0';
 my $CREATED = '2005-01-28';
 
 
@@ -186,8 +186,8 @@ sub insert_id {
     }
 
     # check record id.
-    my $has_manual_id = ( defined $rid && $rid ne '' );
-    $rid = $self->table_autoid( $tableid, $rid );
+    my $has_manual_id = ( defined $rid && $rid ne '' && $rid ne '0' );
+    $rid = $self->table_autoid( $tableid, ( $has_manual_id ? $rid : undef ) );
     unless ($rid) {
         $self->table_close($file_path);
         return;
@@ -214,6 +214,18 @@ sub insert_id {
         $self->{_txn}->{locks}->{"${tableid}_${rid}"} = 1;
     }
 
+    # Validate and normalize field values according to schema blocks
+    @record = $self->enc_validate( $tableid, \@record );
+
+    # Validate unique constraints across blocks
+    my ( $unq_ok, $unq_err ) = $self->unique_check( $table_path, $table_info, $rid, \@record );
+    if ( !$unq_ok ) {
+        $self->table_close($file_path);
+        unless ($is_txn) { $self->flock_close( $tableid, $rid ); }
+        $self->transact_error( $tableid, $unq_err // "Unique constraint violation" );
+        return;
+    }
+
     # add new record and close table.
     $self->recs_put( $file_path, [ $rid, @record ] );
 
@@ -226,10 +238,13 @@ sub insert_id {
     $self->table_close($file_path);
     unless ($is_txn) { $self->flock_close( $tableid, $rid ); }
 
-    $self->config('simple') and return $rid;
-
-    # for index actions
+    # for index actions and backup
     @record = ( $rid, @record );
+
+    # text backup record.
+    $self->recs_back( "add", $tableid, \@record );
+
+    $self->config('simple') and return $rid;
 
     # update .inx / .jinx and secondary indexes
     my @batch = ( \@record );
@@ -245,15 +260,13 @@ sub insert_id {
         $self->facet_add( $table_path, $table_info, \@batch );
     }
     $self->sort_add( $table_path, $table_info, \@batch );
+    $self->unique_add( $table_path, $table_info, \@batch );
 
     # to create the url rewrite link
     $self->set_slug( $tableid, \@record, 1 );
 
     # authorization
     $self->auth_write( $tableid, $table_path, "add", $rid );
-
-    # text backup record.
-    $self->recs_back( "add", $tableid, \@record );
 
     return $rid;
 }
@@ -295,7 +308,16 @@ sub insert_list {
     foreach my $record (@records) {
         $record->[0] = $self->table_autoid( $tableid, $record->[0] );
         next unless $record->[0];
-        my $rid = $record->[0];
+        my ( $rid, @fields ) = @$record;
+        @fields = $self->enc_validate( $tableid, \@fields );
+
+        my ( $unq_ok, $unq_err ) = $self->unique_check( $table_path, $table_info, $rid, \@fields );
+        if ( !$unq_ok ) {
+            cluck "[DB_UNIQUE] $unq_err\n";
+            next;
+        }
+
+        $record = [ $rid, @fields ];
         $record = [ $self->repeat_fields( $table_info, @$record ) ];
 
         if ( $self->recs_get( $file_path, $rid )->{$rid} ) {
@@ -348,6 +370,8 @@ sub insert_list {
         $self->sort_add( $table_path, $table_info, \@batch );
     }
 
+    $self->unique_add( $table_path, $table_info, \@batch );
+
     # Per-record operations: slug, auth, backup
     foreach my $rec (@batch) {
         $self->set_slug( $tableid, $rec, 1 );
@@ -370,8 +394,9 @@ sub modify_id {
 
     # Perform the checks.
     #$rid ||= shift @record;
-    $rid or do { $self->transact_error( $tableid // "system", "No ID defined" ); return; };
     $tableid or do { $self->transact_error( "system", "No table defined" ); return; };
+    $rid = $self->id_check( $tableid, $rid );
+    $rid or do { $self->transact_error( $tableid, "No valid ID defined" ); return; };
 
     my $table_info = $self->table_info($tableid);
     (undef, @record) = $self->repeat_fields( $table_info, $rid, @record );
@@ -407,6 +432,18 @@ sub modify_id {
         }
     }
 
+    # Validate and normalize field values according to schema blocks
+    @record = $self->enc_validate( $tableid, \@record );
+
+    # Validate unique constraints across blocks
+    my ( $unq_ok, $unq_err ) = $self->unique_check( $table_path, $table_info, $rid, \@record );
+    if ( !$unq_ok ) {
+        $self->table_close($file_path);
+        unless ($is_txn) { $self->flock_close( $tableid, $rid ); }
+        $self->transact_error( $tableid, $unq_err // "Unique constraint violation" );
+        return;
+    }
+
     # Perform the record operation and close the file.
     $self->recs_put( $file_path, [ $rid, @record ] );
 
@@ -422,10 +459,15 @@ sub modify_id {
     # Cache invalidate
     $self->cache_delete($tableid, $rid);
 
+    my @new_rec = ( $rid, @record );
+
+    # text backup record.
+    $self->recs_back( "edit", $tableid, \@new_rec )
+      or cluck "[DB_TIE] Backup error (edit). $tableid\n";
+
     $self->config('simple') and return $rid;
 
     my @old_rec = ( $rid, $self->db_decode($old_record) );
-    my @new_rec = ( $rid, @record );
 
     # Index update (search, match, facet, sort)
     my @pairs = ( [ $rid, \@old_rec, \@new_rec ] );
@@ -438,6 +480,7 @@ sub modify_id {
         $self->facet_modify( $table_path, $table_info, \@pairs );
     }
     $self->sort_modify( $table_path, $table_info, \@pairs );
+    $self->unique_modify( $table_path, $table_info, \@pairs );
 
     # Update URL slug
     if ( $table_info->{slug_block} ) {
@@ -454,10 +497,6 @@ sub modify_id {
 
     # Authorization
     $self->auth_write( $tableid, $table_path, "edit", $rid );
-
-    # text backup record.
-    $self->recs_back( "edit", $tableid, \@new_rec )
-      or cluck "[DB_TIE] Backup error (edit). $tableid\n";
 
     return 1;
 }
@@ -498,6 +537,15 @@ sub modify_list {
     foreach my $record (@records) {
         my ( $rid, @data ) = @$record;
         $rid or next;
+        @data   = $self->enc_validate( $tableid, \@data );
+
+        my ( $unq_ok, $unq_err ) = $self->unique_check( $table_path, $table_info, $rid, \@data );
+        if ( !$unq_ok ) {
+            cluck "[DB_UNIQUE] $unq_err\n";
+            next;
+        }
+
+        $record = [ $rid, @data ];
         $record = [ $self->repeat_fields( $table_info, @$record ) ];
 
         my $old_raw = $self->recs_get( $file_path, $rid )->{$rid};
@@ -530,6 +578,7 @@ sub modify_list {
         $self->facet_modify( $table_path, $table_info, \@pairs );
     }
     $self->sort_modify( $table_path, $table_info, \@pairs );
+    $self->unique_modify( $table_path, $table_info, \@pairs );
 
     # Per-record operations: slug, auth, backup
     foreach my $pair (@pairs) {
@@ -565,10 +614,9 @@ sub delete_id {
       and do { $self->transact_error( $tableid, "No authority to write to the file" ); return; };
 
     # If no ID, return error.
-    $tableid
-      or do { $self->transact_error( "system", "Not found table" ); return; };
-    $rid
-      or do { $self->transact_error( $tableid, "Not found record ID" ); return; };
+    $tableid or do { $self->transact_error( "system", "Not found table" ); return; };
+    $rid = $self->id_check( $tableid, $rid );
+    $rid or do { $self->transact_error( $tableid, "Not found record ID" ); return; };
 
     my $table_info = $self->table_info($tableid);
 
@@ -613,6 +661,10 @@ sub delete_id {
     # Cache invalidate
     $self->cache_delete($tableid, $rid);
 
+    # Text backup record
+    $self->recs_back( "del", $tableid, [ $rid, "" ] )
+      or cluck "[DB_TIE] Backup error (del). $tableid\n";
+
     $self->config('simple') and return $rid;
 
     # Move to archive if keep_deleted enabled
@@ -639,6 +691,7 @@ sub delete_id {
         $self->facet_del( $table_path, $table_info, \@batch );
     }
     $self->sort_del( $table_path, $table_info, \@batch );
+    $self->unique_del( $table_path, $table_info, \@batch );
 
     # Clear URL slug
     if ( $table_info->{slug_block} ) {
@@ -658,10 +711,6 @@ sub delete_id {
 
     # Authorization
     $self->auth_write( $tableid, $table_path, "del", $rid );
-
-    # Text backup record
-    $self->recs_back( "del", $tableid, [ $rid, "" ] )
-      or cluck "[DB_TIE] Backup error (del). $tableid\n";
 
     return 1;
 }
@@ -759,6 +808,8 @@ sub delete_list {
         $self->sort_del( $table_path, $table_info, \@batch );
     }
 
+    $self->unique_del( $table_path, $table_info, \@batch );
+
     # Per-record operations: slug, auth, backup
     foreach my $rec (@batch) {
         my $rid = $rec->[0];
@@ -815,7 +866,7 @@ sub insert_links {
 }
 
 # my $ok = $adb->insert_strs($tableid, $blk, [str1a, str1b], [str2a, str2b]);
-# Updates synonym mapping tables (.str); appends new values to existing list.
+# Updates synonym mapping tables (.unq); appends new values to existing list.
 # ------------------------------------------------
 sub insert_strs {
 
@@ -830,20 +881,20 @@ sub insert_strs {
       and do { cluck "[DB_TIE] No authority to write to the file.\n"; return; };
 
     my $table_path = $self->table_path($tableid);
-    my $strs_path  = "${table_path}_$blk.str";
+    my $unq_path   = "${table_path}_$blk.unq";
 
-    $self->table_write($strs_path)
-      or do { cluck "[DB_TIE] $strs_path can't open. insert_links.\n"; return; };
+    $self->table_write($unq_path)
+      or do { cluck "[DB_TIE] $unq_path can't open. insert_links.\n"; return; };
 
     foreach my $rec (@records) {
         ( $rec->[0] and $rec->[1] ) or next;
-        my $value  = $self->recs_get( $strs_path, $rec->[0] );
+        my $value  = $self->recs_get( $unq_path, $rec->[0] );
         my %values = map { $_ => 1 } $self->db_decode( $value->{ $rec->[0] } );
         $values{ $rec->[1] } = 1;
-        $self->recs_put( $strs_path, [ $rec->[0], keys %values ] );
+        $self->recs_put( $unq_path, [ $rec->[0], keys %values ] );
     }
 
-    $self->table_close($strs_path);
+    $self->table_close($unq_path);
 
     return 1;
 }
@@ -910,7 +961,8 @@ sub read_id {
     my ( $self, $tableid, $rid ) = @_;
 
     $tableid or return;
-    $rid     or return;
+    $rid = $self->id_check( $tableid, $rid );
+    return unless defined $rid && $rid ne '';
 
     my $table_info = $self->table_info($tableid);
     my $use_cache  = $table_info->{use_cache} // 0;
@@ -918,7 +970,10 @@ sub read_id {
     # Read from cache (Hard Cache: use_cache == 2)
     if ( $use_cache == 2 ) {
         my @cached = $self->cache_read($tableid, $rid);
-        return ( $rid, @cached ) if @cached;
+        if (@cached) {
+            my @val_fields = $self->dec_validate( $tableid, \@cached );
+            return ( $rid, @val_fields );
+        }
     }
 
     # Resolve table path and read record
@@ -969,6 +1024,12 @@ sub read_id {
 
     # Load access logs
     $self->auth_read( $tableid, $table_path, $rid );
+
+    if ( @fields > 1 ) {
+        my $id_val     = $fields[0];
+        my @val_fields = $self->dec_validate( $tableid, [ @fields[ 1 .. $#fields ] ] );
+        @fields        = ( $id_val, @val_fields );
+    }
 
     return @fields;
 }
@@ -1136,9 +1197,10 @@ sub read_all {
     unless ($keys_only) {
         my $recs_data = $self->recs_get( $scan_path, @records );
         foreach my $rec (@records) {
-            my $val = $recs_data ? $recs_data->{$rec} : undef;
-            my @fields = ( $rec, defined $val ? $self->db_decode($val) : () );
-            $rec = [@fields];
+            my $val     = $recs_data ? $recs_data->{$rec} : undef;
+            my @decoded = defined $val ? $self->db_decode($val) : ();
+            my @clean   = $self->dec_validate( $tableid, \@decoded );
+            $rec = [ $rec, @clean ];
         }
     }
     $self->table_close($scan_path);
@@ -1182,7 +1244,8 @@ sub read_list {
 
             my @cached_rec = $self->cache_read( $tableid, $rid );
             if (@cached_rec) {
-                $rec_by_id{$rid} = \@cached_rec;
+                my @val_fields = $self->dec_validate( $tableid, \@cached_rec );
+                $rec_by_id{$rid} = [ $rid, @val_fields ];
             }
             else {
                 push @miss_ids, $rid;
@@ -1220,10 +1283,12 @@ sub read_list {
                 my $value   = $recs_data->{$rid} // ( defined $key_esc ? $recs_data->{$key_esc} : undef );
                 next unless defined $value && $value ne '';
 
-                my $rec = [ $rid, $self->db_decode($value) ];
+                my @decoded = $self->db_decode($value);
+                @decoded    = $self->dec_validate( $tableid, \@decoded );
+                my $rec     = [ $rid, @decoded ];
                 $rec_by_id{$rid} = $rec;
                 if ( $use_cache == 2 ) {
-                    $self->cache_write( $tableid, $rid, @$rec );
+                    $self->cache_write( $tableid, $rid, @decoded );
                 }
             }
         }
@@ -1366,7 +1431,7 @@ sub read_field {
     my $table_info = $self->table_info($tableid);
     my $table_path = $self->table_path($tableid);
     my $field_path = "${table_path}_$field.fld";
-    my $str_path   = "${table_path}_$field.str";
+    my $unq_path   = "${table_path}_$field.unq";
 
     return unless -e $field_path;
 
@@ -1377,9 +1442,9 @@ sub read_field {
             my ( undef, @ids ) = $self->index_get( $field_path, $val );
             push @all, @ids;
         }
-        if ( !@all && -e $str_path ) {
+        if ( !@all && -e $unq_path ) {
             for my $val ( $self->field_to_list($values) ) {
-                my ($c) = $self->index_get( $str_path, $val, 'raw' );
+                my ($c) = $self->index_get( $unq_path, "s:$val", 'raw' );
                 if ( defined $c && $c ne '' ) {
                     my ( undef, @ids ) = $self->index_get( $field_path, $c );
                     push @all, @ids;
@@ -1476,7 +1541,7 @@ sub field_fetch {
     if ( -e "${table_path}_$block.fld" ) {
 
         my $field_path = "${table_path}_$block.fld";
-        my $str_path   = "${table_path}_$block.str";
+        my $unq_path   = "${table_path}_$block.unq";
 
         # Read .fld file for all fetch values using index_get
         foreach my $fld_val (@fld_fetch_ids) {
@@ -1484,11 +1549,11 @@ sub field_fetch {
             push @all, @ids;
         }
 
-        # .str dictionary lookup fallback - batch resolve missing values
-        if ( !@all && -e $str_path ) {
+        # .unq dictionary lookup fallback - batch resolve missing values
+        if ( !@all && -e $unq_path ) {
             my @raw_terms = $self->field_to_list($fetch);
             for my $fld_val (@raw_terms) {
-                my ($c) = $self->index_get( $str_path, $fld_val, 'raw' );
+                my ($c) = $self->index_get( $unq_path, "s:$fld_val", 'raw' );
                 if ( defined $c && $c ne '' ) {
                     my ( undef, @ids ) = $self->index_get( $field_path, $c );
                     push @all, @ids;
@@ -1634,7 +1699,7 @@ sub field_keyvals {
     my $table_path = $self->table_path($tableid);
     my $file_path  = "$table_path.$self->{db_ext}";
     my $field_path = "${table_path}_$field.fld";
-    my $str_path   = "${table_path}_$field.str";
+    my $unq_path   = "${table_path}_$field.unq";
 
     # read from index file and get keys.
     my %records;
@@ -1646,8 +1711,8 @@ sub field_keyvals {
                 my ( undef, @ids ) = $self->index_get( $field_path, $qid );
                 push @all_ids, @ids;
             }
-            if ( !@all_ids && -e $str_path ) {
-                my ($c) = $self->index_get( $str_path, $keyid, 'raw' );
+            if ( !@all_ids && -e $unq_path ) {
+                my ($c) = $self->index_get( $unq_path, "s:$keyid", 'raw' );
                 if ( defined $c && $c ne '' ) {
                     my ( undef, @ids ) = $self->index_get( $field_path, $c );
                     push @all_ids, @ids;
@@ -1756,9 +1821,9 @@ sub field_filter {
             for my $val (@values) {
                 my ( undef, @ids ) = $self->index_get( $field_files{$blk}, $val );
                 if ( !@ids ) {
-                    my $str_path = "${table_path}_${blk}.str";
-                    if ( -e $str_path ) {
-                        my ($c) = $self->index_get( $str_path, $val, 'raw' );
+                    my $unq_path = "${table_path}_${blk}.unq";
+                    if ( -e $unq_path ) {
+                        my ($c) = $self->index_get( $unq_path, "s:$val", 'raw' );
                         if ( defined $c && $c ne '' ) {
                             ( undef, @ids ) = $self->index_get( $field_files{$blk}, $c );
                         }
@@ -2098,6 +2163,8 @@ sub search_table {
         @records = $self->read_list( $tableid, [@records] );
 
     }
+
+    # simple mod
     else {
 
         my %tmp = $self->get_words( $string, "read", $tableid );
@@ -2114,7 +2181,7 @@ sub search_table {
                             my %string = $self->get_words( $value, "write", $tableid );
                             foreach my $str (@tmp) {
                                 if ( $string{$str} ) {
-                                    push( @records, [ $key, $self->db_decode($value) ] );
+                                    push( @records, [ $key, $self->dec_validate( $tableid, [ $self->db_decode($value) ] ) ] );
                                     return;
                                 }
                             }
@@ -2133,7 +2200,7 @@ sub search_table {
                                     return;
                                 }
                             }
-                            push( @records, [ $key, $self->db_decode($value) ] );
+                            push( @records, [ $key, $self->dec_validate( $tableid, [ $self->db_decode($value) ] ) ] );
                         }
                     );
                 }
@@ -2376,10 +2443,18 @@ sub id_check {
     my ( $self, $tableid, $rid ) = @_;
 
     return unless defined $rid && $rid ne '';
+    return if ref $rid;
 
-    # In simple mode: no ID format/length restrictions
-    return $rid if $self->config('simple');
+    # 1. Simple Mode: Safe Key Sanitization (no binary control chars, max 255 bytes)
+    if ( $self->config('simple') ) {
+        return if $rid =~ /[\x00-\x1f\x7f]/;
+        $rid = $self->trim_space($rid);
+        return unless defined $rid && length($rid) > 0;
+        return if length($rid) > 255;
+        return $rid;
+    }
 
+    # 2. Standard Schema Mode (id_type: ascii or num)
     my $table_info = $tableid ? $self->table_info($tableid) : {};
     my $id_type    = $table_info->{id_type} // 'num';
 
@@ -2389,16 +2464,16 @@ sub id_check {
         $rid =~ s/\.+/./g;
         $rid =~ s/\-+/-/g;
         $rid =~ s/\_+/_/g;
-        if ( !$self->config('simple') && length($rid) > 8 ) {
+        if ( length($rid) > 8 ) {
             cluck "[DB_TIE] ASCII ID '$rid' exceeds maximum allowed 8 bytes limit ($tableid).\n";
             return;
         }
         return ( length($rid) > 0 ) ? $rid : undef;
     }
     else {
-        # Numeric ID
+        # Numeric ID (Strict positive integer)
         $rid =~ s/\D//g;
-        return ( length($rid) > 0 ) ? $rid : undef;
+        return ( length($rid) > 0 && $rid > 0 ) ? $rid : undef;
     }
 }
 
@@ -2413,10 +2488,8 @@ sub table_autoid {
     my $table_info = $self->table_info($tableid);
     my $id_type    = $table_info->{id_type} // 'num';
 
-    if ( defined $aid && $aid ne '' ) {
-        if ( $self->config('id_check') ) {
-            $aid = $self->id_check( $tableid, $aid );
-        }
+    if ( defined $aid && $aid ne '' && $aid ne '0' ) {
+        $aid = $self->id_check( $tableid, $aid );
         return unless defined $aid && $aid ne '';
 
         # Numeric ID must be greater than current lastid unless simple mode
@@ -2618,15 +2691,12 @@ sub flock_open {
     $tableid or return;
     $mode ||= "write";
 
-    my $lock_dir = ( length( $self->path('lock_dir') // '' ) )
-      ? $self->path('lock_dir')
+    my $lock_dir = ( length( $self->path('lock_cache') // '' ) )
+      ? $self->path('lock_cache')
       : ( $self->can('cache_lock_dir') ? $self->cache_lock_dir() : ( $self->path('dbase_dir') || "." ) . "/cache/lock" );
     unless ( -d $lock_dir ) {
-        require File::Path;
-        File::Path::make_path($lock_dir) or do {
-            cluck "[DB_LOCK] Cannot create lock dir: $lock_dir\n";
-            return;
-        };
+        cluck "[DB_LOCK] Lock dir does not exist: $lock_dir\n";
+        return;
     }
 
     my $safe_tid = $self->can('sanitize_table') ? $self->sanitize_table($tableid) : $tableid;
@@ -2971,7 +3041,7 @@ sub index_get {
         if (   $k eq 'count'
             || $k eq 'lastid'
             || $table_path =~ /\.slg$/
-            || $table_path =~ /\.str$/
+            || $table_path =~ /\.unq$/
             || ( $table_path =~ /\.srt$/ && $k ne 'keys' )
             || ( $table_path =~ /\.fac$/ && $k ne 'active' ) )
         {
@@ -2993,7 +3063,7 @@ sub index_get {
 
 # Writes a single index entry using direct DB_File C object methods ($db->put).
 # Automatically encodes ARRAY ref payload with bin_encode.
-# Raw/scalar index files (such as .slg, .str, count, lastid) bypass binary encoding.
+# Raw/scalar index files (such as .slg, .unq, count, lastid) bypass binary encoding.
 # Usage:
 #   $adb->index_put($table_path, $key, \@ids);         # auto-detected as 'ids'
 #   $adb->index_put($table_path, $key, \@ids, 'ids');  # explicit 'ids'
@@ -3017,8 +3087,8 @@ sub index_put {
 
     $type = lc( $type // '' );
 
-    # Raw scalar files (.slg URL slugs, .str strings, scalar values) bypass binary encoding
-    if ( $type eq 'raw' || $type eq 'scalar' || $type eq 'text' || $table_path =~ /\.slg$/ || $table_path =~ /\.str$/ ) {
+    # Raw scalar files (.slg URL slugs, .unq unique/dictionary, scalar values) bypass binary encoding
+    if ( $type eq 'raw' || $type eq 'scalar' || $type eq 'text' || $table_path =~ /\.slg$/ || $table_path =~ /\.unq$/ ) {
         $val = $self->utf_encode($val);
     }
     elsif ( $type eq 'ids' || $type eq 'bin' || ref($val) eq 'ARRAY' ) {
@@ -3092,13 +3162,18 @@ sub recs_back {
     my $date_iso = "$year-$month-$day";
     my $time_str = ( $self->{date} && $self->{date}->{str} ) ? $self->{date}->{str} : "$date_iso " . sprintf( "%02d:%02d:%02d", (localtime)[2], (localtime)[1], (localtime)[0] );
 
-    my $year_dir = "$backup_base/$year";
-    unless ( -d $year_dir ) {
-        require File::Path;
-        File::Path::make_path($year_dir);
+    my $backup_file;
+    if ( $self->config('simple') ) {
+        $backup_file = "$backup_base/$date_iso.csv";
     }
-
-    my $backup_file = "$year_dir/$date_iso.csv";
+    else {
+        my $year_dir = "$backup_base/$year";
+        unless ( -d $year_dir ) {
+            require File::Path;
+            File::Path::make_path($year_dir);
+        }
+        $backup_file = "$year_dir/$date_iso.csv";
+    }
 
     open my $YAZ, ">>:encoding(UTF-8)", $backup_file
       or do {
@@ -3459,6 +3534,54 @@ all base records and indexes across all affected tables are restored to their ex
 B<Note / Limitations:> Bulk/list operations (C<insert_list>, C<modify_list>, C<delete_list>) do not support the transact operation. There is a fundamental reason for this. Junk operations are designed for loading, editing, or deleting a list containing records of the same type. Records in a list do not hierarchically affect each other. For example, when entering 1000 product records in bulk via XML, if one or more of them cannot be saved due to incorrect formatting, it does not cause a problem for the other records.
 
 Furthermore, if the user truly wants to perform an operation on the list using transact, they can put it in a loop and use the individual C<insert_id>, C<modify_id>, C<delete_id> operations.
+
+=head1 SIMPLE MODE (SCHEMA-LESS FLAT STORE)
+
+In addition to its schema-driven enterprise mode, AmberDB provides a lightweight B<Simple Mode> (C<simple =E<gt> 1>). In Simple Mode, the database operates as an ultra-fast, schemaless NoSQL key-value/document store directly on flat C<.db> (or custom extension) files without secondary binary indexes (C<.inx>, C<.src>, C<.fld>, C<.fac>, C<.srt>, C<.slg>, C<.aut>, C<.del>).
+
+=head2 Key Characteristics of Simple Mode
+
+=over 4
+
+=item * B<Arbitrary & Flexible Keys:> The 8-byte ASCII limit and numeric constraints are bypassed. Keys can be emails (C<user@example.com>), UUIDs, long tokens, or Unicode/multilingual strings.
+
+=item * B<Flat Directory Structure:> All tables reside directly under C<dbase_dir> (e.g. C<$dbase_dir/table.db>). No C<tables/> or C<schema/> subfolders are required.
+
+=item * B<Rich Nested Structures:> Records can store nested array and hash references (ARRAY/HASH) directly.
+
+=item * B<Continuous Daily Backup Logs:> Text-based continuous daily WAL/CSV logs (C<recs_back>) automatically record all C<add>, C<edit>, and C<del> operations directly into C<$dbase_dir/YYYY-MM-DD.csv> alongside database tables (can be silenced with C<no_backup =E<gt> 1>).
+
+=item * B<ACID Transactions:> Full multi-table transaction support with atomic rollback (restoring raw records in the C<.db> file).
+
+=item * B<Streaming Queries & Sorting:> Methods like C<read_all>, C<field_fetch>, and C<search_table> operate via direct sequential streaming scans with full support for pagination (C<start>/C<limit>), C<keys_only>, and in-memory sorting.
+
+=item * B<Zero-Latency RAM-Disk Caching:> Simple mode instances can be initialized directly on RAM-disk / tmpfs mount points (e.g. C</dev/shm/cache>) to provide nanosecond-speed transient session and cache stores.
+
+=back
+
+=head2 Simple Mode Example
+
+  # 1. Initialize simple mode
+  my $adb = AmberDB->new(
+      path => { dbase_dir => "/var/data/sessions" },
+      cfg  => { simple    => 1, user => 'admin' },
+  );
+
+  # 2. Insert with arbitrary key
+  $adb->insert_id('sessions', 'user@example.com', 'Active', 'Chrome', time());
+
+  # 3. Read record (O(1))
+  my @sess = $adb->read_id('sessions', 'user@example.com');
+
+  # 4. Search and filter without indexes
+  my ($count, @active) = $adb->field_fetch('sessions', 1, 'Active', 0, 10);
+
+  # 5. Dual-instance RAM-Disk architecture
+  my $ram_db = AmberDB->new(
+      path => { dbase_dir => "/dev/shm/amber_cache" },
+      cfg  => { simple    => 1, no_backup => 1 },
+  );
+  $ram_db->insert_id('tokens', $token_id, $user_id, time());
 
 =head1 METHODS
 

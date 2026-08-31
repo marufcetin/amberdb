@@ -55,14 +55,14 @@ subtest '1. Unindexed Schema & Verification of No Index Files on Disk' => sub {
 
     my $table_path = $adb->table_path($tbl);
     my $fld4_path  = "${table_path}_4.fld";
-    my $str4_path  = "${table_path}_4.str";
+    my $unq4_path  = "${table_path}_4.unq";
     my $fld6_path  = "${table_path}_6.fld";
     my $db_file    = "$table_path.db";
 
-    # Confirm raw .db file exists, but NO .fld or .str files exist on disk
+    # Confirm raw .db file exists, but NO .fld or .unq files exist on disk
     ok( -e $db_file, "Data file ${tbl}.db created on disk" );
     ok( !-e $fld4_path, "No .fld index file created for Category block" );
-    ok( !-e $str4_path, "No .str dictionary file created for Category block" );
+    ok( !-e $unq4_path, "No .unq dictionary file created for Category block" );
     ok( !-e $fld6_path, "No .fld index file created for Brand block" );
 
     # Initial scan check

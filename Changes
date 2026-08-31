@@ -1,6 +1,17 @@
 Revision history for AmberDB
 
-5.21.2  2026-08-31
+5.22.0  2026-08-31
+        - [REFACTOR] Codebase Cleanliness:
+          * Removed redundant single-line helper is_rdbm_block() in favor of direct rdbm_target() calls across AmberDB::Index, AmberDB::Index::Junk, and AmberDB::Tools.
+        - [RDBM & INTEGRITY] Hardened Foreign Table Auto-Registration in field_to_list():
+          * Replaced decoupled table_autoid() and recs_put() sequence with atomic insert_id($target_table, 0, @record) to prevent ID race conditions.
+          * Corrected foreign record column alignment so auto-registered values are accurately placed at block index $target_blk rather than hardcoded column 1.
+          * Guaranteed that foreign table primary indexes (.inx) and secondary indexes (.unq, .src, .fac, .slg) are fully and consistently constructed upon auto-registration.
+        - [SECURITY & VALIDATION] Universal ID Verification and Simple Mode Key Sanitization:
+          * Eliminated opt-in config('id_check') requirement: every schema table now strictly enforces its schema id_type (positive integers for num, safe 8-byte chars for ascii).
+          * Enforced scalar ID requirement: any reference (ARRAY ref, HASH ref, etc.) passed as a record ID is strictly rejected across all modes.
+          * Introduced Safe Key Sanitization in Simple Mode: automatically trims leading/trailing whitespace, strictly rejects NUL bytes (\0) and control characters (\r, \n, \t, \x00-\x1F, \x7F) that corrupt Berkeley DB or CSV backups, and enforces a maximum key length of 255 bytes.
+          * Integrated unconditional id_check across table_autoid(), read_id(), modify_id(), delete_id(), and exist_id().
         - [REFACTOR] Terminology and Codebase Refactoring: SEO -> Slug:
           * Completely replaced SEO terminology with Slug across the entire codebase, test suite, and documentation without legacy aliases:
             - Renamed methods: set_seourl() -> set_slug(), get_seourl() -> get_slug().

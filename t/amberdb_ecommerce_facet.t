@@ -5,6 +5,7 @@
 use 5.016000;
 use strict;
 use warnings;
+use utf8;
 use Test::More;
 use File::Temp qw(tempdir);
 use lib 'lib';
@@ -67,7 +68,7 @@ $adb->table_attr( 'catalog_product', {
         { blk => 1, id => 'cat',    label => 'Kategori',  table => 'catalog_category',    name_idx => 1 },
         { blk => 2, id => 'pub',    label => 'Yayınevi',  table => 'catalog_producer',    name_idx => 1 },
         { blk => 3, id => 'auth',   label => 'Yazar',     table => 'catalog_contributor', name_idx => 1 },
-        { blk => 5, id => 'format', label => 'Kapak',     rdbm  => '' }, # .str based
+        { blk => 5, id => 'format', label => 'Kapak',     rdbm  => '' }, # .unq based
     ],
     blocks       => [
         { id => "id",     type => "auto_id" },                                  # 0
@@ -163,7 +164,7 @@ subtest '2. Single Dimension Filtering & Cross-Filter Counts (Disjunctive Faceti
 subtest '3. Multi-Dimension Filtering (Category + Publisher + Format)' => sub {
     plan tests => 4;
 
-    # Filter: Category = Roman (1) AND Publisher = Can Yayınları (10) AND Format = Ciltli (in .str format is resolved)
+    # Filter: Category = Roman (1) AND Publisher = Can Yayınları (10) AND Format = Ciltli (in .unq format is resolved)
     my $menu = $adb->facet_menu(
         'catalog_product',
         { 1 => 1, 2 => 10, 5 => 'Ciltli' },

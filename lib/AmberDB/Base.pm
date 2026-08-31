@@ -6,7 +6,7 @@ use Encode qw(is_utf8 encode decode);
 use Carp qw(croak cluck);
 use parent qw(AmberDB::Locale AmberDB::Array);
 
-our $VERSION = '5.21.2';
+our $VERSION = '5.22.0';
 my $CREATED = '2014-12-20';
 
 # ------------------------------------------------
@@ -65,6 +65,8 @@ sub db_encode {
 sub db_decode {
     my ( $self, $record ) = @_;
     return unless defined $record && length $record;
+
+    $record = $self->utf_decode($record);
 
     # drop line endings: chomp
     $record =~ s/\R$//;
@@ -228,6 +230,200 @@ sub get_words {
     }
 
     return %words;
+}
+
+# Normalizes and validates field values according to schema block definitions prior to encoding/writing.
+# Usage:
+#   my @clean_fields = $adb->enc_validate($tableid, \@fields, $has_id);
+# ------------------------------------------------
+sub enc_validate {
+    my ( $self, $tableid, $fields_ref, $has_id ) = @_;
+
+    return wantarray ? () : [] unless defined $fields_ref;
+    my @fields = ( ref($fields_ref) eq 'ARRAY' ) ? @$fields_ref : ($fields_ref);
+    return wantarray ? @fields : \@fields unless @fields;
+
+    # Bypass in simple mode or when no tableid is given
+    return wantarray ? @fields : \@fields
+        if $self->config('simple') || !defined $tableid || $tableid eq '';
+
+    my $table_info = $self->table_info($tableid);
+    return wantarray ? @fields : \@fields
+        unless $table_info && ref($table_info->{blocks}) eq 'ARRAY' && @{ $table_info->{blocks} };
+
+    my @blocks = @{ $table_info->{blocks} };
+    my @cleaned;
+
+    for ( my $i = 0 ; $i < @fields ; $i++ ) {
+        my $blk_idx = $has_id ? $i : ( $i + 1 );
+        my $blk     = $blocks[$blk_idx];
+        if ( !$blk && $table_info->{repeat_start} && $blk_idx >= $table_info->{repeat_start} ) {
+            $blk = $blocks[ $table_info->{repeat_start} ] // $blocks[-1];
+        }
+        my $val     = $fields[$i];
+
+        if ( $blk && ref($blk) eq 'HASH' ) {
+            my $type  = lc( $blk->{type}  // 'text' );
+            my $valid = lc( $blk->{valid} // '' );
+
+            # 1. Type: number / num (integer, float, negative support)
+            if ( $type eq 'num' || $type eq 'number' || $type eq 'numeric' || $type eq 'int' || $type eq 'float' || $type eq 'decimal' ) {
+                if ( defined $val && length("$val") ) {
+                    ( my $trimmed = "$val" ) =~ s/^\s+|\s+$//g;
+                    if ( $trimmed =~ /^[+-]?[0-9]+(?:\.[0-9]+)?$/ ) {
+                        $val = 0 + $trimmed;
+                    }
+                    else {
+                        $val = 0;
+                    }
+                }
+                else {
+                    $val = 0;
+                }
+            }
+            # 2. Type: ascii
+            elsif ( $type eq 'ascii' ) {
+                if ( defined $val && length("$val") ) {
+                    $val = $self->to_ascii("$val");
+                }
+                else {
+                    $val = '';
+                }
+            }
+            # 3. Type: date
+            elsif ( $type eq 'date' || $type eq 'datetime' || $type eq 'date_short' || $type eq 'date_long' ) {
+                if ( ( !defined $val || $val eq '' ) && $valid =~ /auto_date/ ) {
+                    my $y = $self->{date}->{year}  // ( 1900 + (localtime)[5] );
+                    my $m = $self->{date}->{month} // sprintf( "%02d", (localtime)[4] + 1 );
+                    my $d = $self->{date}->{day}   // sprintf( "%02d", (localtime)[3] );
+                    $val = "$y-$m-$d";
+                }
+                else {
+                    $val //= '';
+                }
+            }
+            # 4. Type: array / repeat / loop
+            elsif ( $type eq 'array' || $type eq 'list' || $type eq 'repeat' || $type eq 'repeats' || $type eq 'loop' ) {
+                if ( defined $val ) {
+                    if ( ref($val) eq 'ARRAY' ) {
+                        # ok
+                    }
+                    elsif ( ref($val) ) {
+                        $val = [$val];
+                    }
+                    elsif ( length("$val") ) {
+                        $val = [ split /[,|]/, "$val" ];
+                    }
+                    else {
+                        $val = [];
+                    }
+                }
+                else {
+                    $val = [];
+                }
+            }
+            # 5. Type: hash
+            elsif ( $type eq 'hash' || $type eq 'dict' || $type eq 'json' ) {
+                if ( defined $val && ref($val) eq 'HASH' ) {
+                    # ok
+                }
+                else {
+                    $val = {};
+                }
+            }
+            # 6. Type: text / string
+            elsif ( $type eq 'text' || $type eq 'string' || $type eq 'tinytext' || $type eq 'html' ) {
+                $val //= '';
+            }
+            # 7. Type: binary / base64
+            elsif ( $type eq 'binary' || $type eq 'base64' ) {
+                $val //= '';
+            }
+            # 8. Type: auto_id
+            elsif ( $type eq 'auto_id' || $type eq 'autoid' ) {
+                # auto_id is handled by table_autoid
+            }
+        }
+
+        push @cleaned, $val;
+    }
+
+    return wantarray ? @cleaned : \@cleaned;
+}
+
+# Normalizes and casts field values according to schema block definitions upon decoding/reading.
+# Usage:
+#   my @decoded_fields = $adb->dec_validate($tableid, \@fields, $has_id);
+# ------------------------------------------------
+sub dec_validate {
+    my ( $self, $tableid, $fields_ref, $has_id ) = @_;
+
+    return wantarray ? () : [] unless defined $fields_ref;
+    my @fields = ( ref($fields_ref) eq 'ARRAY' ) ? @$fields_ref : ($fields_ref);
+    return wantarray ? @fields : \@fields unless @fields;
+
+    # Bypass in simple mode or when no tableid is given
+    return wantarray ? @fields : \@fields
+        if $self->config('simple') || !defined $tableid || $tableid eq '';
+
+    my $table_info = $self->table_info($tableid);
+    return wantarray ? @fields : \@fields
+        unless $table_info && ref($table_info->{blocks}) eq 'ARRAY' && @{ $table_info->{blocks} };
+
+    my @blocks = @{ $table_info->{blocks} };
+    my @cleaned;
+
+    for ( my $i = 0 ; $i < @fields ; $i++ ) {
+        my $blk_idx = $has_id ? $i : ( $i + 1 );
+        my $blk     = $blocks[$blk_idx];
+        if ( !$blk && $table_info->{repeat_start} && $blk_idx >= $table_info->{repeat_start} ) {
+            $blk = $blocks[ $table_info->{repeat_start} ] // $blocks[-1];
+        }
+        my $val     = $fields[$i];
+
+        if ( $blk && ref($blk) eq 'HASH' ) {
+            my $type = lc( $blk->{type} // 'text' );
+
+            # 1. Type: number / num -> Ensure numeric scalar (0 + $val)
+            if ( $type eq 'num' || $type eq 'number' || $type eq 'numeric' || $type eq 'int' || $type eq 'float' || $type eq 'decimal' ) {
+                if ( defined $val && length("$val") ) {
+                    ( my $trimmed = "$val" ) =~ s/^\s+|\s+$//g;
+                    if ( $trimmed =~ /^[+-]?[0-9]+(?:\.[0-9]+)?$/ ) {
+                        $val = 0 + $trimmed;
+                    }
+                    else {
+                        $val = 0;
+                    }
+                }
+                else {
+                    $val = 0;
+                }
+            }
+            # 2. Type: array / repeat / loop -> Ensure ARRAY ref
+            elsif ( $type eq 'array' || $type eq 'list' || $type eq 'repeat' || $type eq 'repeats' || $type eq 'loop' ) {
+                if ( !defined $val ) {
+                    $val = [];
+                }
+                elsif ( ref($val) ne 'ARRAY' ) {
+                    $val = length("$val") ? [ split /[,|]/, "$val" ] : [];
+                }
+            }
+            # 3. Type: hash -> Ensure HASH ref
+            elsif ( $type eq 'hash' || $type eq 'dict' || $type eq 'json' ) {
+                if ( !defined $val || ref($val) ne 'HASH' ) {
+                    $val = {};
+                }
+            }
+            # 4. Text / ASCII / Date / Binary
+            else {
+                $val //= '';
+            }
+        }
+
+        push @cleaned, $val;
+    }
+
+    return wantarray ? @cleaned : \@cleaned;
 }
 
 # Sanitizes table/file identifier.
@@ -524,9 +720,12 @@ sub table_attr {
 # ------------------------------------------------
 sub table_infset {
 
-    my ( $self, $table ) = @_;
+    my ( $self, $table, $schema_data ) = @_;
 
     $self->config('simple') and return 1;
+    if ( ref($schema_data) eq 'HASH' ) {
+        $self->{_table}->{$table} = $schema_data;
+    }
     my $tbl = $self->{_table}->{$table};
     ref($tbl) eq 'HASH' or return;
 
@@ -643,7 +842,7 @@ sub table_infset {
 
     if ($table_str) {
         my $schema_dir = $self->path('schema_dir') || ( $self->path('dbase_dir') ? $self->path('dbase_dir') . "/schema" : "schema" );
-        open my $YZ, ">", "$schema_dir/$table_path.table"
+        open my $YZ, ">:encoding(UTF-8)", "$schema_dir/$table_path.table"
           or do {
             cluck "[DB_SCHEMA] Could not write schema $schema_dir/$table_path.table: $!\n";
             return;
@@ -689,53 +888,65 @@ sub set_datadir {
     # declarations
     my @dirs = qw(
       dbase_dir table_dir schema_dir backup_dir
-      cache_dir lock_dir buffer_dir txn_dir
+      cache_dir table_cache schema_cache lock_cache buffer_dir txn_dir
     );
     foreach my $dir (@dirs) {
         $self->{_path}->{$dir} //= "";
     }
 
-    $self->{_path}->{dbase_dir}  = $dbase_dir;
-    $self->{_path}->{txn_dir}    ||= "$dbase_dir/txn";
+    $self->{_path}->{dbase_dir} = $dbase_dir;
 
     # db_ext tanımlı ve "db" değil ise simple moduna al
     if ( defined $self->config('db_ext') && $self->config('db_ext') ne "db" ) {
         $self->config( simple => 1 );
     }
 
-    # do not proceed if DATADIR directory does not exist
+    # do not proceed if simple mode (simple modunda dbstore alt dizinleri yoktur, tum yollar dbase_dir ile esitlenir)
     if ( $self->config('simple') ) {
-        if ( $self->dir_exist($dbase_dir) && !$self->dir_exist($self->{_path}->{txn_dir}) ) {
-            require File::Path;
-            eval { File::Path::make_path($self->{_path}->{txn_dir}) };
-        }
+        $self->{_path}->{table_dir}    = $dbase_dir;
+        $self->{_path}->{schema_dir}   = $dbase_dir;
+        $self->{_path}->{backup_dir}   = $dbase_dir;
+        $self->{_path}->{buffer_dir}   = $dbase_dir;
+        $self->{_path}->{txn_dir}      = $dbase_dir;
+        $self->{_path}->{cache_dir}    = $dbase_dir;
+        $self->{_path}->{table_cache}  = $dbase_dir;
+        $self->{_path}->{schema_cache} = $dbase_dir;
+        $self->{_path}->{lock_cache}   = $dbase_dir;
         return 1;
     }
 
-    # return table if simple
-    $self->{_path}->{backup_dir} ||= "$dbase_dir/backup";
-    $self->{_path}->{buffer_dir} ||= "$dbase_dir/buffer";
-    $self->{_path}->{cache_dir}  ||= "$dbase_dir/cache";
-    $self->{_path}->{lock_dir}   ||= "$dbase_dir/cache/lock";
-    $self->{_path}->{schema_dir} ||= "$dbase_dir/schema";
-    $self->{_path}->{table_dir}  ||= "$dbase_dir/tables";
+    $self->{_path}->{txn_dir}      ||= "$dbase_dir/txn";
+    $self->{_path}->{backup_dir}   ||= "$dbase_dir/backup";
+    $self->{_path}->{buffer_dir}   ||= "$dbase_dir/buffer";
+    $self->{_path}->{schema_dir}   ||= "$dbase_dir/schema";
+    $self->{_path}->{table_dir}    ||= "$dbase_dir/tables";
+
+    $self->{_path}->{cache_dir}    ||= "$dbase_dir/cache";
+    $self->{_path}->{table_cache}  ||= "$self->{_path}->{cache_dir}/tables";
+    $self->{_path}->{schema_cache} ||= "$self->{_path}->{cache_dir}/schema";
+    $self->{_path}->{lock_cache}   ||= "$self->{_path}->{cache_dir}/lock";
 
     # Centralized directory creation: create required base directories at initialization
-    require File::Path;
-    for my $dir (
-        $self->{_path}->{dbase_dir},
-        $self->{_path}->{table_dir},
-        $self->{_path}->{schema_dir},
-        $self->{_path}->{backup_dir},
-        $self->{_path}->{buffer_dir},
-        $self->{_path}->{cache_dir},
-        $self->{_path}->{lock_dir},
-        "$self->{_path}->{cache_dir}/tables",
-        "$self->{_path}->{cache_dir}/schema",
-        $self->{_path}->{txn_dir},
-    ) {
-        if ( defined $dir && length($dir) && !$self->dir_exist($dir) ) {
-            eval { File::Path::make_path($dir) };
+    # ONLY when not in test mode (cfg->{test}) and dbase_dir is a dedicated directory (not '.')
+    unless ( $self->config('test') ) {
+        if ( defined $dbase_dir && $dbase_dir ne "." && $dbase_dir ne "" ) {
+            require File::Path;
+            for my $dir (
+                $self->{_path}->{dbase_dir},
+                $self->{_path}->{table_dir},
+                $self->{_path}->{schema_dir},
+                $self->{_path}->{backup_dir},
+                $self->{_path}->{buffer_dir},
+                $self->{_path}->{cache_dir},
+                $self->{_path}->{table_cache},
+                $self->{_path}->{schema_cache},
+                $self->{_path}->{lock_cache},
+                $self->{_path}->{txn_dir},
+            ) {
+                if ( defined $dir && length($dir) && !$self->dir_exist($dir) ) {
+                    eval { File::Path::make_path($dir) };
+                }
+            }
         }
     }
 

@@ -4,7 +4,7 @@ use 5.016;
 use warnings;
 use Carp qw(croak cluck);
 
-our $VERSION = '5.21.2';
+our $VERSION = '5.22.0';
 
 # $is_junk = $adb->junk_rules($table_info, @record);
 # Returns 1 if record satisfies any junk condition, 0 otherwise.
@@ -115,13 +115,13 @@ sub junk_match_add {
     my %acc;
 
     foreach my $blk ( @{ $table_info->{match_block} } ) {
-        my $str_path = "${table_path}_$blk.str";
-        my $is_rdbm  = $self->is_rdbm_block( $table_info, $blk );
+        my $unq_path = "${table_path}_$blk.unq";
+        my ( $is_rdbm ) = $self->rdbm_target( $table_info, $blk );
 
-        my $str_opened = 0;
+        my $unq_opened = 0;
         if ( !$is_rdbm ) {
-            $self->table_write($str_path);
-            $str_opened = 1;
+            $self->table_write($unq_path);
+            $unq_opened = 1;
         }
 
         foreach my $rec (@$records) {
@@ -131,7 +131,7 @@ sub junk_match_add {
             push @{ $acc{$blk}{$_} }, $rid for @ids;
         }
 
-        $self->table_close($str_path) if $str_opened;
+        $self->table_close($unq_path) if $unq_opened;
     }
 
     foreach my $blk ( keys %acc ) {
@@ -159,13 +159,13 @@ sub junk_match_del {
     my %acc;
 
     foreach my $blk ( @{ $table_info->{match_block} } ) {
-        my $str_path = "${table_path}_$blk.str";
-        my $is_rdbm  = $self->is_rdbm_block( $table_info, $blk );
+        my $unq_path = "${table_path}_$blk.unq";
+        my ( $is_rdbm ) = $self->rdbm_target( $table_info, $blk );
 
-        my $str_opened = 0;
-        if ( !$is_rdbm && -e $str_path ) {
-            $self->table_read($str_path);
-            $str_opened = 1;
+        my $unq_opened = 0;
+        if ( !$is_rdbm && -e $unq_path ) {
+            $self->table_read($unq_path);
+            $unq_opened = 1;
         }
 
         foreach my $rec (@$records) {
@@ -175,7 +175,7 @@ sub junk_match_del {
             push @{ $acc{$blk}{$_} }, $rid for @ids;
         }
 
-        $self->table_close($str_path) if $str_opened;
+        $self->table_close($unq_path) if $unq_opened;
     }
 
     foreach my $blk ( keys %acc ) {
@@ -209,13 +209,13 @@ sub junk_match_modify {
     my ( %del_acc, %add_acc );
 
     foreach my $blk ( @{ $table_info->{match_block} } ) {
-        my $str_path = "${table_path}_$blk.str";
-        my $is_rdbm  = $self->is_rdbm_block( $table_info, $blk );
+        my $unq_path = "${table_path}_$blk.unq";
+        my ( $is_rdbm ) = $self->rdbm_target( $table_info, $blk );
 
-        my $str_opened = 0;
+        my $unq_opened = 0;
         if ( !$is_rdbm ) {
-            $self->table_write($str_path);
-            $str_opened = 1;
+            $self->table_write($unq_path);
+            $unq_opened = 1;
         }
 
         foreach my $pair (@$pairs) {
@@ -235,7 +235,7 @@ sub junk_match_modify {
             }
         }
 
-        $self->table_close($str_path) if $str_opened;
+        $self->table_close($unq_path) if $unq_opened;
     }
 
     my %all_blks = map { $_ => 1 } ( keys %del_acc, keys %add_acc );

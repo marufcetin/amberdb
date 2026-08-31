@@ -4,7 +4,7 @@ use 5.016;
 use warnings;
 use Carp qw(croak cluck);
 
-our $VERSION = '5.21.2';
+our $VERSION = '5.22.0';
 
 # ============================================================================
 # AmberDB Native .db and .inx RAM-Disk (tmpfs) Unified Cache Engine
@@ -21,27 +21,31 @@ sub cache_dir {
 sub cache_tbl_dir {
     my ($self) = @_;
     my $cache_dir = $self->cache_dir() or return;
-    my $tbl_dir = ( length( $self->path('cache_tbl_dir') // '' ) ) ? $self->path('cache_tbl_dir') : "$cache_dir/tables";
-    $self->path( cache_tbl_dir => $tbl_dir );
+    my $tbl_dir = ( length( $self->path('table_cache') // '' ) )
+      ? $self->path('table_cache')
+      : "$cache_dir/tables";
+    $self->path( table_cache => $tbl_dir );
     return $tbl_dir;
 }
 
 sub cache_lock_dir {
     my ($self) = @_;
     my $cache_dir = $self->cache_dir() or return;
-    my $lock_dir = ( length( $self->path('lock_dir') // '' ) ) ? $self->path('lock_dir') : "$cache_dir/lock";
-    $self->path( lock_dir => $lock_dir );
+    my $lock_dir = ( length( $self->path('lock_cache') // '' ) )
+      ? $self->path('lock_cache')
+      : "$cache_dir/lock";
+    $self->path( lock_cache => $lock_dir );
     return $lock_dir;
 }
 
 sub cache_schema_dir {
     my ($self) = @_;
     my $cache_dir = $self->cache_dir() or return;
-    my $schema_dir = ( length( $self->path('cache_schema_dir') // '' ) )
-      ? $self->path('cache_schema_dir')
+    my $schema_dir = ( length( $self->path('schema_cache') // '' ) )
+      ? $self->path('schema_cache')
       : "$cache_dir/schema";
 
-    $self->path( cache_schema_dir => $schema_dir );
+    $self->path( schema_cache => $schema_dir );
     return $schema_dir;
 }
 
@@ -84,6 +88,9 @@ sub cache_setup {
     return {
         os           => $^O,
         cache_dir    => $cache_dir,
+        table_cache  => $tbl_dir,
+        lock_cache   => $lock_dir,
+        schema_cache => $schema_dir,
         tbl_dir      => $tbl_dir,
         lock_dir     => $lock_dir,
         schema_dir   => $schema_dir,
@@ -265,6 +272,10 @@ sub cache_preload {
     return unless $table_info && $table_info->{use_cache} && $table_info->{use_cache} == 2;
 
     my $tbl_dir   = $self->cache_tbl_dir() or return;
+    unless ( -d $tbl_dir ) {
+        warn "[AMBERDB_CACHE] Cache tables directory does not exist: $tbl_dir\n";
+        return;
+    }
     my $db_ext    = $self->{db_ext} // 'db';
     my $cache_db  = "$tbl_dir/${tableid}.${db_ext}";
     my $cache_inx = "$tbl_dir/${tableid}.inx";
@@ -338,7 +349,6 @@ sub cache_preload {
 
 sub buffer_slot {
     my ( $self, $tableid ) = @_;
-    $tableid or return;
 
     my $dbase      = do { ( $tableid =~ /^([a-z0-9]+)_/ )[0] };
     my $dbase_info = $self->dbase_info($dbase);

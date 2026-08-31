@@ -342,11 +342,11 @@ Supported Languages: **English (`en`)**, **Turkish (`tr`)**, **German (`de`)**, 
 Full comprehensive guides are available in the [`docs/`](docs/) directory:
 
 - 📖 **English Documentation**:
-  - [AmberDB Database System & Architecture Guide](docs/en/AmberDB_User-Guide.en.md)
-  - [AmberDB::Locale User Guide](docs/en/AmberDB-Locale_User-Guide.en.md)
+  - [AmberDB Database System & Architecture Guide](docs/EN.AmberDB_User-Guide.md)
+  - [AmberDB::Locale User Guide](docs/EN.AmberDB-Locale_User-Guide.md)
 - 📖 **Türkçe Dokümantasyon**:
-  - [AmberDB Veritabanı Sistemi & Mimari Rehberi](docs/tr/AmberDB_Veritabani_Sistemi.md)
-  - [AmberDB::Locale Kullanım Rehberi](docs/tr/AmberDB-Locale_Kullanim_Rehberi.md)
+  - [AmberDB Veritabanı Sistemi & Mimari Rehberi](docs/TR.AmberDB_Veritabani_Sistemi.md)
+  - [AmberDB::Locale Kullanım Rehberi](docs/TR.AmberDB-Locale_Kullanim_Rehberi.md)
 
 ---
 

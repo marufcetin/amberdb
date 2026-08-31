@@ -58,16 +58,16 @@ subtest '1. match_block Schema & Index Key File (.fld) Generation' => sub {
 
     my $table_path = $adb->table_path($tbl);
     my $fld4_path  = "${table_path}_4.fld";
-    my $str4_path  = "${table_path}_4.str";
+    my $unq4_path  = "${table_path}_4.unq";
     my $fld6_path  = "${table_path}_6.fld";
-    my $str6_path  = "${table_path}_6.str";
+    my $unq6_path  = "${table_path}_6.unq";
     my $fld1_path  = "${table_path}_1.fld";
 
-    # Verify .fld and .str index files exist on disk for defined match blocks
+    # Verify .fld and .unq index files exist on disk for defined match blocks
     ok( -e $fld4_path, "Index file ${tbl}_4.fld created for Category block" );
-    ok( -e $str4_path, "Dictionary file ${tbl}_4.str created for Category block" );
+    ok( -e $unq4_path, "Dictionary file ${tbl}_4.unq created for Category block" );
     ok( -e $fld6_path, "Index file ${tbl}_6.fld created for Brand block" );
-    ok( -e $str6_path, "Dictionary file ${tbl}_6.str created for Brand block" );
+    ok( -e $unq6_path, "Dictionary file ${tbl}_6.unq created for Brand block" );
     ok( !-e $fld1_path, "Non-match block (blk 1) does NOT have .fld file" );
 
     # Verify .fld posting lists directly using field_to_list key resolution

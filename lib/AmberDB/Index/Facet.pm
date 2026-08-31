@@ -4,7 +4,7 @@ use 5.016;
 use warnings;
 use Carp qw(croak cluck);
 
-our $VERSION = '5.21.2';
+our $VERSION = '5.22.0';
 
 # $adb->facet_rules($table_info, @record);
 # ------------------------------------------------
@@ -317,16 +317,16 @@ sub field_fltkeys {
     my %count_map;
 
     if ( -e $blk_fac ) {
-        my $str_path = "${table_path}_${target_block}.str";
-        my $has_str  = -e $str_path;
+        my $unq_path = "${table_path}_${target_block}.unq";
+        my $has_unq  = -e $unq_path;
         my $res      = $self->recs_get( $blk_fac, @base_ids );
         for my $id (@base_ids) {
             my $raw = $res ? $res->{$id} : undef;
             next unless defined $raw && $raw ne '';
             my @vals = ( index( $raw, "\t" ) == -1 ) ? ($raw) : split /\t/, $raw;
             for my $v (@vals) {
-                if ($has_str) {
-                    my ($text) = $self->index_get( $str_path, "n:$v", 'raw' );
+                if ($has_unq) {
+                    my ($text) = $self->index_get( $unq_path, "n:$v", 'raw' );
                     $v = $text if defined $text && $text ne '';
                 }
                 $count_map{$v}++;
@@ -366,8 +366,8 @@ sub field_allfltkeys {
     for my $blk (@$blks) {
         my $blk_fac = "${table_path}_${blk}.fac";
         next unless -e $blk_fac;
-        my $str_path = "${table_path}_${blk}.str";
-        my $has_str  = -e $str_path;
+        my $unq_path = "${table_path}_${blk}.unq";
+        my $has_unq  = -e $unq_path;
 
         if (@scan_ids) {
             my $res = $self->recs_get( $blk_fac, @scan_ids );
@@ -376,8 +376,8 @@ sub field_allfltkeys {
                 next unless defined $raw && $raw ne '';
                 my @vals = ( index( $raw, "\t" ) == -1 ) ? ($raw) : split /\t/, $raw;
                 for my $v (@vals) {
-                    if ($has_str) {
-                        my ($text) = $self->index_get( $str_path, "n:$v", 'raw' );
+                    if ($has_unq) {
+                        my ($text) = $self->index_get( $unq_path, "n:$v", 'raw' );
                         $v = $text if defined $text && $text ne '';
                     }
                     $all_counts{$blk}{$v}++;
@@ -392,8 +392,8 @@ sub field_allfltkeys {
                     return unless defined $raw && $raw ne '';
                     my @vals = ( index( $raw, "\t" ) == -1 ) ? ($raw) : split /\t/, $raw;
                     for my $v (@vals) {
-                        if ($has_str) {
-                            my ($text) = $self->index_get( $str_path, "n:$v", 'raw' );
+                        if ($has_unq) {
+                            my ($text) = $self->index_get( $unq_path, "n:$v", 'raw' );
                             $v = $text if defined $text && $text ne '';
                         }
                         $all_counts{$blk}{$v}++;
@@ -510,7 +510,7 @@ sub facet_menu {
         }
     }
 
-    # 3. Build Menu Groups, Whitelist & Batch Label Resolution (.str / RDBM)
+    # 3. Build Menu Groups, Whitelist & Batch Label Resolution (.unq / RDBM)
     my @groups;
     my %groups_by_blk;
     my %active_counts;
@@ -565,7 +565,7 @@ sub facet_menu {
             @vals = @vals[ 0 .. ( $limit_n - 1 ) ];
         }
 
-        # Batch Label Resolution (RDBM -> .str bidirectional -> option)
+        # Batch Label Resolution (RDBM -> .unq bidirectional -> option)
         my %name_map;
         if ( ref($cfg) eq 'HASH' && $cfg->{table} ) {
             if (@vals) {
@@ -575,11 +575,11 @@ sub facet_menu {
             }
         }
         else {
-            # .str sözlük dosyasından n: prefixi ile çift yönlü çözümle
-            my $str_file = "${table_path}_${blk}.str";
-            if ( -e $str_file && @vals ) {
+            # .unq sözlük dosyasından n: prefixi ile çift yönlü çözümle
+            my $unq_file = "${table_path}_${blk}.unq";
+            if ( -e $unq_file && @vals ) {
                 my @n_keys = map { "n:$_" } @vals;
-                my $res = $self->recs_get( $str_file, map { $self->utf_encode("$_") } @n_keys );
+                my $res = $self->recs_get( $unq_file, map { $self->utf_encode("$_") } @n_keys );
                 if ($res) {
                     for my $val (@vals) {
                         my $k = $self->utf_encode("n:$val");
@@ -686,7 +686,7 @@ B<Inheritance Note:> C<AmberDB> inherits from C<AmberDB::Index::Facet> via C<use
 
 =item * B<2. Active-Only Storage Guarantee:> Facet index files store B<only currently active records>. Inactive, discontinued, or out-of-stock records violating C<facet_rules> / C<junk_rules> are excluded during indexing, eliminating the overhead of scanning historical records.
 
-=item * B<3. Bidirectional String Dictionary (C<_${blk}.str>):> Text facets (e.g. colors, specifications) map transparently between string labels and compact numeric dictionary IDs.
+=item * B<3. Bidirectional String Dictionary (C<_${blk}.unq>):> Text facets (e.g. colors, specifications) map transparently between string labels and compact numeric dictionary IDs.
 
 =item * B<4. Dynamic Scoping (C<base_ids>):> When computing facet counts within search results or subcategories, passing C<base_ids =E<gt> \@ids> bounds the aggregation strictly to matching records.
 

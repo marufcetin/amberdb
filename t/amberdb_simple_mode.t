@@ -251,4 +251,101 @@ subtest '7. Meta Methods & Table Utilities in Simple Mode' => sub {
     is( $exists, 1, 'exist_table returns 1 for existing .db file' );
 };
 
+# ============================================================
+# 8. Continuous Backup Logs (recs_back) in Simple Mode
+# ============================================================
+subtest '8. Daily Backup Logs (recs_back) in Simple Mode' => sub {
+    my $db_dir = "$tmp_dir/simple_db8";
+    mkdir($db_dir);
+    my $adb = AmberDB->new(
+        path => { dbase_dir => $db_dir },
+        cfg  => { simple => 1, user => 'simple_admin' },
+    );
+
+    my $sid = 'sess_token_99999_xyz_extra_long';
+
+    # 1. Insert record (add action)
+    $adb->insert_id( 'sessions', $sid, 'Active', '192.168.1.50' );
+
+    # 2. Modify record (edit action)
+    $adb->modify_id( 'sessions', $sid, 'Closed', '192.168.1.50' );
+
+    # 3. Delete record (del action)
+    $adb->delete_id( 'sessions', $sid );
+
+    my $date_iso = "$adb->{date}->{year}-$adb->{date}->{month}-$adb->{date}->{day}";
+    my $csv_file = "$db_dir/$date_iso.csv";
+
+    ok( -e $csv_file, "Daily CSV backup file $csv_file created directly in same dbase_dir in simple mode" );
+    ok( !-d "$db_dir/backup", "No separate backup directory created in simple mode" );
+
+    open my $fh, "<:encoding(UTF-8)", $csv_file or die "Cannot open $csv_file: $!";
+    my @lines = <$fh>;
+    close $fh;
+
+    is( scalar(@lines), 3, "CSV contains exactly 3 entries (add, edit, del) in simple mode" );
+
+    # Line 1: add
+    chomp $lines[0];
+    my @cols_add = split /\t/, $lines[0];
+    is( $cols_add[1], 'simple_admin', "Col 1 is user 'simple_admin'" );
+    is( $cols_add[2], 'add',          "Col 2 is action 'add'" );
+    is( $cols_add[3], 'sessions',     "Col 3 is table 'sessions'" );
+    is( $cols_add[4], $sid,           "Col 4 is custom string ID" );
+
+    # Line 2: edit
+    chomp $lines[1];
+    my @cols_edit = split /\t/, $lines[1];
+    is( $cols_edit[2], 'edit', "Col 2 is action 'edit'" );
+    is( $cols_edit[4], $sid,   "Col 4 is custom string ID" );
+
+    # Line 3: del
+    chomp $lines[2];
+    my @cols_del = split /\t/, $lines[2];
+    is( $cols_del[2], 'del', "Col 2 is action 'del'" );
+    is( $cols_del[4], $sid,  "Col 4 is custom string ID" );
+
+    # 4. Verify no_backup flag disables logging
+    my $db_dir_noback = "$tmp_dir/simple_db8_noback";
+    mkdir($db_dir_noback);
+    my $adb_noback = AmberDB->new(
+        path => { dbase_dir => $db_dir_noback },
+        cfg  => { simple => 1, no_backup => 1 },
+    );
+    $adb_noback->insert_id( 'tbl', 'id1', 'val1' );
+    my $noback_csv = "$db_dir_noback/$date_iso.csv";
+    ok( !-e $noback_csv, "No backup CSV created when no_backup => 1" );
+};
+
+# ============================================================
+# 9. Simple Mode Key Sanitization and Reference Rejection
+# ============================================================
+subtest '9. Simple Mode Key Sanitization and Reference Rejection' => sub {
+    my $db_dir = "$tmp_dir/simple_db9";
+    mkdir($db_dir);
+    my $adb = $tools->db_simple($db_dir);
+
+    # Rejection of references
+    is( $adb->id_check( 'test', [ 1, 2, 3 ] ),      undef, 'ARRAY ref rejected as ID' );
+    is( $adb->id_check( 'test', { a => 1 } ),        undef, 'HASH ref rejected as ID' );
+    is( $adb->insert_id( 'test', [ 1, 2, 3 ], 'data' ), undef, 'insert_id rejects ARRAY ref ID' );
+    is( $adb->insert_id( 'test', { a => 1 }, 'data' ),   undef, 'insert_id rejects HASH ref ID' );
+
+    # Control character rejection
+    is( $adb->id_check( 'test', "bad\0id" ),   undef, 'Null byte rejected in key' );
+    is( $adb->id_check( 'test', "bad\nid" ),   undef, 'Newline rejected in key' );
+    is( $adb->id_check( 'test', "bad\rid" ),   undef, 'Carriage return rejected in key' );
+    is( $adb->id_check( 'test', "bad\tid" ),   undef, 'Tab rejected in key' );
+
+    # Whitespace trimming
+    is( $adb->id_check( 'test', "  valid_key  " ), 'valid_key', 'Leading/trailing whitespace trimmed' );
+    is( $adb->id_check( 'test', "   " ),            undef,       'Whitespace-only rejected' );
+
+    # Length limit
+    my $long_key = 'x' x 256;
+    is( $adb->id_check( 'test', $long_key ), undef, '>255 byte key rejected in Simple Mode' );
+    my $ok_key = 'x' x 255;
+    is( $adb->id_check( 'test', $ok_key ), $ok_key, '255 byte key accepted in Simple Mode' );
+};
+
 done_testing();
