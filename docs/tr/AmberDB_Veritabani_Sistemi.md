@@ -53,7 +53,7 @@ AmberDB, harici üçüncü parti kütüphanelere bağımlı olmaksızın kendi i
 │  AmberDB::Base     → Şema yükleme, dosya yolları, veri serileştirme        │
 │  AmberDB::Index    → Binary indeksler (.inx, .fld, .src, .fac, .srt)       │
 │  AmberDB::Transact → Undo-log transaction, rollback & crash recovery       │
-│  AmberDB::Cache    → L1 (RAM) & L2 (Shared RAM-Disk + TTL) Cache           │
+│  AmberDB::Cache    → RAM-Disk (tmpfs) Paylaşımlı Önbellek & TTL            │
 │  AmberDB::Array    → Yüksek hızlı dizi yardımcıları (nodup, crop)          │
 │  AmberDB::String   → Metin işleme, HTML temizleme ve dönüştürme            │
 │  AmberDB::Date     → Tarih hesaplamaları ve format dönüşümleri             │
@@ -462,7 +462,7 @@ my @tum_idlar           = $adb->search_table("catalog_product", "sony", keys_onl
 #### 1. AmberDB Dahili Çalışma Mantığı (Internal Pipeline):
 AmberDB'deki tüm üst seviye liste ve arama metotları (`read_all`, `field_fetch`, `search_table`, `field_filter` vb.) iki aşamalı bir mimariyle çalışır:
 1. **İndeks Filtreleme Aşaması:** İlgili fonksiyon önce ikili (`.inx`), eşleştirme (`.fld`), arama (`.src`) veya sıralama (`.srt`) ters indekslerinden yalnızca kayıt anahtarlarını (`@ids`) çeker; bu anahtarlar üzerinde kesişim (AND/OR), sıralama ve sayfalama dilimlemesi (`recs_cutting`) uygular.
-2. **Toplu Veri Çözümleme Aşaması:** Filtrelenen ve nihai hale gelen kayıt ID listesi tek seferde **`read_list`** metoduna iletilir. `read_list`, veritabanı dosyasını tek oturumda açıp (veya L2 önbellekten) tüm kayıtları topluca çözer ve parametrede verilen ID sırasını **birebir koruyarak** kayıt referansları listesi (`@kayitlar`) olarak döner.
+2. **Toplu Veri Çözümleme Aşaması:** Filtrelenen ve nihai hale gelen kayıt ID listesi tek seferde **`read_list`** metoduna iletilir. `read_list`, veritabanı dosyasını tek oturumda açıp (veya RAM önbellekten) tüm kayıtları topluca çözer ve parametrede verilen ID sırasını **birebir koruyarak** kayıt referansları listesi (`@kayitlar`) olarak döner.
 
 #### 2. Geliştirici API'sinde Kullanım ve İlişkisel Veri Birleştirme (JOIN Alternatifi):
 Geliştiriciler, ilişkili tablolardan belirli ID kümelerine ait dökümanları tek seferde ve yüksek hızda çekmek için `read_list`'i doğrudan kullanabilir.
@@ -1770,7 +1770,7 @@ AmberDB dosya uzantıları rollerine ve yeniden üretilebilirlik durumlarına g�
 | **Çalışma Zamanı ve Geçici Dosyalar** | | | |
 | `.cnt` | Sayaç Dosyası | ⚠️ Sayaç verisi | Kayıt görüntülenme/tıklanma sayaçları (`use_counter`). |
 | `.txn` | İşlem Günlüğü (Undo Log) | ⚠️ Geçici (Runtime) | Aktif işlem undo-journal geri alma dosyası (`txn/`). |
-| `.cache`| Önbellek Dosyası |  Evet (RAM-Disk) | L2 RAM-Disk paylaşımlı önbellek dosyası (`cache/`). |
+| `.cache`| Önbellek Dosyası |  Evet (RAM-Disk) | RAM-Disk paylaşımlı önbellek dosyası (`cache/`). |
 | `.tmp` | Disk Buffer Dosyası | ⚠️ Geçici (Staging) | `dbstore/buffer/` altında geçici aktarım/ETL dosyası (`buffer_write`). |
 | `.lock` | Süreç Kilit Dosyası | ⚠️ Geçici (Mutex) | İşletim sistemi `flock` process senkronizasyon dosyası. |
 
@@ -1795,7 +1795,7 @@ dbstore/
 │   ├── catalog_product_1.rwt    ← SEO Slug → ID
 │   ├── catalog_product.aut      ← Denetim logu
 │   └── catalog_product.del      ← Silinen kayıtlar
-├── cache/                       ← L2 Paylaşımlı Önbellek Dosyaları
+├── cache/                       ← RAM-Disk Paylaşımlı Önbellek Dosyaları
 ├── buffer/                      ← Geçici Disk Buffer / Staging Dosyaları
 ├── txn/                         ← Aktif Transaction Günlükleri
 ├── pids/                        ← Dosya ve Kayıt Kilitleri
@@ -1937,8 +1937,8 @@ if ($mevcut[8] >= 1) { # Stok kontrolü
 | **Önbellek, SEO, Şema & Denetim** | | | |
 | `table_info`   | `$tablo` | `\%schema` | Tablonun tanımlı şema konfigürasyonunu döner. |
 | `table_attr`   | `$tablo, \%ozellikler` | `1` | Çalışma zamanında bellek içi şema günceller. |
-| `cache_read`   | `$tablo, $anahtar` | `@veriler` | L1/L2 önbellekten veri okur. |
-| `cache_write`  | `$tablo, $anahtar, @veriler`| `1` | L1 ve L2 önbelleğe veri yazar. |
+| `cache_read`   | `$tablo, $anahtar` | `@veriler` | RAM-Disk önbellekten veri okur. |
+| `cache_write`  | `$tablo, $anahtar, @veriler`| `1` | RAM-Disk önbelleğe veri yazar. |
 | `cache_delete` | `$tablo, [$anahtar]` | `1` | Önbelleği temizler. |
 | `get_seourl`   | `$tablo, $tip, @anahtarlar` | `\%harita` | ID ↔ Slug eşleşmesini getirir. |
 | `auth_view`    | `$tablo, $id` | `$html` | Kaydın işlem geçmişini HTML olarak döner. |

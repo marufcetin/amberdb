@@ -53,7 +53,7 @@ AmberDB is self-contained and does not rely on heavy external dependencies:
 │  AmberDB::Base     → Schema parsing, paths, data serialization          │
 │  AmberDB::Index    → Binary indexes (.inx, .fld, .src, .fac, .srt)      │
 │  AmberDB::Transact → Undo-log transactions, rollback & recovery         │
-│  AmberDB::Cache    → L1 (RAM) & L2 (Shared RAM-Disk + TTL) Cache        │
+│  AmberDB::Cache    → Native RAM-Disk (tmpfs) Shared Cache & TTL         │
 │  AmberDB::Array    → High-speed array utilities (nodup, crop)           │
 │  AmberDB::String   → String utilities, HTML formatting & cleaning       │
 │  AmberDB::Date     → Date calculations, timestamps, formatting          │
@@ -466,7 +466,7 @@ my @all_ids           = $adb->search_table("catalog_product", "sony", keys_only 
 #### 1. Internal Engine Pipeline:
 All high-level listing and querying methods in AmberDB (`read_all`, `field_fetch`, `search_table`, `field_filter`, etc.) operate in two decoupled stages:
 1. **Index Filtering Stage:** The query method first reads lightweight record keys (`@ids`) from inverted index files (`.inx`, `.fld`, `.src`, `.srt`), evaluating Boolean logic (AND/OR), sorting, and pagination slicing (`recs_cutting`).
-2. **Batch Document Resolution Stage:** Once the final matched ID list is finalized, it is forwarded in a single call to **`read_list`**. `read_list` opens the data table in a single batch session (or leverages the L2 cache) to deserialize all requested records simultaneously, returning them in the **exact positional order** requested.
+2. **Batch Document Resolution Stage:** Once the final matched ID list is finalized, it is forwarded in a single call to **`read_list`**. `read_list` opens the data table in a single batch session (or leverages the RAM-Disk cache) to deserialize all requested records simultaneously, returning them in the **exact positional order** requested.
 
 #### 2. Developer API Usage & Relational Traversal (SQL JOIN Alternative):
 Developers can use `read_list` directly to retrieve full document records for arbitrary collections of IDs efficiently in a single operation.
@@ -1772,7 +1772,7 @@ AmberDB file extensions are classified into 3 operational tiers based on their a
 | **Runtime & Transient Files** | | | |
 | `.cnt` | View / Hit Counter | ⚠️ Counter state | Hit/read counter file (`use_counter`). |
 | `.txn` | Transaction Undo Journal | ⚠️ Transient (Runtime) | Active transaction rollback journal file (`txn/`). |
-| `.cache`| L2 Shared Cache |  Yes (RAM-Disk) | L2 RAM-Disk shared cache file (`cache/`). |
+| `.cache`| Shared RAM-Disk Cache |  Yes (RAM-Disk) | RAM-Disk shared cache file (`cache/`). |
 | `.tmp` | Disk Buffer File | ⚠️ Transient (Staging) | Disk staging buffer file under `dbstore/buffer/` (`buffer_write`). |
 | `.lock` | Process Mutex Lock | ⚠️ Transient (Mutex) | OS `flock` process synchronization lock file. |
 
@@ -1797,7 +1797,7 @@ dbstore/
 │   ├── catalog_product_1.rwt    ← SEO Slug → ID
 │   ├── catalog_product.aut      ← Audit trail
 │   └── catalog_product.del      ← Soft-deleted records
-├── cache/                       ← L2 Shared RAM-Disk Cache Files
+├── cache/                       ← Shared RAM-Disk Cache Files
 ├── buffer/                      ← Transient Disk Buffer / Staging Files
 ├── txn/                         ← Active Transaction Journals
 ├── pids/                        ← Lock Files
@@ -1939,8 +1939,8 @@ if ($current[8] >= 1) { # Check available inventory
 | **Cache, SEO, Schema & Audit** | | | |
 | `table_info`   | `$table` | `\%schema` | Retrieves active table schema configuration hash. |
 | `table_attr`   | `$table, \%attrs` | `1` | Dynamically mutates in-memory table schema at runtime. |
-| `cache_read`   | `$table, $key` | `@data` | Reads from L1 RAM / L2 shared cache. |
-| `cache_write`  | `$table, $key, @data` | `1` | Writes to L1 RAM and L2 shared cache. |
+| `cache_read`   | `$table, $key` | `@data` | Reads from RAM-Disk shared cache. |
+| `cache_write`  | `$table, $key, @data` | `1` | Writes to RAM-Disk shared cache. |
 | `cache_delete` | `$table, [$key]` | `1` | Purges cache entries. |
 | `get_seourl`   | `$table, $type, @keys` | `\%map` | Resolves ID ↔ URL slug mappings. |
 | `auth_view`    | `$table, $id` | `$html` | Returns user audit trail as HTML. |

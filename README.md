@@ -80,7 +80,7 @@ dbstore/
 | `.csv` | **Continuous WAL Stream** | 🛡️ Append-Only Log | Daily chronological audit stream (`backup/YYYY/YYYY-MM-DD.csv`) |
 | `.cnt` | **View / Hit Counter** | ⚠️ Counter State | High-throughput concurrent counter store (`use_counter`) |
 | `.txn` | **Transaction Undo Journal** | ⚠️ Transient (Runtime) | Active transaction rollback journal file (`txn/`) |
-| `.cache` | **L2 Shared Cache** |  Yes (RAM-Disk) | L2 RAM-Disk shared cache file (`cache/`) |
+| `.cache` | **Shared RAM-Disk Cache** |  Yes (RAM-Disk) | RAM-Disk shared cache file (`cache/`) |
 | `.tmp` | **Disk Buffer File** | ⚠️ Transient (Staging) | Disk staging buffer file under `dbstore/buffer/` (`buffer_write`) |
 | `.lock` | **Process Mutex Lock** | ⚠️ Transient (Mutex) | OS `flock` process synchronization lock file |
 
