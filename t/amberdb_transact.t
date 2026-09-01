@@ -214,6 +214,7 @@ subtest 'Orphan Transaction Recovery & Lock Protection' => sub {
     my $orphan_file = $adb->{_txn}->{file};
     close( delete $adb->{_txn}->{fh} );
     delete $adb->{_txn};
+    $adb->close_all();
 
     ok( -e $orphan_file, 'Orphan journal file created for test' );
 
