@@ -474,7 +474,13 @@ sub transact_recover {
     my $txn_dir = $self->path('txn_dir') || ( ( $self->path('dbase_dir') || "." ) . "/txn" );
     return unless -d $txn_dir;
 
-    my @orphans = glob "$txn_dir/txn_*.txn";
+    my @orphans;
+    if ( opendir my $dh, $txn_dir ) {
+        @orphans = map { File::Spec->catfile( $txn_dir, $_ ) }
+                   grep { /^txn_.*\.txn$/ && -f File::Spec->catfile( $txn_dir, $_ ) }
+                   readdir($dh);
+        closedir $dh;
+    }
     return unless @orphans;
 
     foreach my $orphan ( sort @orphans ) {

@@ -1138,10 +1138,20 @@ sub del_table {
     my $table_path = $adb->table_path($tableid);
     return unless $table_path && -e "$table_path.$adb->{db_ext}";
 
-    my @files  = glob "$table_path*";
-    my @files1 = grep { /^\Q$table_path\E(?:\.[a-z0-9]+|_[0-9]+\.[a-z0-9]+)$/i } @files;
+    my ($parent_dir, $base_name) = $table_path =~ m{^(.+)[/\\]([^/\\]+)$};
+    $parent_dir //= ".";
+    $base_name  //= $table_path;
+
+    my @files1;
+    if ( opendir my $dh, $parent_dir ) {
+        @files1 = map { File::Spec->catfile( $parent_dir, $_ ) }
+                  grep { /^\Q$base_name\E(?:\.[a-z0-9]+|_[0-9]+\.[a-z0-9]+)$/i }
+                  readdir($dh);
+        closedir $dh;
+    }
 
     foreach my $file (@files1) {
+        $adb->table_close($file);
         unlink($file);
         $self->{say} .= "          * $file deleted.\n";
     }
