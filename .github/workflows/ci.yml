@@ -55,6 +55,7 @@ jobs:
         uses: shogo82148/actions-setup-perl@v1
         with:
           perl-version: ${{ matrix.perl }}
+          distribution: ${{ (startsWith(matrix.os, 'windows-') && 'strawberry') || 'default' }}
 
       - name: Perl Version & Info
         run: perl -V
@@ -63,8 +64,13 @@ jobs:
         run: |
           cpanm --notest --installdeps .
 
-      - name: Build & Test (MakeMaker)
+      - name: Build & Test
+        shell: bash
         run: |
           perl Makefile.PL
-          make
-          make test
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            gmake
+          else
+            make
+          fi
+          prove -b -r t/
