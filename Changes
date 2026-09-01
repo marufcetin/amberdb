@@ -1,5 +1,17 @@
 Revision history for AmberDB
 
+5.22.2  2026-09-01
+        - [CROSS-PLATFORM & CI] Universal GitHub Actions CI Matrix:
+          * Configured multi-platform CI matrix testing on Linux (ubuntu-latest), macOS (macos-latest), and Windows (windows-latest) across Perl 5.16 through 5.40.
+          * Configured official Strawberry Perl distribution in CI for native Berkeley DB / DB_File binary compatibility and prevented Git Bash PATH collisions.
+        - [STORAGE & TRANSACTIONS] Safe Directory Scanner and Windows File Sharing:
+          * Introduced dir_files($dir, [$pattern], [%opts]) helper method in AmberDB::Base for cross-platform, safe file discovery supporting wildcards (*.db, txn_*.txn) and compiled regular expressions (qr/../).
+          * Refactored AmberDB::Transact and AmberDB::Tools (dir_tables, all_tables, del_table) to use dir_files, completely removing fragile glob usage.
+          * Fixed Windows NTFS file sharing collision in transact_recover: journal lines are now read directly from open locked handles, preventing secondary open permission denied errors.
+        - [TESTS & STABILITY] Test Concurrency and Monotonic Sequence:
+          * Hardened t/amberdb_transact.t orphan recovery subtest to use strictly monotonic table_autoid record IDs (65) and authentic transaction lifecycle simulation.
+          * Guaranteed complete handle and lock cleanup with $adb->close_all() in crash recovery test scenarios.
+
 5.22.1  2026-09-01
         - [DOCS] Documentation and Synopsis Fixes:
           * Fixed synopsis and API example signatures across documentation and POD.

@@ -5,7 +5,7 @@ use warnings;
 use Carp qw(croak cluck);
 use File::Spec;
 
-our $VERSION = '5.22.1';
+our $VERSION = '5.22.2';
 my $CREATED = '2018-10-08';
 
 # Constructor

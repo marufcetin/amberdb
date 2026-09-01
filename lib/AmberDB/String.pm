@@ -5,7 +5,7 @@ use warnings;
 use Carp qw(croak cluck);
 use parent 'AmberDB::Locale';
 
-our $VERSION = '5.22.1';
+our $VERSION = '5.22.2';
 my $CREATED = '2017-12-31';
 
 # Constructor...
