@@ -65,12 +65,6 @@ jobs:
           cpanm --notest --installdeps .
 
       - name: Build & Test
-        shell: bash
         run: |
           perl Makefile.PL
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            gmake
-          else
-            make
-          fi
-          prove -b -r t/
+          prove -Ilib -r t/
