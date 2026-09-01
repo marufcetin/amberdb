@@ -215,7 +215,9 @@ subtest 'Orphan Transaction Recovery & Lock Protection' => sub {
     close $fh;
 
     # Put matching raw record in test_table so orphan rollback can delete it
-    $adb->recs_put( File::Spec->catfile( $tmpdir, 'tables', 'test_table.db' ), [ 50, 'Item 50 Orphan' ] );
+    my $tbl_db = $adb->table_path( 'test_table', 1 );
+    $adb->recs_put( $tbl_db, [ 50, "50\tItem 50 Orphan" ] );
+    $adb->table_close($tbl_db);
 
     ok( -e $orphan_file, 'Orphan journal file created for test' );
 

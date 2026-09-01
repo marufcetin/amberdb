@@ -438,8 +438,8 @@ sub _txn_auth_rollback {
 sub _txn_raw_delete {
     my ( $self, $tableid, $rid ) = @_;
 
-    my $file_path = $self->table_path($tableid) . ".db";
-    return unless -e $file_path;
+    my $file_path = $self->table_path($tableid, 1);
+    return unless $file_path && -e $file_path;
 
     $self->table_write($file_path) or return;
     $self->recs_del( $file_path, $rid );
@@ -453,8 +453,8 @@ sub _txn_raw_delete {
 sub _txn_raw_restore {
     my ( $self, $tableid, $rid, $raw_value ) = @_;
 
-    my $file_path = $self->table_path($tableid) . ".db";
-    return unless -e $file_path;
+    my $file_path = $self->table_path($tableid, 1);
+    return unless $file_path && -e $file_path;
 
     $self->table_write($file_path) or return;
     $self->recs_put( $file_path, [ $rid, $raw_value ] );
