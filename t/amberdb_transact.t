@@ -211,12 +211,12 @@ subtest 'Orphan Transaction Recovery & Lock Protection' => sub {
     # 1. Test dead orphan recovery
     my $orphan_file = File::Spec->catfile( $txn_dir, 'txn_12345678-999999.txn' );
     open my $fh, '>', $orphan_file or die "Cannot create orphan test file: $!";
-    print $fh join("\x1e", time(), 'test_table', 'add', 50, "50\tItem 50 Orphan", ""), "\n";
+    print $fh join("\x1e", time(), 'test_table', 'add', 950, "950\tItem 950 Orphan", ""), "\n";
     close $fh;
 
     # Put matching raw record in test_table so orphan rollback can delete it
     my $tbl_db = $adb->table_path( 'test_table', 1 );
-    $adb->recs_put( $tbl_db, [ 50, "50\tItem 50 Orphan" ] );
+    $adb->recs_put( $tbl_db, [ 950, "950\tItem 950 Orphan" ] );
     $adb->table_close($tbl_db);
 
     ok( -e $orphan_file, 'Orphan journal file created for test' );
@@ -226,8 +226,8 @@ subtest 'Orphan Transaction Recovery & Lock Protection' => sub {
 
     ok( !-e $orphan_file, 'Orphan journal file removed after recovery' );
 
-    my @rec50 = $adb->read_id( 'test_table', 50 );
-    is( scalar(@rec50), 0, 'Orphaned insert was rolled back' );
+    my @rec950 = $adb->read_id( 'test_table', 950 );
+    is( scalar(@rec950), 0, 'Orphaned insert was rolled back' );
 
     # 2. Test active locked journal protection
     my $locked_file = File::Spec->catfile( $txn_dir, 'txn_locked_test-888888.txn' );
