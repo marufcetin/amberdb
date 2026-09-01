@@ -576,6 +576,59 @@ sub dir_exist {
     return ( -d $dir || -l $dir || -e $dir ) ? 1 : 0;
 }
 
+# my @files = $adb->dir_files($dir, [$pattern], [%opts]);
+# ------------------------------------------------
+# Cross-platform directory file scanner (safe, portable replacement for glob).
+# $pattern: Wildcard string ("*.db", "txn_*.txn"), compiled Regexp (qr/../), or undef.
+# %opts:
+#   full_path  => 1 (default: 1, returns full path; 0 returns basenames only)
+#   files_only => 1 (default: 1, excludes directories; 0 includes directories)
+#   sort       => 1 (default: 1, returns sorted list)
+# ------------------------------------------------
+sub dir_files {
+    my ( $self, $dir, $pattern, %opts ) = @_;
+
+    return () unless defined $dir && length($dir) && -d $dir;
+
+    my $full_path  = $opts{full_path}  // 1;
+    my $files_only = $opts{files_only} // 1;
+    my $do_sort    = $opts{sort}       // 1;
+
+    my $regex;
+    if ( defined $pattern && length($pattern) ) {
+        if ( ref($pattern) eq 'Regexp' ) {
+            $regex = $pattern;
+        }
+        else {
+            my $p = $pattern;
+            $p = quotemeta($p);
+            $p =~ s/\\\*/.*/g;
+            $p =~ s/\\\?/./g;
+            $regex = qr/^$p$/;
+        }
+    }
+
+    opendir my $dh, $dir or return ();
+    my @entries = grep { $_ ne '.' && $_ ne '..' } readdir($dh);
+    closedir $dh;
+
+    my @results;
+    foreach my $entry (@entries) {
+        if ( $regex ) {
+            next unless $entry =~ $regex;
+        }
+
+        my $path = File::Spec->catfile( $dir, $entry );
+        if ( $files_only ) {
+            next unless -f $path;
+        }
+
+        push @results, $full_path ? $path : $entry;
+    }
+
+    return $do_sort ? sort { $a cmp $b } @results : @results;
+}
+
 # my $table_path = $adb->table_path($table);
 # ------------------------------------------------
 sub table_path {

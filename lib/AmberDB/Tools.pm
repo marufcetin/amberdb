@@ -844,12 +844,11 @@ sub dir_tables {
     my $adb = $self->{_adb} or return;
 
     $dir or return;
-    my $dbase_dir = $adb->path('dbase_dir') || ".";
-    my @all_tables =
-      ( glob "$dbase_dir/$dir/*.$adb->{db_ext}" );
+    my $target_dir = File::Spec->catdir( $adb->path('dbase_dir') || ".", $dir );
+    my $ext        = $adb->{db_ext} || "db";
+    my @names      = $adb->dir_files( $target_dir, "*.$ext", full_path => 0 );
 
-    my %all_tables =
-      map { /([^\/]+)\.$adb->{db_ext}$/; $1 => 1 } @all_tables;
+    my %all_tables = map { /^(.+)\.\Q$ext\E$/i ? ( $1 => 1 ) : () } @names;
 
     return sort { $a cmp $b } keys %all_tables;
 }
@@ -940,31 +939,32 @@ sub all_tables {
     # 1. Simple Mode: Single flat directory scan for files matching configured db_ext
     if ( $adb->config('simple') ) {
         my $ext = $adb->{db_ext} || "db";
-        push @all_tables, ( glob "$dbase_dir/*.$ext" );
-        @all_tables = map { /([a-z0-9_]+)\.\Q$ext\E$/i; $1 } @all_tables;
+        my @files = $adb->dir_files( $dbase_dir, "*.$ext", full_path => 0 );
+        @all_tables = map { /^([a-z0-9_]+)\.\Q$ext\E$/i ? $1 : () } @files;
     }
     # 2. Standard Structured Mode: Multi-directory scan (tables/ and year directories) for .db files
     else {
-        push @all_tables, ( glob "$dbase_dir/tables/*.db" );
+        my $tbl_dir = File::Spec->catdir( $dbase_dir, 'tables' );
+        push @all_tables, $adb->dir_files( $tbl_dir, "*.db", full_path => 0 );
 
         my %seen_dirs = ( "tables" => 1, "schema" => 1, "backup" => 1 );
         if ($year_dir) {
-            push @all_tables, ( glob "$dbase_dir/$year_dir/*.db" );
+            my $yd_path = File::Spec->catdir( $dbase_dir, $year_dir );
+            push @all_tables, $adb->dir_files( $yd_path, "*.db", full_path => 0 );
             $seen_dirs{$year_dir} = 1;
         }
 
         # Auto-discover any 4-digit year directories under $dbase_dir (e.g. 2024, 2025, 2026)
         if ( -d $dbase_dir ) {
-            opendir( my $dh, $dbase_dir );
-            my @year_candidates = grep { /^\d{4}$/ && -d "$dbase_dir/$_" && !$seen_dirs{$_} } readdir($dh);
-            closedir $dh;
-
-            foreach my $yd (@year_candidates) {
-                push @all_tables, ( glob "$dbase_dir/$yd/*.db" );
+            my @year_dirs = $adb->dir_files( $dbase_dir, qr/^\d{4}$/, full_path => 0, files_only => 0 );
+            foreach my $yd (@year_dirs) {
+                next if $seen_dirs{$yd} || !-d File::Spec->catdir( $dbase_dir, $yd );
+                my $yd_path = File::Spec->catdir( $dbase_dir, $yd );
+                push @all_tables, $adb->dir_files( $yd_path, "*.db", full_path => 0 );
             }
         }
 
-        @all_tables = map { /([a-z0-9_]+)\.db$/i; $1 } @all_tables;
+        @all_tables = map { /^([a-z0-9_]+)\.db$/i ? $1 : () } @all_tables;
     }
 
     foreach my $record (@all_tables) {
@@ -1142,13 +1142,7 @@ sub del_table {
     $parent_dir //= ".";
     $base_name  //= $table_path;
 
-    my @files1;
-    if ( opendir my $dh, $parent_dir ) {
-        @files1 = map { File::Spec->catfile( $parent_dir, $_ ) }
-                  grep { /^\Q$base_name\E(?:\.[a-z0-9]+|_[0-9]+\.[a-z0-9]+)$/i }
-                  readdir($dh);
-        closedir $dh;
-    }
+    my @files1 = $adb->dir_files( $parent_dir, qr/^\Q$base_name\E(?:\.[a-z0-9]+|_[0-9]+\.[a-z0-9]+)$/i );
 
     foreach my $file (@files1) {
         $adb->table_close($file);
