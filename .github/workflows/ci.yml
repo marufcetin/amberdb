@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    name: Perl ${{ matrix.perl }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
+        perl:
+          - '5.40'
+          - '5.38'
+          - '5.36'
+          - '5.34'
+          - '5.30'
+          - '5.26'
+          - '5.20'
+          - '5.16'
+        exclude:
+          # Limit some Windows/macOS combinations for speed while ensuring broad coverage
+          - os: windows-latest
+            perl: '5.20'
+          - os: windows-latest
+            perl: '5.16'
+          - os: macos-latest
+            perl: '5.20'
+          - os: macos-latest
+            perl: '5.16'
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Perl ${{ matrix.perl }}
+        uses: shogo82148/actions-setup-perl@v1
+        with:
+          perl-version: ${{ matrix.perl }}
+
+      - name: Perl Version & Info
+        run: perl -V
+
+      - name: Install Dependencies
+        run: |
+          cpanm --notest --installdeps .
+
+      - name: Build & Test (MakeMaker)
+        run: |
+          perl Makefile.PL
+          make
+          make test
