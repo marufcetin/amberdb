@@ -242,14 +242,24 @@ sub _txn_log {
 # Clears caches for all affected tables after rollback.
 # ------------------------------------------------
 sub _txn_apply_rollback {
-    my ( $self, $txn_file ) = @_;
+    my ( $self, $txn_source ) = @_;
 
-    open my $fh, "<", $txn_file or do {
-        cluck "[DB_TXN] Cannot read journal for rollback: $txn_file ($!)\n";
-        return;
-    };
-    my @lines = <$fh>;
-    close $fh;
+    my @lines;
+    if ( ref($txn_source) eq 'ARRAY' ) {
+        @lines = @$txn_source;
+    }
+    elsif ( ref($txn_source) && ref($txn_source) =~ /GLOB|IO/ ) {
+        seek( $txn_source, 0, 0 );
+        @lines = <$txn_source>;
+    }
+    else {
+        open my $fh, "<", $txn_source or do {
+            cluck "[DB_TXN] Cannot read journal for rollback: $txn_source ($!)\n";
+            return;
+        };
+        @lines = <$fh>;
+        close $fh;
+    }
 
     my %affected_tables;
 
@@ -505,11 +515,14 @@ sub transact_recover {
                 next;
             }
 
-            # Confirmed orphan: process is dead — rollback and remove
+            # Confirmed orphan: process is dead — read journal and rollback
             cluck "[DB_TXN] Orphan transaction rollback: $orphan\n";
-            $self->_txn_apply_rollback($orphan);
+            seek( $ofh, 0, 0 );
+            my @lines = <$ofh>;
             flock( $ofh, LOCK_UN );
             close $ofh;
+
+            $self->_txn_apply_rollback(\@lines);
             unlink $orphan;
         }
         else {
