@@ -525,6 +525,62 @@ sub set_rwlnkall {
     return 1;
 }
 
+# Rebuilds sort index (.srt).
+# my $ok = $tools->set_sort($tableid, @records);
+# ------------------------------------------------
+sub set_sort {
+
+    my ( $self, $tableid, @records ) = @_;
+    my $adb = $self->{_adb} or return;
+
+    return unless $tableid;
+    my $table_path = $adb->table_path($tableid);
+    my $table_info = $adb->table_info($tableid);
+    return unless exists $table_info->{sort_block};
+
+    my $id_type = $table_info->{id_type} // 'num';
+
+    if ( !@records ) {
+        @records = $adb->read_all( $tableid, 0, 0, no_index => 1 );
+    }
+
+    foreach my $cfg ( @{ $table_info->{sort_block} } ) {
+        my ( $blk, $type, $len ) = ref($cfg) eq 'HASH'
+            ? ( $cfg->{blk}, $cfg->{type}, $cfg->{len} // 8 )
+            : ( $cfg, 'string', 8 );
+
+        my $sort_path = "${table_path}_$blk.srt";
+        my $tmp_srt   = "$sort_path.tmp";
+
+        my %map;
+        foreach my $rec (@records) {
+            next unless ref($rec) eq 'ARRAY' && defined $rec->[0];
+            $map{ $rec->[0] } = $adb->normalize_sort_key( $rec->[$blk], $type, $len );
+        }
+
+        # Sort all keys in-memory with deterministic tie-breaker
+        my @sorted_ids = sort {
+            ( ( $map{$a} // '' ) cmp ( $map{$b} // '' ) )
+              || ( $id_type eq 'ascii' ? ( $a cmp $b ) : ( $a <=> $b ) )
+        } keys %map;
+
+        # Map file write (.srt) with bin_encode keys
+        $adb->table_write($tmp_srt);
+        $adb->index_put( $tmp_srt, "count", scalar(@sorted_ids), "raw" );
+        $adb->index_put( $tmp_srt, "keys",  \@sorted_ids, "ids", $id_type );
+        foreach my $k ( keys %map ) {
+            $adb->index_put( $tmp_srt, $k, $map{$k}, "raw" );
+        }
+        $adb->table_close($tmp_srt);
+
+        unlink($sort_path);
+        rename( $tmp_srt, $sort_path );
+    }
+
+    $self->{say} .= "    - Sort indexes created for table $tableid.\n";
+    return 1;
+}
+
 # Rebuilds index for all tables
 # my $ok = $tools->index_alltables();
 # print $self->{say};
@@ -1133,62 +1189,6 @@ sub _hash_diff {
         $diff{hash2} = $hash2;
     }
     return \%diff;
-}
-
-# Rebuilds sort index (.srt).
-# my $ok = $tools->set_sort($tableid, @records);
-# ------------------------------------------------
-sub set_sort {
-
-    my ( $self, $tableid, @records ) = @_;
-    my $adb = $self->{_adb} or return;
-
-    return unless $tableid;
-    my $table_path = $adb->table_path($tableid);
-    my $table_info = $adb->table_info($tableid);
-    return unless exists $table_info->{sort_block};
-
-    my $id_type = $table_info->{id_type} // 'num';
-
-    if ( !@records ) {
-        @records = $adb->read_all( $tableid, 0, 0, no_index => 1 );
-    }
-
-    foreach my $cfg ( @{ $table_info->{sort_block} } ) {
-        my ( $blk, $type, $len ) = ref($cfg) eq 'HASH'
-            ? ( $cfg->{blk}, $cfg->{type}, $cfg->{len} // 8 )
-            : ( $cfg, 'string', 8 );
-
-        my $sort_path = "${table_path}_$blk.srt";
-        my $tmp_srt   = "$sort_path.tmp";
-
-        my %map;
-        foreach my $rec (@records) {
-            next unless ref($rec) eq 'ARRAY' && defined $rec->[0];
-            $map{ $rec->[0] } = $adb->normalize_sort_key( $rec->[$blk], $type, $len );
-        }
-
-        # Sort all keys in-memory with deterministic tie-breaker
-        my @sorted_ids = sort {
-            ( ( $map{$a} // '' ) cmp ( $map{$b} // '' ) )
-              || ( $id_type eq 'ascii' ? ( $a cmp $b ) : ( $a <=> $b ) )
-        } keys %map;
-
-        # Map file write (.srt) with bin_encode keys
-        $adb->table_write($tmp_srt);
-        $adb->index_put( $tmp_srt, "count", scalar(@sorted_ids), "raw" );
-        $adb->index_put( $tmp_srt, "keys",  \@sorted_ids, "ids", $id_type );
-        foreach my $k ( keys %map ) {
-            $adb->index_put( $tmp_srt, $k, $map{$k}, "raw" );
-        }
-        $adb->table_close($tmp_srt);
-
-        unlink($sort_path);
-        rename( $tmp_srt, $sort_path );
-    }
-
-    $self->{say} .= "    - Sort indexes created for table $tableid.\n";
-    return 1;
 }
 
 # Rebuilds and converts binary indexes for all tables in database directory.

@@ -38,6 +38,19 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Install System Dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libdb-dev
+
+      - name: Install System Dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install berkeley-db
+          echo "DB_FILE_INCLUDE=$(brew --prefix berkeley-db)/include" >> $GITHUB_ENV
+          echo "DB_FILE_LIB=$(brew --prefix berkeley-db)/lib" >> $GITHUB_ENV
+
       - name: Set up Perl ${{ matrix.perl }}
         uses: shogo82148/actions-setup-perl@v1
         with:
