@@ -8,8 +8,8 @@ use warnings;
 use Test::More;
 use File::Temp qw(tempdir);
 use File::Spec;
-
-use lib 'lib';
+use FindBin qw($Bin);
+use lib "$Bin/../lib", 'lib';
 use AmberDB;
 use AmberDB::Tools;
 

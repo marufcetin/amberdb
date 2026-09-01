@@ -51,7 +51,7 @@ sub new {
 
     # data path for database.
     $self->{_path}->{dbase_dir}  ||= ".";
-    $self->{_path}->{dbase_dir}  =~ s/\/$//;
+    $self->{_path}->{dbase_dir}  =~ s{[/\\]+$}{};
 
     # file extensions
     # -----------------------------

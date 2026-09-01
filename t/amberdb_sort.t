@@ -5,19 +5,16 @@
 use 5.016000;
 use strict;
 use warnings;
-use utf8;
-use open ':std', ':utf8';
 use Test::More;
-binmode Test::More->builder->output,         ':utf8';
-binmode Test::More->builder->failure_output, ':utf8';
-binmode Test::More->builder->todo_output,    ':utf8';
 use File::Temp qw(tempdir);
 use File::Spec;
 use File::Path qw(rmtree);
+use FindBin qw($Bin);
+use lib "$Bin/../lib", 'lib';
 
-use_ok('AmberDB') or BAIL_OUT('Cannot load AmberDB');
-use_ok('AmberDB::Index') or BAIL_OUT('Cannot load AmberDB::Index');
-use_ok('AmberDB::Tools') or BAIL_OUT('Cannot load AmberDB::Tools');
+use AmberDB;
+use AmberDB::Index;
+use AmberDB::Tools;
 
 subtest 'Sort Methods Existence' => sub {
     plan tests => 7;

@@ -7,8 +7,8 @@ use strict;
 use warnings;
 use Test::More;
 use File::Temp qw(tempdir);
-
-use lib 'lib';
+use FindBin qw($Bin);
+use lib "$Bin/../lib", 'lib';
 use AmberDB;
 
 my $tmpdir = tempdir( CLEANUP => 1 );

@@ -9,10 +9,12 @@ use Test::More;
 use File::Temp qw(tempdir);
 use File::Spec;
 use File::Path qw(rmtree);
+use FindBin qw($Bin);
+use lib "$Bin/../lib", 'lib';
 
-use_ok('AmberDB') or BAIL_OUT('Cannot load AmberDB');
-use_ok('AmberDB::Transact') or BAIL_OUT('Cannot load AmberDB::Transact');
-use_ok('AmberDB::Index') or BAIL_OUT('Cannot load AmberDB::Index');
+use AmberDB;
+use AmberDB::Transact;
+use AmberDB::Index;
 
 # ---------------------------------------------------------------------------
 subtest 'Transact Methods Existence' => sub {

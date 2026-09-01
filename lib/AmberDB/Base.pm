@@ -597,7 +597,7 @@ sub table_path {
     # return table path if simple mode
     if ( $self->config('simple') ) {
         my $target = ( $self->path('dbase_dir') || "." ) . "/$table";
-        my ($parent_dir) = $target =~ m{^(.+)/[^/]+$};
+        my ($parent_dir) = $target =~ m{^(.+)[/\\][^/\\]+$};
         if ( $parent_dir && !$self->dir_exist($parent_dir) ) {
             croak "[AMBERDB_FATAL] Database directory '$parent_dir' does not exist for table '$table'";
         }
@@ -617,7 +617,7 @@ sub table_path {
     # if root dbase
     if ( $self->{_dbase}->{$dbase}->{root} ) {
         my $target = ( $self->path('dbase_dir') || "." ) . "/$table";
-        my ($parent_dir) = $target =~ m{^(.+)/[^/]+$};
+        my ($parent_dir) = $target =~ m{^(.+)[/\\][^/\\]+$};
         if ( $parent_dir && !$self->dir_exist($parent_dir) ) {
             croak "[AMBERDB_FATAL] Database directory '$parent_dir' does not exist for table '$table'";
         }
