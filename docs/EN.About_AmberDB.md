@@ -9,7 +9,7 @@
   <a href="TR.AmberDB-Hakkinda.md">🇹🇷 Türkçe</a>
 </div>
 
-# About AmberDB
+# About
 
 **AmberDB** is an embedded NoSQL database engine for Perl that processes Array-based records supporting JSON-like nested and complex structures. Thanks to custom indexes generated through schema definitions, it performs block matching, querying, full-text search, filtering, and sorting operations swiftly, while also preserving the same search and querying quality in a schemaless and indexless setup.
 

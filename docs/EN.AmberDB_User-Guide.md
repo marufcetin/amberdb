@@ -9,7 +9,7 @@
   <a href="TR.AmberDB_Veritabani_Sistemi.md">🇹🇷 Türkçe</a>
 </div>
 
-# AmberDB — Developer Guide and Comprehensive Documentation
+# Developer Guide and Comprehensive Documentation
 
 > **Version:** 5.22.2 · **Initial Design:** 2005 · **Last Updated:** 2026  
 > **Namespace:** `AmberDB`  

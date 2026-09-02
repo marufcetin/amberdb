@@ -9,7 +9,7 @@
   <a href="EN.AmberDB_User-Guide.md">🇬🇧 English</a>
 </div>
 
-# AmberDB — Geliştirici Kılavuzu ve Dokümantasyon
+# Geliştirici Kılavuzu ve Dokümantasyon
 
 > **Sürüm:** 5.22.2 · **İlk Tasarım:** 2005 · **Son Güncelleme:** 2026  
 > **Namespace:** `AmberDB`  

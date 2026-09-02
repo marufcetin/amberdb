@@ -9,7 +9,7 @@
   <a href="EN.About_AmberDB.md">🇬🇧 English</a>
 </div>
 
-# AmberDB Hakkında
+# Hakkında
 
 AmberDB, JSON benzeri iç içe ve karmaşık yapıları destekleyen Array tabanlı kayıtları işleyen, Perl için gömülü bir NoSQL veritabanı motorudur. Şema tanımlarıyla oluşturulan özel indeksleri sayesinde blok eşleştirme, sorgulama, tam metin arama, filtreleme ve sıralama işlemlerini hızlı bir şekilde gerçekleştirirken şemasız ve indexsiz de aynı arama sorgulama kalitesini koruyabilir.
 
