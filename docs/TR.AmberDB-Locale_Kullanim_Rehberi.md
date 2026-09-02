@@ -1,13 +1,6 @@
-<div style="display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 10px; border-bottom: 1px solid #eaecef; padding-bottom: 8px; margin-bottom: 20px; font-size: 0.95rem;">
-  <a href="index_tr.md">🏠 Ana Sayfa</a> &nbsp;•&nbsp;
-  <a href="TR.AmberDB-Hakkinda.md">📖 Hakkında</a> &nbsp;•&nbsp;
-  <a href="index_tr.md#-hızlı-başlangıç">🚀 Hızlı Başlangıç</a> &nbsp;•&nbsp;
-  <a href="TR.AmberDB_Veritabani_Sistemi.md">📘 Tutorial</a> &nbsp;•&nbsp;
-  <a href="TR.AmberDB-Locale_Kullanim_Rehberi.md">🌐 Locale</a> &nbsp;•&nbsp;
-  <a href="https://github.com/marufcetin/amberdb/blob/main/Changes">📋 Changes</a> &nbsp;•&nbsp;
-  <a href="https://github.com/marufcetin/amberdb/wiki">📚 Wiki</a> &nbsp;•&nbsp;
-  <a href="EN.AmberDB-Locale_User-Guide.md">🇬🇧 English</a>
-</div>
+[🏠 Ana Sayfa](index_tr.md) &nbsp;•&nbsp; [📖 Hakkında](TR.AmberDB-Hakkinda.md) &nbsp;•&nbsp; [🚀 Hızlı Başlangıç](index_tr.md#-hızlı-başlangıç) &nbsp;•&nbsp; [📘 Tutorial](TR.AmberDB_Veritabani_Sistemi.md) &nbsp;•&nbsp; [🌐 Locale](TR.AmberDB-Locale_Kullanim_Rehberi.md) &nbsp;•&nbsp; [📋 Changes](https://github.com/marufcetin/amberdb/blob/main/Changes) &nbsp;•&nbsp; [📚 Wiki](https://github.com/marufcetin/amberdb/wiki) &nbsp;•&nbsp; [🇬🇧 English](EN.AmberDB-Locale_User-Guide.md)
+
+---
 
 # AmberDB::Locale — Kapsamlı Rehber
 
