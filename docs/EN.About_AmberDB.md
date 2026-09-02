@@ -51,8 +51,8 @@ my @product = (
     "Wireless Headphones",   # name
     149.99,                  # price
     "Sony",                  # brand
-    "Electronics",           # category
-    status => "In Stock"     # status
+    "Electronics",              # category
+    { status => "In Stock" }    # status hash ref
 );
 
 # 3. Insert the product record into the "products" table

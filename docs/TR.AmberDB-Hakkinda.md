@@ -50,7 +50,7 @@ my @product = (
 	149.99,                  # price
 	"Sony",                  # brand
 	"Elektronik",            # category
-	statu => "Satışta"       # statu
+	{ statu => "Satışta" }   # statu hashref
 );
 
 # urun kaydını "products" tablosuna gir.

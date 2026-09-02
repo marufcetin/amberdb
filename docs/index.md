@@ -49,12 +49,12 @@ my $adb = AmberDB->new(
 
 # 2. Define Record (Array-Based Structure)
 my @product = (
-    0,                       # 0: id (0 indicates auto-increment ID)
-    "Wireless Headphones",   # 1: name
-    149.99,                  # 2: price
-    "Sony",                  # 3: brand
-    "Electronics",           # 4: category
-    status => "In Stock"     # 5: key-value attributes / hash
+    0,                          # 0: id (0 indicates auto-increment ID)
+    "Wireless Headphones",      # 1: name
+    149.99,                     # 2: price
+    "Sony",                     # 3: brand
+    "Electronics",              # 4: category
+    { status => "In Stock" }    # 5: key-value attributes / hash ref
 );
 
 # 3. Insert Record
@@ -62,7 +62,7 @@ my $id = $product[0] = $adb->insert_id( "products", @product );
 
 # 4. Read Record by ID
 my @from_db = $adb->read_id( "products", $id );
-print "Product: $from_db[1], Price: $from_db[2]\n";
+print "Product: $from_db[1], Price: $from_db[2], Status: $from_db[5]->{status}\n";
 
 # 5. Modify Record
 $product[2] = 129.99; # Update price block
