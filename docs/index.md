@@ -59,7 +59,6 @@ Here is a complete, authentic CRUD walkthrough using AmberDB's array-based recor
 ```perl
 use strict;
 use warnings;
-use utf8;
 use AmberDB;
 
 # 1. Initialize Database Instance

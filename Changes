@@ -15,6 +15,14 @@ Revision history for AmberDB
         - [TESTS & VERIFICATION] Dedicated Test Coverage:
           * Added comprehensive test suite t/amberdb_table_use_simple.t verifying arbitrary string keys, schema sanitization, zero index file creation, keep_deleted archiving, and RDBM isolation.
           * Cleaned up legacy id_type occurrences across all 41 test files and concurrency stress tests (xt/amberdb_concurrency_stress.t).
+        - [DISTRIBUTION & METADATA] Decoupled Internal Module Versions and CPAN no_index:
+          * Stripped redundant $VERSION definitions from 15 internal/engine-only modules (Base, Cache, Transact, Index, Index::Facet, Index::Junk, Locale::Currency, Locale::Lang::*) to streamline release maintenance.
+          * Retained explicit $VERSION in public, standalone modules (AmberDB, AmberDB::Array, AmberDB::Date, AmberDB::Locale, AmberDB::String, AmberDB::Tools).
+          * Added comprehensive META_MERGE no_index configuration in Makefile.PL covering internal directories, namespaces, and packages.
+        - [DATA STRUCTURES & UTILITIES] Non-Destructive hash_diff in AmberDB::Array:
+          * Implemented hash_diff($hash1, $hash2) in AmberDB::Array with safe shallow copying, ensuring input hash structures are never mutated.
+          * Removed legacy internal _hash_diff from AmberDB::Tools and switched to $adb->hash_diff directly.
+          * Added unit test coverage for hash_diff in t/amberdb_array.t.
 
 5.22.2  2026-09-01
         - [CROSS-PLATFORM & CI] Universal GitHub Actions CI Matrix:

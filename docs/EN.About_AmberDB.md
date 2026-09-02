@@ -40,7 +40,6 @@ AmberDB brings together diverse capabilities within a single Perl database engin
 ```perl
 use strict;
 use warnings;
-use utf8;
 use AmberDB;
 
 # 1. Create AmberDB instance

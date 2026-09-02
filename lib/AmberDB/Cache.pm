@@ -4,8 +4,6 @@ use 5.016;
 use warnings;
 use Carp qw(croak cluck);
 
-our $VERSION = '5.22.2';
-
 # ============================================================================
 # AmberDB Native .db and .inx RAM-Disk (tmpfs) Unified Cache Engine
 # ============================================================================

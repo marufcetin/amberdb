@@ -4,7 +4,7 @@
 
 # Developer Guide and Comprehensive Documentation
 
-> **Version:** 5.22.2 · **Initial Design:** 2005 · **Last Updated:** 2026  
+> **Version:** 5.23.0 · **Initial Design:** 2005 · **Last Updated:** 2026  
 > **Namespace:** `AmberDB`  
 > **Built-in Modules:** `Base`, `Index`, `Transact`, `Cache`, `Array`, `String`, `Date`, `Locale`, `Tools`
 
@@ -2316,5 +2316,5 @@ The following architectural choices might appear restrictive from an ad-hoc SQL 
 
 ---
 
-*This documentation is maintained for `AmberDB` v5.22.2 and aligns with active codebase architecture and developer practices.*
+*This documentation is maintained for `AmberDB` v5.23.0 and aligns with active codebase architecture and developer practices.*
 

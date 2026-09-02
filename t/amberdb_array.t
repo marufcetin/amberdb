@@ -126,4 +126,28 @@ subtest '7. array_shuffle' => sub {
     is_deeply( [ sort { $a <=> $b } @shuffled ], \@original, "Shuffled array contains all original elements" );
 };
 
+# ---------------------------------------------------------------------------
+subtest '8. hash_diff (non-destructive hash comparison)' => sub {
+    plan tests => 6;
+
+    my $h1 = { a => 1, b => 2, c => 3 };
+    my $h2 = { b => 20, c => 30, d => 4 };
+
+    my $diff = $arr->hash_diff( $h1, $h2 );
+    is_deeply( $diff->{hash1}, { a => 1 }, "hash1 unique keys captured" );
+    is_deeply( $diff->{hash2}, { d => 4 }, "hash2 unique keys captured" );
+
+    # Non-destructive test
+    is_deeply( $h1, { a => 1, b => 2, c => 3 }, "Original hash1 is not mutated" );
+    is_deeply( $h2, { b => 20, c => 30, d => 4 }, "Original hash2 is not mutated" );
+
+    # Identical keys
+    my $same_diff = $arr->hash_diff( { x => 10 }, { x => 20 } );
+    is_deeply( $same_diff, {}, "Identical keys produce empty diff" );
+
+    # Class method invocation
+    my $class_diff = AmberDB::Array->hash_diff( { p => 1 }, { q => 2 } );
+    is_deeply( $class_diff, { hash1 => { p => 1 }, hash2 => { q => 2 } }, "Class method invocation works" );
+};
+
 done_testing();

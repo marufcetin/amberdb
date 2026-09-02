@@ -4,7 +4,7 @@ use 5.016;
 use warnings;
 use Carp qw(croak cluck);
 
-our $VERSION = '5.22.2';
+our $VERSION = '5.23.0';
 my $CREATED = '2018-02-23';
 
 # TODO
@@ -287,6 +287,33 @@ sub deep_copy {
     }
 }
 
+# Non-destructively compares two hash references and returns key differences.
+# my $diff = $adb->hash_diff($hash1, $hash2);
+# Returns: { hash1 => { keys only in hash1 }, hash2 => { keys only in hash2 } }
+# ------------------------------------------------
+sub hash_diff {
+    my ( $self, $hash1, $hash2 ) = @_;
+
+    $hash1 = {} unless defined $hash1 && ref($hash1) eq 'HASH';
+    $hash2 = {} unless defined $hash2 && ref($hash2) eq 'HASH';
+
+    my %h1 = %$hash1;
+    my %h2 = %$hash2;
+
+    foreach my $key ( keys %h1 ) {
+        if ( exists $h2{$key} ) {
+            delete $h1{$key};
+            delete $h2{$key};
+        }
+    }
+
+    my %diff;
+    $diff{hash1} = \%h1 if keys %h1;
+    $diff{hash2} = \%h2 if keys %h2;
+
+    return \%diff;
+}
+
 
 # shuffles the list order and creates a new list.
 # ------------------------------------------------
@@ -507,6 +534,15 @@ Extracts and returns only the fields at the given 0-based index positions from C
 Recursively clones nested Perl data structures (hash references, array references, and scalar values) to produce an independent copy.
 
   my $copy = $adb->deep_copy({ user => { roles => [ "admin", "editor" ] } });
+
+=head2 hash_diff($hash1, $hash2)
+
+Non-destructively compares two hash references and returns a hash reference containing the keys unique to each input hash. The original hash structures are preserved unmodified.
+
+  my $h1 = { a => 1, b => 2, c => 3 };
+  my $h2 = { b => 2, c => 3, d => 4 };
+  my $diff = $adb->hash_diff($h1, $h2);
+  # => { hash1 => { a => 1 }, hash2 => { d => 4 } }
 
 =head2 array_shuffle(@array)
 

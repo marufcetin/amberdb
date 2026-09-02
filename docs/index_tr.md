@@ -59,7 +59,6 @@ AmberDB'nin dizi tabanlı kayıt yapısını kullanan doğrulanmış temel CRUD 
 ```perl
 use strict;
 use warnings;
-use utf8;
 use AmberDB;
 
 # 1. Veritabanını Başlat

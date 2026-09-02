@@ -5,7 +5,7 @@ use warnings;
 use Carp qw(croak cluck);
 use File::Spec;
 
-our $VERSION = '5.22.2';
+our $VERSION = '5.23.0';
 my $CREATED = '2018-10-08';
 
 # Constructor
@@ -631,7 +631,7 @@ sub check_readall {
         $diff{lastid}->{inds} = $inds{lastid};
     }
 
-    my $diffs = $self->_hash_diff( $recs{keys}, $inds{keys} );
+    my $diffs = $adb->hash_diff( $recs{keys}, $inds{keys} );
 
     if ( $diffs->{hash1} ) {
         $diff{keys}->{recs} = $diffs->{hash1};
@@ -1137,28 +1137,6 @@ sub db_simple {
         }
     );
     return $db_obje;
-}
-
-# my $diff = $self->_hash_diff($hash1, $hash2);
-# ------------------------------------------------
-sub _hash_diff {
-
-    my ( $self, $hash1, $hash2 ) = @_;
-
-    foreach my $key ( keys %{$hash1} ) {
-        exists( $hash2->{$key} ) or next;
-        delete( $hash1->{$key} );
-        delete( $hash2->{$key} );
-    }
-
-    my %diff;
-    if ( scalar keys %{$hash1} ) {
-        $diff{hash1} = $hash1;
-    }
-    if ( scalar keys %{$hash2} ) {
-        $diff{hash2} = $hash2;
-    }
-    return \%diff;
 }
 
 # Rebuilds and converts binary indexes for all tables in database directory.

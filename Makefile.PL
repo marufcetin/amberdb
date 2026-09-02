@@ -50,6 +50,25 @@ WriteMakefile(
     },
     META_MERGE => {
         'meta-spec' => { version => 2 },
+        no_index    => {
+            directory => [
+                'lib/AmberDB/Locale/Lang',
+                'lib/AmberDB/Index',
+            ],
+            namespace => [
+                'AmberDB::Locale::Lang',
+                'AmberDB::Index',
+            ],
+            package => [
+                'AmberDB::Base',
+                'AmberDB::Cache',
+                'AmberDB::Transact',
+                'AmberDB::Index',
+                'AmberDB::Index::Facet',
+                'AmberDB::Index::Junk',
+                'AmberDB::Locale::Currency',
+            ],
+        },
         resources   => {
             repository => {
                 type => 'git',
