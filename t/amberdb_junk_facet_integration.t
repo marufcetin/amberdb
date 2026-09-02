@@ -28,7 +28,6 @@ $adb->table_attr( 'catalog_product', {
         { blk => 2, id => 'brand', label => 'Marka' },
     ],
     match_block  => [ 1, 2 ],
-    id_type      => 'num',
     blocks       => [
         { id => "id",     type => "auto_id" }, # 0
         { id => "cat",    type => "text" },    # 1
@@ -127,7 +126,6 @@ subtest '6. Standalone Junk without Facet (use_junk=1, use_facet=0)' => sub {
         use_facet    => 0,
         junk_rules   => [ [ 2, "ne", 1 ] ], # status != 1 -> junk
         match_block  => [ 1 ],
-        id_type      => 'num',
         blocks       => [
             { id => "id",     type => "auto_id" },
             { id => "name",   type => "text" },
@@ -159,7 +157,6 @@ subtest '7. Standalone Facet without Junk (use_junk=0, use_facet=1)' => sub {
         facet_rules  => [ [ 2, "eq", 1 ] ], # only status==1 is active in facet
         facet_block  => [ { blk => 1, id => 'cat' } ],
         match_block  => [ 1 ],
-        id_type      => 'num',
         blocks       => [
             { id => "id",     type => "auto_id" },
             { id => "cat",    type => "text" },
@@ -197,7 +194,6 @@ subtest '8. Differing junk_rules and facet_rules' => sub {
         facet_rules  => [ [ 3, "eq", 1 ], [ 2, ">=", 50 ] ],
         facet_block  => [ { blk => 1, id => 'cat' } ],
         match_block  => [ 1 ],
-        id_type      => 'num',
         blocks       => [
             { id => "id",     type => "auto_id" },
             { id => "cat",    type => "text" },

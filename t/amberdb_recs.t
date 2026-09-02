@@ -29,7 +29,6 @@ my $adb = AmberDB->new(
 );
 
 $adb->table_attr( 'test_recs', {
-    id_type      => 'num',
     fields       => [qw(id name city email)],
     record_index => 1,
 } );

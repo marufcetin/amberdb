@@ -1,5 +1,21 @@
 Revision history for AmberDB
 
+5.23.0  2026-09-02
+        - [ARCHITECTURE & ID SIMPLIFICATION] Pure 64-bit Binary Engine & Deprecation of 8-Byte ASCII IDs:
+          * Deprecated 8-byte ASCII IDs (a8) across binary index structures in favor of pure 64-bit Big-Endian unsigned integer packing (Q>*), guaranteeing O(1) binary slicing with fixed 8-byte record strides.
+          * Simplified bin_encode() and bin_decode() by removing fragile \0 byte auto-detection and string unpacking heuristics.
+          * Removed legacy id_type schema attribute across all modules and test suites; standard relational tables strictly enforce positive integer numeric IDs.
+        - [STORAGE & PER-TABLE SIMPLE MODE] Hybrid Multi-Model Architecture with use_simple => 1:
+          * Introduced per-table use_simple => 1 attribute allowing key-value tables with arbitrary string keys up to 255 bytes (UUIDs, session tokens, emails, slugs, etc.) alongside standard relational tables.
+          * Preserved canonical physical table path ($dbase_dir/tables/$table.db) for use_simple tables in standard database mode.
+          * Selective schema sanitization: tables with use_simple => 1 strip indexing, columnar, and caching definitions (blocks, match_block, search_block, facet_block, sort_block, record_index, use_cache, cache_ttl) to achieve zero index/cache I/O overhead while preserving behavioral features (keep_deleted, force, no_transact, no_backup, use_menu, log_owner).
+          * Enabled keep_deleted => 1 archiving (.del) on use_simple tables.
+        - [RDBM & INTEGRITY] Foreign Key and Cross-Table Isolation:
+          * Prohibited standard relational tables from binding foreign keys (RDBM) to use_simple tables in rdbm_target() and _resolve_field_value().
+        - [TESTS & VERIFICATION] Dedicated Test Coverage:
+          * Added comprehensive test suite t/amberdb_table_use_simple.t verifying arbitrary string keys, schema sanitization, zero index file creation, keep_deleted archiving, and RDBM isolation.
+          * Cleaned up legacy id_type occurrences across all 41 test files and concurrency stress tests (xt/amberdb_concurrency_stress.t).
+
 5.22.2  2026-09-01
         - [CROSS-PLATFORM & CI] Universal GitHub Actions CI Matrix:
           * Configured multi-platform CI matrix testing on Linux (ubuntu-latest), macOS (macos-latest), and Windows (windows-latest) across Perl 5.16 through 5.40.

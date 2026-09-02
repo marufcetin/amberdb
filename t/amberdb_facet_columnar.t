@@ -28,7 +28,6 @@ $adb->table_attr( 'catalog_product', {
     ],
     use_facet    => 1,
     facet_rules  => [ [ 4, 'eq', 1 ] ], # block 4 == 1 means active
-    id_type      => 'num',
 } );
 
 # ---------------------------------------------------------------------------

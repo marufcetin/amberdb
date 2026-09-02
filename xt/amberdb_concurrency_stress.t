@@ -60,11 +60,10 @@ sub run_workers {
 
 # Schema template for concurrent catalog tables
 sub make_schema {
-    my ($name, $id_type) = @_;
+    my ($name) = @_;
     return {
         name         => $name || "Concurrent Products",
         record_index => 1,
-        id_type      => $id_type || "num",
         match_block  => [ 1, 2 ],
         search_block => [3],
         facet_block  => [ 1, 2 ],
@@ -85,7 +84,7 @@ sub make_schema {
 subtest '1. Concurrent Multi-Process Inserts (Parallel Writers)' => sub {
     my $tmpdir = tempdir( CLEANUP => 1 );
     my $tbl_name = "catalog_writers";
-    my $table_schema = make_schema("Concurrent Writers Table", "ascii");
+    my $table_schema = make_schema("Concurrent Writers Table");
 
     my $num_workers    = 4;
     my $recs_per_proc  = 15;
@@ -103,7 +102,6 @@ my $db = AmberDB->new( path => { dbase_dir => $tmpdir }, cfg => { simple => 0 } 
 $db->{_table}->{$tbl_name} = {
     name         => "Concurrent Writers Table",
     record_index => 1,
-    id_type      => "ascii",
     match_block  => [ 1, 2 ],
     search_block => [3],
     facet_block  => [ 1, 2 ],
@@ -112,7 +110,7 @@ $db->{_table}->{$tbl_name} = {
 };
 
 for my $i ( 1 .. $recs_per_proc ) {
-    my $rid      = sprintf("w%d_%02d", $w, $i);
+    my $rid      = $w * 1000 + $i;
     my $cat_id   = ( $i % 4 ) + 1;
     my $brand_id = ( $i % 3 ) + 1;
     my $title    = "Worker_${w}_Product_${i}";
@@ -162,7 +160,7 @@ PERL
 subtest '2. Concurrent Read & Write Interleaving' => sub {
     my $tmpdir = tempdir( CLEANUP => 1 );
     my $tbl_name = "catalog_interleave";
-    my $table_schema = make_schema("Interleave Table", "ascii");
+    my $table_schema = make_schema("Interleave Table");
 
     my $num_writers = 2;
     my $num_readers = 2;
@@ -180,13 +178,12 @@ my $db = AmberDB->new( path => { dbase_dir => $tmpdir }, cfg => { simple => 0 } 
 $db->{_table}->{$tbl_name} = {
     name         => "Interleave Table",
     record_index => 1,
-    id_type      => "ascii",
     match_block  => [ 1, 2 ],
     search_block => [3],
 };
 
 for my $i ( 1 .. $writes_each ) {
-    my $rid   = sprintf("iw%d_%02d", $w, $i);
+    my $rid   = $w * 1000 + $i;
     my $title = "Interleaved_${w}_${i}";
     $db->insert_id( $tbl_name, $rid, "1", "1", $title, "5", "50" );
     usleep(1000);
@@ -209,7 +206,6 @@ for ( 1 .. 8 ) {
     $db->{_table}->{$tbl_name} = {
         name         => "Interleave Table",
         record_index => 1,
-        id_type      => "ascii",
         match_block  => [ 1, 2 ],
         search_block => [3],
     };
@@ -273,7 +269,6 @@ my $db = AmberDB->new( path => { dbase_dir => $tmpdir }, cfg => { simple => 0 } 
 $db->{_table}->{$tbl_name} = {
     name         => "Transaction Table",
     record_index => 1,
-    id_type      => "num",
     match_block  => [ 1, 2 ],
     search_block => [3],
 };
@@ -342,7 +337,7 @@ PERL
 subtest '4. Concurrent URL Slug Collisions (Duplicate Title Stress)' => sub {
     my $tmpdir = tempdir( CLEANUP => 1 );
     my $tbl_name = "catalog_slug";
-    my $table_schema = make_schema("Slug Table", "ascii");
+    my $table_schema = make_schema("Slug Table");
 
     my $num_workers = 3;
     my $recs_each   = 8;
@@ -360,14 +355,13 @@ my $db = AmberDB->new( path => { dbase_dir => $tmpdir }, cfg => { simple => 0 } 
 $db->{_table}->{$tbl_name} = {
     name         => "Slug Table",
     record_index => 1,
-    id_type      => "ascii",
     match_block  => [ 1, 2 ],
     search_block => [3],
     slug_block   => [3],
 };
 
 for my $i ( 1 .. $recs_each ) {
-    my $rid = sprintf("s%d_%02d", $w, $i);
+    my $rid = $w * 1000 + $i;
     # All workers write with the EXACT same title simultaneously under distinct cat 99
     my $id = $db->insert_id( $tbl_name, $rid, "99", "3", "Nutuk Mustafa Kemal Ataturk", "10", "120" );
     unless (defined $id) {
@@ -441,7 +435,6 @@ my $db = AmberDB->new( path => { dbase_dir => $tmpdir }, cfg => { simple => 0 } 
 $db->{_table}->{$tbl_name} = {
     name         => "Lock Table",
     record_index => 1,
-    id_type      => "num",
     match_block  => [ 1, 2 ],
     search_block => [3],
 };

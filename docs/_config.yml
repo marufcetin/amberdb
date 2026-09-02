@@ -1,0 +1,15 @@
+title: AmberDB
+description: High-performance, embedded, multi-model document database engine for Perl
+theme: jekyll-theme-primer
+markdown: kramdown
+kramdown:
+  input: GFM
+  hard_wrap: false
+  syntax_highlighter: rouge
+plugins:
+  - jekyll-relative-links
+relative_links:
+  enabled: true
+  collections: true
+include:
+  - "*.md"

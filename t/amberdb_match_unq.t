@@ -96,7 +96,6 @@ subtest 'rdbm match_block numeric indexing (Case 1)' => sub {
     print $fh <<'SCHEMA';
 use utf8;
 {
-    id_type      => 'num',
     record_index => 1,
     match_block  => [ 1 ],
     blocks       => [
@@ -158,7 +157,6 @@ subtest 'non-rdbm string match_block with .unq and lastid (Case 2)' => sub {
     print $fh <<'SCHEMA';
 use utf8;
 {
-    id_type      => 'num',
     record_index => 1,
     match_block  => [ 1 ],
     blocks       => [
@@ -236,7 +234,6 @@ subtest 'modify_id, delete_id and index rebuild' => sub {
     print $fh <<'SCHEMA';
 use utf8;
 {
-    id_type      => 'num',
     record_index => 1,
     match_block  => [ 1 ],
     blocks       => [
@@ -311,7 +308,6 @@ subtest 'batch match_add handle lifecycle and whitespace cleaning' => sub {
     print $fh <<'SCHEMA';
 use utf8;
 {
-    id_type      => 'num',
     record_index => 1,
     match_block  => [ 1 ],
     blocks       => [
@@ -386,7 +382,6 @@ subtest 'valid => "unique" constraint check in insert/modify/delete' => sub {
     print $fh <<'SCHEMA';
 use utf8;
 {
-    id_type      => 'num',
     record_index => 1,
     blocks       => [
         { id => "id",       name => "ID",       type => "auto_id" },
@@ -459,7 +454,6 @@ subtest 'RDBM Foreign String auto-resolution via foreign .unq' => sub {
     print $bfh <<'SCHEMA';
 use utf8;
 {
-    id_type      => 'num',
     record_index => 1,
     match_block  => [ 1 ],
     blocks       => [
@@ -476,7 +470,6 @@ SCHEMA
     print $kfh <<'SCHEMA';
 use utf8;
 {
-    id_type      => 'num',
     record_index => 1,
     match_block  => [ 1 ],
     blocks       => [

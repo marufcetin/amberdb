@@ -34,7 +34,6 @@ subtest '1. search_block Schema & Index Key File Generation' => sub {
     my $tbl = 'catalog_indexed';
     my $table_info = {
         record_index => 1,
-        id_type      => 'num',
         search_block => [ 2, 3 ],         # blk 2: Title, blk 3: Description
         match_block  => [ 4, 6 ],         # blk 4: Category, blk 6: Brand
         sort_block   => [
@@ -247,7 +246,6 @@ subtest '4. Normalization & Apostrophe / Stop Word Handling' => sub {
     my $tbl = 'articles_indexed';
     $adb->table_attr( $tbl, {
         record_index => 1,
-        id_type      => 'num',
         search_block => [ 1, 2 ],
     } );
 
@@ -316,7 +314,6 @@ subtest '5. Turkish Characters, Circumflex Vowels & Phonetic Devoicing' => sub {
     my $tbl = 'turkish_indexed';
     $adb->table_attr( $tbl, {
         record_index => 1,
-        id_type      => 'num',
         search_block => [ 1, 2 ],
     } );
 
@@ -450,7 +447,6 @@ subtest '7. Bulk CRUD (insert_list, modify_list, delete_list) Search Indexing' =
     my $tbl = 'bulk_indexed';
     my $table_info = {
         record_index => 1,
-        id_type      => 'num',
         search_block => [ 2, 3 ],
     };
     $adb->table_attr( $tbl, $table_info );
@@ -526,7 +522,6 @@ subtest '8. Dynamic Schema Modification at Runtime (table_attr)' => sub {
     my $tbl = 'catalog_attr_dyn_idx';
     my $table_info = {
         record_index => 1,
-        id_type      => 'num',
         search_block => [ 2, 3, 4, 9 ], # Initially search in Vendor (2), Author (3), Title (4), Barcode (9)
     };
     $adb->table_attr( $tbl, $table_info );

@@ -34,7 +34,6 @@ subtest '1. Unindexed Schema & Verification of No Index Files on Disk' => sub {
     my $tbl = 'catalog_unindexed';
     my $table_info = {
         record_index => 0,
-        id_type      => 'num',
         # No search_block defined (unindexed mode)
     };
     $adb->table_attr( $tbl, $table_info );
@@ -217,7 +216,6 @@ subtest '4. Normalization & Apostrophe / Stop Word Handling (Unindexed)' => sub 
     my $tbl = 'articles_unindexed';
     $adb->table_attr( $tbl, {
         record_index => 0,
-        id_type      => 'num',
     } );
 
     # Insert records with apostrophes:
@@ -285,7 +283,6 @@ subtest '5. Turkish Characters, Circumflex Vowels & Phonetic Devoicing (Unindexe
     my $tbl = 'turkish_unindexed';
     $adb->table_attr( $tbl, {
         record_index => 0,
-        id_type      => 'num',
     } );
 
     # Insert Turkish test records:
@@ -418,7 +415,6 @@ subtest '7. Bulk CRUD (insert_list, modify_list, delete_list) Unindexed Search' 
     my $tbl = 'bulk_unindexed';
     my $table_info = {
         record_index => 0,
-        id_type      => 'num',
     };
     $adb->table_attr( $tbl, $table_info );
 
@@ -491,7 +487,6 @@ subtest '8. Dynamic Schema Modification at Runtime (table_attr - Unindexed)' => 
     my $tbl = 'catalog_attr_dyn_unidx';
     my $table_info = {
         record_index => 0,
-        id_type      => 'num',
         search_block => [ 2, 3, 4, 9 ], # Initially search in Vendor (2), Author (3), Title (4), Barcode (9)
     };
     $adb->table_attr( $tbl, $table_info );

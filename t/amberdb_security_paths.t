@@ -48,28 +48,27 @@ subtest '2. table_path resolution and subdirectory auto-creation' => sub {
 };
 
 # ---------------------------------------------------------------------------
-subtest '3. Simple Mode ASCII ID Length' => sub {
+subtest '3. Simple Mode Arbitrary String ID Length' => sub {
     plan tests => 4;
 
-    # Normal indexed mode: 8 byte limit
+    # Standard mode: only numeric positive integer allowed
     $adb->config( simple => 0 );
-    $adb->table_attr( test_ascii => { id_type => 'ascii' } );
+    $adb->table_attr( test_table => { use_simple => 0 } );
     
-    my $short_id = $adb->id_check("test_ascii", "user123");
-    is( $short_id, "user123", "Short ASCII ID accepted in indexed mode" );
+    my $valid_num = $adb->id_check("test_table", "12345");
+    is( $valid_num, "12345", "Numeric ID accepted in standard mode" );
 
-    my $long_id = $adb->id_check("test_ascii", "1234567890_toolong");
-    is( $long_id, undef, "Long ASCII ID rejected in indexed mode" );
+    my $str_id = $adb->id_check("test_table", "user123_abc");
+    is( $str_id, "123", "Non-digits stripped in standard mode" );
 
-    # Simple mode: 8 byte limit lifted
-    $adb->config( simple => 1 );
+    # Table use_simple mode: arbitrary string ID allowed
+    $adb->table_attr( test_table => { use_simple => 1 } );
     my $uuid = "123e4567-e89b-12d3-a456-426614174000";
-    my $simple_uuid = $adb->id_check("test_ascii", $uuid);
-    is( $simple_uuid, $uuid, "Long UUID accepted in simple mode" );
+    my $simple_uuid = $adb->id_check("test_table", $uuid);
+    is( $simple_uuid, $uuid, "Long UUID accepted in table use_simple mode" );
 
-    my $email_id = $adb->id_check("test_ascii", 'test.user_99@example.com');
-    is( $email_id, 'test.user_99@example.com', "Exact email ID preserved intact in simple mode" );
-    $adb->config( simple => 0 );
+    my $email_id = $adb->id_check("test_table", 'test.user_99@example.com');
+    is( $email_id, 'test.user_99@example.com', "Exact email ID preserved intact in table use_simple mode" );
 };
 
 # ---------------------------------------------------------------------------

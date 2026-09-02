@@ -24,7 +24,6 @@ $adb->table_attr( 'catalog_product', {
     facet_block  => [ 2, 3 ],
     use_facet    => 1,
     slug_block   => [1],
-    id_type      => 'num',
 } );
 
 # ---------------------------------------------------------------------------

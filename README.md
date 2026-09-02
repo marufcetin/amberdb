@@ -4,6 +4,7 @@
 [![Perl Version](https://img.shields.io/badge/perl-5.16%2B-blue.svg)](https://www.perl.org)
 [![License](https://img.shields.io/badge/license-Artistic_2.0-brightgreen.svg)](LICENSE)
 [![CI](https://github.com/marufcetin/amberdb/actions/workflows/ci.yml/badge.svg)](https://github.com/marufcetin/amberdb/actions)
+[![Documentation](https://img.shields.io/badge/docs-GitHub_Pages-blue.svg)](https://marufcetin.github.io/amberdb/)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey.svg)](https://github.com/marufcetin/amberdb)
 
 **AmberDB** is a high-performance, schema-driven NoSQL database engine for Perl, featuring ACID transactions and precomputed inverted indexing on top of Berkeley DB (`DB_File`). It delivers zero-overhead schema management, extensible JSON-like block records without relational SQL JOIN bottlenecks, 8-byte packed binary indexing, intelligent locale-aware full-text search, Strict 2-Phase Locking (Strict 2PL), a 2-Pillar continuous disaster recovery and `.amberdb` native archiving architecture, and high-throughput batch operations.

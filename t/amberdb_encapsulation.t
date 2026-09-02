@@ -63,11 +63,11 @@ subtest "3. table_attr() getter and setter tests" => sub {
     plan tests => 6;
 
     # 3.1 Set attributes via key-value
-    my $ok = $adb->table_attr("demo_table", id_type => "ascii", keep_deleted => 1);
+    my $ok = $adb->table_attr("demo_table", use_simple => 1, keep_deleted => 1);
     ok( $ok, "table_attr set via key-value succeeded" );
 
     # 3.2 Get single attribute
-    is( $adb->table_attr("demo_table", "id_type"), "ascii", "table_attr single getter returns correct value" );
+    is( $adb->table_attr("demo_table", "use_simple"), 1, "table_attr single getter returns correct value" );
     is( $adb->table_attr("demo_table", "keep_deleted"), 1, "table_attr single getter returns keep_deleted" );
 
     # 3.3 Set attributes via hashref
@@ -84,13 +84,13 @@ subtest "4. table_attr() shallow copy immutability" => sub {
 
     my $attrs_copy = $adb->table_attr("demo_table");
     ok( ref($attrs_copy) eq 'HASH', "table_attr('demo_table') returns HASH ref" );
-    is( $attrs_copy->{id_type}, "ascii", "attrs copy has correct value" );
+    is( $attrs_copy->{use_simple}, 1, "attrs copy has correct value" );
 
     # Mutate copy
-    $attrs_copy->{id_type} = "num";
+    $attrs_copy->{use_simple} = 0;
     $attrs_copy->{injected_key} = "bad";
 
-    is( $adb->table_attr("demo_table", "id_type"), "ascii", "Internal table_attr is NOT affected by mutating returned copy" );
+    is( $adb->table_attr("demo_table", "use_simple"), 1, "Internal table_attr is NOT affected by mutating returned copy" );
 };
 
 subtest "5. table_attr() path invalidation on path-affecting attributes" => sub {
@@ -118,11 +118,11 @@ subtest "6. table_info() shallow copy protection" => sub {
 
     # Mutate returned info
     $info->{external_mutation} = "corrupted";
-    $info->{id_type} = "modified";
+    $info->{use_simple} = 0;
 
     my $info_fresh = $adb->table_info("demo_table");
     ok( !exists $info_fresh->{external_mutation}, "Internal table_info does NOT have external mutations" );
-    is( $adb->table_attr("demo_table", "id_type"), "ascii", "Internal id_type remains intact" );
+    is( $adb->table_attr("demo_table", "use_simple"), 1, "Internal use_simple remains intact" );
 };
 
 subtest "7. Hash::Util protection: Disallowed typo and public keys" => sub {
@@ -168,8 +168,7 @@ subtest "9. Full CRUD operation under encapsulated object" => sub {
 
     $adb->config( no_write => 0 );
     my $table = "crud_table";
-    $adb->table_attr($table, id_type => "num");
-
+    
     # Insert
     my $rid = $adb->insert_id( $table, 1, "Record 1", "Active", "2026-08-27" );
     is( $rid, 1, "insert_id succeeded: rid = $rid" );

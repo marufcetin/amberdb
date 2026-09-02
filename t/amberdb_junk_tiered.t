@@ -21,7 +21,6 @@ my $adb = AmberDB->new(
 # 1. Setup Producer schema (catalog_producer)
 $adb->table_attr( 'catalog_producer', {
     record_index => 1,
-    id_type      => 'num',
     blocks       => [
         { id => "id",    type => "auto_id" }, # 0
         { id => "level", type => "text" },    # 1
@@ -42,7 +41,6 @@ $adb->table_attr( 'catalog_product', {
     ],
     search_block => [ 4 ],    # Block 4: name (searchable)
     match_block  => [ 1, 2 ], # Block 1: cat, Block 2: firm
-    id_type      => 'num',
     blocks       => [
         { id => "id",           type => "auto_id" }, # 0
         { id => "cat",          type => "text" },    # 1

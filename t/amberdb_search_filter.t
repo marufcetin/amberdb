@@ -15,7 +15,6 @@ my $tmp = tempdir( CLEANUP => 1 );
 
 my $table_info = {
     record_index => 1,
-    id_type      => 'num',
     search_block => [ 2, 3 ],         # blk 2 = title, blk 3 = desc
     match_block  => [ 4, 6 ],         # blk 4 = category, blk 6 = brand/supplier
     sort_block   => [

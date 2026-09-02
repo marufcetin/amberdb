@@ -33,7 +33,6 @@ subtest '1. match_block Schema & Index Key File (.fld) Generation' => sub {
     my $tbl = 'catalog_fld_idx';
     my $table_info = {
         record_index => 1,
-        id_type      => 'num',
         match_block  => [ 4, 6 ],         # blk 4: Category, blk 6: Brand
         sort_block   => [
             { blk => 5, type => 'num', len => 8 }, # blk 5: Price
@@ -287,7 +286,6 @@ subtest '7. CRUD Lifecycle & Bulk Operations with field_fetch' => sub {
     my $tbl = 'catalog_fld_crud';
     $adb->table_attr( $tbl, {
         record_index => 1,
-        id_type      => 'num',
         match_block  => [ 2, 3 ],         # blk 2: Cat, blk 3: Brand
     } );
 

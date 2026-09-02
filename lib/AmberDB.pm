@@ -244,7 +244,7 @@ sub insert_id {
     # text backup record.
     $self->recs_back( "add", $tableid, \@record );
 
-    $self->config('simple') and return $rid;
+    ( $self->config('simple') || ( $table_info && $table_info->{use_simple} ) ) and return $rid;
 
     # update .inx / .jinx and secondary indexes
     my @batch = ( \@record );
@@ -286,8 +286,11 @@ sub insert_list {
     $self->config('no_write')
       and do { cluck "[DB_TIE] No authority to write to the file.\n"; return; };
 
+    my $table_info = $self->table_info($tableid);
+    my $is_simple  = $self->config('simple') || ( $table_info && $table_info->{use_simple} );
+
     # Continue with the individual method in simple mode
-    if ( $self->config('simple') ) {
+    if ($is_simple) {
         my %statu;
         foreach my $record (@records) {
             my $rid = $self->insert_id( $tableid, @$record );
@@ -296,8 +299,6 @@ sub insert_list {
         }
         return \%statu;
     }
-
-    my $table_info = $self->table_info($tableid);
     my $table_path = $self->table_path($tableid);
     my $file_path  = "$table_path.$self->{db_ext}";
 
@@ -465,7 +466,7 @@ sub modify_id {
     $self->recs_back( "edit", $tableid, \@new_rec )
       or cluck "[DB_TIE] Backup error (edit). $tableid\n";
 
-    $self->config('simple') and return $rid;
+    ( $self->config('simple') || ( $table_info && $table_info->{use_simple} ) ) and return $rid;
 
     my @old_rec = ( $rid, $self->db_decode($old_record) );
 
@@ -515,8 +516,11 @@ sub modify_list {
     $self->config('no_write')
       and do { cluck "[DB_TIE] No authority to write to the file.\n"; return; };
 
+    my $table_info = $self->table_info($tableid);
+    my $is_simple  = $self->config('simple') || ( $table_info && $table_info->{use_simple} );
+
     # Continue with the individual method in simple mode
-    if ( $self->config('simple') ) {
+    if ($is_simple) {
         my %statu;
         foreach my $record (@records) {
             my $rid = $self->modify_id( $tableid, @$record );
@@ -525,8 +529,6 @@ sub modify_list {
         }
         return \%statu;
     }
-
-    my $table_info = $self->table_info($tableid);
     my $table_path = $self->table_path($tableid);
     my $file_path  = "$table_path.$self->{db_ext}";
 
@@ -665,8 +667,6 @@ sub delete_id {
     $self->recs_back( "del", $tableid, [ $rid, "" ] )
       or cluck "[DB_TIE] Backup error (del). $tableid\n";
 
-    $self->config('simple') and return $rid;
-
     # Move to archive if keep_deleted enabled
     if ( $table_info->{keep_deleted} ) {
         (         $self->table_write($del_path)
@@ -674,6 +674,8 @@ sub delete_id {
               and $self->table_close($del_path) )
           or cluck "[DB_TIE] $del_path can't open.\n";
     }
+
+    ( $self->config('simple') || ( $table_info && $table_info->{use_simple} ) ) and return $rid;
 
     my @record = ( $rid, $self->db_decode($record) );
 
@@ -729,8 +731,11 @@ sub delete_list {
     $self->config('no_write')
       and do { cluck "[DB_TIE] No authority to write to the file. $tableid\n"; return; };
 
+    my $table_info = $self->table_info($tableid);
+    my $is_simple  = $self->config('simple') || ( $table_info && $table_info->{use_simple} );
+
     # Continue with individual method in simple mode
-    if ( $self->config('simple') ) {
+    if ($is_simple) {
         my %statu;
         foreach my $record (@records) {
             my $rid = $self->delete_id( $tableid, $record );
@@ -739,8 +744,6 @@ sub delete_list {
         }
         return \%statu;
     }
-
-    my $table_info = $self->table_info($tableid);
     my $table_path = $self->table_path($tableid);
     my $file_path  = "$table_path.$self->{db_ext}";
     my $del_path   = "$table_path.del";
@@ -2123,8 +2126,8 @@ sub search_table {
             my $dir    = $s_norm->{dir};
 
             if ( !$s_blk || $s_blk eq '0' || $s_blk eq 'id' ) {
-                my $id_type = $table_info->{id_type} // 'num';
-                @records = $self->array_sort( $id_type, $dir, undef, @records );
+                my $id_sort_type = ( $self->config('simple') || ( $table_info && $table_info->{use_simple} ) ) ? 'ascii' : 'num';
+                @records = $self->array_sort( $id_sort_type, $dir, undef, @records );
             }
             else {
                 my $sort_path = "${table_path}_$s_blk.srt";
@@ -2411,8 +2414,6 @@ sub table_keys {
     @keys = $self->cache_read( $tableid, "keys" );
     return @keys if @keys;
 
-    my $id_type = $table_info->{id_type} // 'num';
-
     # Index check (.inx)
     if ( -e $index_path ) {
         my ( $total, @keys_list ) = $self->index_get( $index_path, "keys" );
@@ -2434,9 +2435,9 @@ sub table_keys {
     return @keys;
 }
 
-# Sanitizes and validates a record ID according to table id_type (num or ascii).
-# For id_type eq 'ascii': cleans non-ASCII chars and enforces deterministic 8-byte limit.
-# For id_type eq 'num': enforces numeric digits.
+# Sanitizes and validates a record ID according to table mode.
+# If simple mode (global simple or table use_simple): allows safe arbitrary keys (max 255 bytes, no control chars).
+# If standard mode: strictly enforces positive integer numeric ID.
 # my $clean_id = $adb->id_check($tableid, $rid);
 # ------------------------------------------------
 sub id_check {
@@ -2445,8 +2446,11 @@ sub id_check {
     return unless defined $rid && $rid ne '';
     return if ref $rid;
 
+    my $table_info = $tableid ? $self->table_info($tableid) : {};
+    my $is_simple  = $self->config('simple') || ( $table_info && $table_info->{use_simple} );
+
     # 1. Simple Mode: Safe Key Sanitization (no binary control chars, max 255 bytes)
-    if ( $self->config('simple') ) {
+    if ($is_simple) {
         return if $rid =~ /[\x00-\x1f\x7f]/;
         $rid = $self->trim_space($rid);
         return unless defined $rid && length($rid) > 0;
@@ -2454,27 +2458,9 @@ sub id_check {
         return $rid;
     }
 
-    # 2. Standard Schema Mode (id_type: ascii or num)
-    my $table_info = $tableid ? $self->table_info($tableid) : {};
-    my $id_type    = $table_info->{id_type} // 'num';
-
-    if ( $id_type eq 'ascii' ) {
-        $rid = $self->to_ascii("$rid");
-        $rid =~ s/[^0-9a-zA-Z_.\-]//g;
-        $rid =~ s/\.+/./g;
-        $rid =~ s/\-+/-/g;
-        $rid =~ s/\_+/_/g;
-        if ( length($rid) > 8 ) {
-            cluck "[DB_TIE] ASCII ID '$rid' exceeds maximum allowed 8 bytes limit ($tableid).\n";
-            return;
-        }
-        return ( length($rid) > 0 ) ? $rid : undef;
-    }
-    else {
-        # Numeric ID (Strict positive integer)
-        $rid =~ s/\D//g;
-        return ( length($rid) > 0 && $rid > 0 ) ? $rid : undef;
-    }
+    # 2. Standard Mode: Strict positive integer numeric ID
+    $rid =~ s/\D//g;
+    return ( length($rid) > 0 && $rid > 0 ) ? $rid : undef;
 }
 
 # Sets or gets table auto id.
@@ -2486,14 +2472,14 @@ sub table_autoid {
 
     $tableid or return;
     my $table_info = $self->table_info($tableid);
-    my $id_type    = $table_info->{id_type} // 'num';
+    my $is_simple  = $self->config('simple') || ( $table_info && $table_info->{use_simple} );
 
     if ( defined $aid && $aid ne '' && $aid ne '0' ) {
         $aid = $self->id_check( $tableid, $aid );
         return unless defined $aid && $aid ne '';
 
         # Numeric ID must be greater than current lastid unless simple mode
-        if ( $id_type ne 'ascii' && !$self->config('simple') ) {
+        if ( !$is_simple && $aid =~ /^\d+$/ ) {
             my $last = $self->table_lastid($tableid) || 0;
             $last = $self->{_last_autoid}->{$tableid}
               if ( $self->{_last_autoid}->{$tableid} && $self->{_last_autoid}->{$tableid} > $last );
@@ -3070,7 +3056,7 @@ sub index_get {
 #   $adb->index_put($table_path, $key, $val,  'raw');  # explicit 'raw'
 # ------------------------------------------------
 sub index_put {
-    my ( $self, $table_path, $key, $val, $type, $id_type ) = @_;
+    my ( $self, $table_path, $key, $val, $type ) = @_;
 
     return unless $table_path && defined $key && $key ne '' && defined $val;
 
@@ -3093,7 +3079,7 @@ sub index_put {
     }
     elsif ( $type eq 'ids' || $type eq 'bin' || ref($val) eq 'ARRAY' ) {
         return unless ref($val) eq 'ARRAY' && @$val;
-        $val = $self->bin_encode($val, $id_type);
+        $val = $self->bin_encode($val);
     }
     else {
         $val = $self->utf_encode($val);
@@ -3798,13 +3784,13 @@ Returns the highest / auto-increment primary key ID currently allocated in the t
 Reads or dynamically customizes table schema attributes in-memory at runtime without altering schema files on disk:
 
     # 1. Single attribute getter (scalar)
-    my $id_type = $adb->table_attr("catalog_product", "id_type");
+    my $use_simple = $adb->table_attr("catalog_product", "use_simple");
 
     # 2. Bulk attribute getter (returns a safe shallow copy)
     my $attrs = $adb->table_attr("catalog_product");
 
     # 3. Key-value setter (automatically recalculates paths if year/section/lang changes)
-    $adb->table_attr("catalog_product", id_type => "ascii", keep_deleted => 1);
+    $adb->table_attr("catalog_product", use_simple => 1, keep_deleted => 1);
 
     # 4. Hashref setter
     $adb->table_attr("catalog_product", { search_block => [ 4, 9 ], use_cache => 0 });

@@ -20,7 +20,6 @@ my $adb = AmberDB->new(
 # 1. Setup Dimension Tables (RDBM)
 $adb->table_attr( 'catalog_category', {
     record_index => 1,
-    id_type      => 'num',
     blocks       => [
         { id => "id",   type => "auto_id" },
         { id => "name", type => "text" },
@@ -32,7 +31,6 @@ $adb->insert_id( 'catalog_category', 3, 'Bilim Kurgu' );
 
 $adb->table_attr( 'catalog_producer', {
     record_index => 1,
-    id_type      => 'num',
     blocks       => [
         { id => "id",   type => "auto_id" },
         { id => "name", type => "text" },
@@ -44,7 +42,6 @@ $adb->insert_id( 'catalog_producer', 30, 'İthaki Yayınları' );
 
 $adb->table_attr( 'catalog_contributor', {
     record_index => 1,
-    id_type      => 'num',
     blocks       => [
         { id => "id",   type => "auto_id" },
         { id => "name", type => "text" },

@@ -71,7 +71,7 @@ subtest 'Facet Rules Evaluation' => sub {
 # SUBTEST: bin_encode / bin_decode birim testi
 # ------------------------------------------------------------------
 subtest 'bin_encode / bin_decode unit round-trip & id_check' => sub {
-    plan tests => 15;
+    plan tests => 12;
 
     my $adb = AmberDB->new();
     my @ids = ( 1, 2, 3, 4, 5 );
@@ -92,29 +92,21 @@ subtest 'bin_encode / bin_decode unit round-trip & id_check' => sub {
     my ( undef, @desc ) = $adb->bin_decode( $encoded, 0, 0, 'desc' );
     is_deeply( \@desc, [reverse @ids], 'bin_decode desc order correct' );
 
-    my @ascii_ids = ( 'abc', 'xyz', 'hello' );
-    my $aenc = $adb->bin_encode( \@ascii_ids );
-    is( length($aenc), 8 * 3, 'bin_encode ascii: 3 x a8 = 24 bytes' );
+    # Table id_check checks (use_simple allows string IDs, standard strictly enforces numeric)
+    $adb->table_attr( 'simple_tbl', use_simple => 1 );
+    $adb->table_attr( 'num_tbl',   use_simple => 0 );
 
-    my ( undef, @adec ) = $adb->bin_decode( $aenc, 0, 0, 'asc' );
-    is_deeply( \@adec, \@ascii_ids, 'bin_encode ascii round-trip correct' );
+    my $clean_str = $adb->id_check( 'simple_tbl', 'session_token_1234567890_long' );
+    is( $clean_str, 'session_token_1234567890_long', 'id_check accepts long string ID in use_simple mode' );
 
-    # Deterministic 8-byte ASCII limit checks (Strict rejection for > 8 chars)
-    $adb->table_attr( 'ascii_tbl', id_type => 'ascii' );
-    $adb->table_attr( 'num_tbl',   id_type => 'num' );
-
-    my $clean_long = $adb->id_check( 'ascii_tbl', 'verylongidentifier' );
-    ok( !defined $clean_long, 'id_check rejects >8 byte ascii ID (returns undef)' );
-
-    my $clean_valid = $adb->id_check( 'ascii_tbl', 'item_123' );
-    is( $clean_valid, 'item_123', 'id_check accepts valid 8-byte ascii ID' );
-    is( length($clean_valid), 8, 'clean ascii ID length is exactly 8 bytes' );
+    my $clean_email = $adb->id_check( 'simple_tbl', 'user@example.com' );
+    is( $clean_email, 'user@example.com', 'id_check accepts email ID in use_simple mode' );
 
     my $clean_num = $adb->id_check( 'num_tbl', '12345abc' );
-    is( $clean_num, '12345', 'id_check strips non-digits from num ID' );
+    is( $clean_num, '12345', 'id_check strips non-digits from num ID in standard mode' );
 
-    my $bad_enc = $adb->bin_encode( [ 'valid', 'toolongid999' ] );
-    is( $bad_enc, '', 'bin_encode rejects ID list containing >8 byte ASCII ID' );
+    my $clean_invalid = $adb->id_check( 'num_tbl', 'non_numeric' );
+    ok( !defined $clean_invalid, 'id_check rejects non-numeric ID in standard mode' );
 };
 
 # ------------------------------------------------------------------
@@ -190,7 +182,6 @@ subtest 'insert_id -> .inx -> read_all integration' => sub {
     open my $fh, '>', $schema_file or die "Cannot create schema file: $!";
     print $fh <<'SCHEMA';
 {
-    id_type      => 'num',
     record_index => 1,
 }
 SCHEMA
@@ -252,7 +243,6 @@ subtest 'set_readall rebuild -> read_all' => sub {
     open my $fh, '>', $schema_file or die "Cannot create schema file: $!";
     print $fh <<'SCHEMA';
 {
-    id_type      => 'num',
     record_index => 1,
 }
 SCHEMA
@@ -306,7 +296,6 @@ subtest 'delete_id -> .inx -> read_all reflects deletion' => sub {
     open my $fh, '>', $schema_file or die "Cannot create schema file: $!";
     print $fh <<'SCHEMA';
 {
-    id_type      => 'ascii',
     record_index => 1,
 }
 SCHEMA

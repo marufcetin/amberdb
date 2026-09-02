@@ -58,7 +58,6 @@ sub junk_records_add {
     return unless exists $table_info->{record_index};
     return unless ref($new_rids) eq 'ARRAY' && @$new_rids;
 
-    my $id_type    = $table_info->{id_type} // 'num';
     my $index_path = "$table_path.jinx";
 
     if ( $self->table_write($index_path) ) {
@@ -66,7 +65,7 @@ sub junk_records_add {
         my ($lastid) = $self->index_get( $index_path, "lastid", "raw" );
         $lastid //= 0;
         my @recs = $self->array_nodup( @recs_ref, @$new_rids );
-        $self->index_put( $index_path, "keys",  \@recs, "ids", $id_type );
+        $self->index_put( $index_path, "keys",  \@recs, "ids" );
         $self->index_put( $index_path, "count", scalar @recs, "raw" );
         my @nums = sort { $b <=> $a } grep { /^\d+$/ } @$new_rids;
         if ( @nums && $nums[0] > $lastid ) {
@@ -85,14 +84,13 @@ sub junk_records_del {
     return unless exists $table_info->{record_index};
     return unless ref($del_rids) eq 'ARRAY' && @$del_rids;
 
-    my $id_type    = $table_info->{id_type} // 'num';
     my $index_path = "$table_path.jinx";
 
     if ( -e $index_path && $self->table_write($index_path) ) {
         my ( undef, @recs_ref ) = $self->index_get( $index_path, "keys" );
         my $keys = $self->array_punch( \@recs_ref, $del_rids );
         if (@$keys) {
-            $self->index_put( $index_path, "keys",  $keys, "ids", $id_type );
+            $self->index_put( $index_path, "keys",  $keys, "ids" );
         }
         else {
             $self->index_del( $index_path, "keys" );
@@ -111,7 +109,6 @@ sub junk_match_add {
     return unless exists $table_info->{match_block};
     return unless ref($records) eq 'ARRAY' && @$records;
 
-    my $id_type = $table_info->{id_type} // 'num';
     my %acc;
 
     foreach my $blk ( @{ $table_info->{match_block} } ) {
@@ -140,7 +137,7 @@ sub junk_match_add {
         foreach my $val ( keys %{ $acc{$blk} } ) {
             my ( undef, @existing ) = $self->index_get( $field_path, $val );
             my @recs = $self->array_nodup( @existing, @{ $acc{$blk}{$val} } );
-            $self->index_put( $field_path, $val, \@recs, "ids", $id_type );
+            $self->index_put( $field_path, $val, \@recs, "ids" );
         }
         $self->table_close($field_path);
     }
@@ -155,7 +152,6 @@ sub junk_match_del {
     return unless exists $table_info->{match_block};
     return unless ref($records) eq 'ARRAY' && @$records;
 
-    my $id_type = $table_info->{id_type} // 'num';
     my %acc;
 
     foreach my $blk ( @{ $table_info->{match_block} } ) {
@@ -186,7 +182,7 @@ sub junk_match_del {
             my ( undef, @existing ) = $self->index_get( $field_path, $val );
             my $keys = $self->array_punch( \@existing, $acc{$blk}{$val} );
             if (@$keys) {
-                $self->index_put( $field_path, $val, $keys, "ids", $id_type );
+                $self->index_put( $field_path, $val, $keys, "ids" );
             }
             else {
                 $self->index_del( $field_path, $val );
@@ -205,7 +201,6 @@ sub junk_match_modify {
     return unless exists $table_info->{match_block};
     return unless ref($pairs) eq 'ARRAY' && @$pairs;
 
-    my $id_type = $table_info->{id_type} // 'num';
     my ( %del_acc, %add_acc );
 
     foreach my $blk ( @{ $table_info->{match_block} } ) {
@@ -253,7 +248,7 @@ sub junk_match_modify {
                 @recs = $self->array_nodup( @recs, @{ $add_acc{$blk}{$val} } );
             }
             if (@recs) {
-                $self->index_put( $field_path, $val, \@recs, "ids", $id_type );
+                $self->index_put( $field_path, $val, \@recs, "ids" );
             }
             else {
                 $self->index_del( $field_path, $val );
@@ -272,7 +267,6 @@ sub junk_search_add {
     return unless exists $table_info->{search_block};
     return unless ref($records) eq 'ARRAY' && @$records;
 
-    my $id_type = $table_info->{id_type} // 'num';
     foreach my $blk ( @{ $table_info->{search_block} } ) {
         my ( $real_blk, $src_table, $src_display ) =
             ref($blk) eq 'ARRAY' ? ( $blk->[0], $blk->[1], $blk->[2] )
@@ -299,7 +293,7 @@ sub junk_search_add {
             $word or next;
             my ( undef, @existing ) = $self->index_get( $search_path, $word );
             my @recs = $self->array_nodup( @existing, @{ $word_acc{$word} } );
-            $self->index_put( $search_path, $word, \@recs, "ids", $id_type );
+            $self->index_put( $search_path, $word, \@recs, "ids" );
         }
         $self->table_close($search_path);
     }
@@ -314,7 +308,6 @@ sub junk_search_del {
     return unless exists $table_info->{search_block};
     return unless ref($records) eq 'ARRAY' && @$records;
 
-    my $id_type = $table_info->{id_type} // 'num';
     foreach my $blk ( @{ $table_info->{search_block} } ) {
         my ( $real_blk, $src_table, $src_display ) =
             ref($blk) eq 'ARRAY' ? ( $blk->[0], $blk->[1], $blk->[2] )
@@ -343,7 +336,7 @@ sub junk_search_del {
             my ( undef, @existing ) = $self->index_get( $search_path, $word );
             my $keys = $self->array_punch( \@existing, $word_acc{$word} );
             if (@$keys) {
-                $self->index_put( $search_path, $word, $keys, "ids", $id_type );
+                $self->index_put( $search_path, $word, $keys, "ids" );
             }
             else {
                 $self->index_del( $search_path, $word );
@@ -362,7 +355,6 @@ sub junk_search_modify {
     return unless exists $table_info->{search_block};
     return unless ref($pairs) eq 'ARRAY' && @$pairs;
 
-    my $id_type = $table_info->{id_type} // 'num';
     foreach my $blk ( @{ $table_info->{search_block} } ) {
         my $real_blk    = ref($blk) eq 'ARRAY' ? $blk->[0] : $blk;
         my $search_path = "${table_path}_$real_blk.jsrc";
@@ -397,7 +389,7 @@ sub junk_search_modify {
                 @recs = $self->array_nodup( @recs, @{ $add_acc{$word} } );
             }
             if (@recs) {
-                $self->index_put( $search_path, $word, \@recs, "ids", $id_type );
+                $self->index_put( $search_path, $word, \@recs, "ids" );
             }
             else {
                 $self->index_del( $search_path, $word );

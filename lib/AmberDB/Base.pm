@@ -544,6 +544,15 @@ sub table_info {
         $target_path =~ s{\\}{/}g;
         my $do_data = do $target_path;
         if ($do_data) {
+            if ( $do_data->{use_simple} ) {
+                delete @{$do_data}{
+                    qw(
+                      blocks match_block search_block view_block facet_block filter_block
+                      slug_block sort_block sort_fields use_facet facet_rules use_junk junk_rules
+                      record_index repeat_start repeat_ids field_rules use_cache cache_ttl
+                    )
+                };
+            }
             $self->{_table}->{$table} = $do_data;
             if ( $cache_schema && !-e "$cache_schema/$table.table" && $self->dir_exist($cache_schema) ) {
                 require File::Copy;
@@ -731,8 +740,8 @@ sub table_path {
 }
 
 # my $attrs = $adb->table_attr($table);
-# my $id_type = $adb->table_attr($table, "id_type");
-# $adb->table_attr($table, id_type => "ascii", keep_deleted => 1);
+# my $use_simple = $adb->table_attr($table, "use_simple");
+# $adb->table_attr($table, use_simple => 1, keep_deleted => 1);
 # $adb->table_attr($table, { force => 1, keep_deleted => 1, match => [1,2] });
 # ------------------------------------------------
 sub table_attr {
@@ -747,7 +756,7 @@ sub table_attr {
         return { %{ $self->{_table}->{$table} || {} } };
     }
 
-    # 2. Single scalar argument: getter -> $adb->table_attr($table, 'id_type')
+    # 2. Single scalar argument: getter -> $adb->table_attr($table, 'use_simple')
     if ( @args == 1 && !ref( $args[0] ) ) {
         return $self->{_table}->{$table}->{ $args[0] };
     }
@@ -759,6 +768,17 @@ sub table_attr {
     foreach my $key ( keys %attrs ) {
         $self->{_table}->{$table}->{$key} = $attrs{$key};
         $needs_path_refresh = 1 if $key =~ /^(year|section|lang)$/;
+    }
+
+    # If use_simple is set to true on table, selectively remove columnar, indexing, and caching definitions
+    if ( $self->{_table}->{$table}->{use_simple} ) {
+        delete @{ $self->{_table}->{$table} }{
+            qw(
+              blocks match_block search_block view_block facet_block filter_block
+              slug_block sort_block sort_fields use_facet facet_rules use_junk junk_rules
+              record_index repeat_start repeat_ids field_rules use_cache cache_ttl
+            )
+        };
     }
 
     if ($needs_path_refresh) {
@@ -791,7 +811,7 @@ sub table_infset {
     # Scalar keys
     my @scalar_keys = qw(
       name record_index keep_deleted log_owner parent_table
-      use_menu id_type force use_cache use_alias
+      use_menu use_simple force use_cache use_alias
       use_counter use_facet stop_word min_char
       use_junk cache_ttl repeat_ids repeat_start
       no_transact no_backup
@@ -919,15 +939,11 @@ sub db_sortid {
 
     scalar @records or return ();
 
-    my $id_type = $table ? ( $self->table_attr( $table, 'id_type' ) // '' ) : '';
-    my $field   = ( ref( $records[0] ) eq "ARRAY" ) ? 0 : undef;
+    my $is_simple = $table ? ( $self->table_attr( $table, 'use_simple' ) // $self->config('simple') ) : $self->config('simple');
+    my $field     = ( ref( $records[0] ) eq "ARRAY" ) ? 0 : undef;
+    my $sort_type = $is_simple ? 'ascii' : 'num';
 
-    if ( !$id_type ) {
-        my $sample = defined $field ? $records[0]->[$field] : $records[0];
-        $id_type = ( defined $sample && $sample =~ /^\d+$/ ) ? "num" : "ascii";
-    }
-
-    return $self->array_sort( $id_type, 'desc', $field, @records );
+    return $self->array_sort( $sort_type, 'desc', $field, @records );
 }
 
 # $self->set_datadir("/path/to/dbase")
@@ -1163,40 +1179,23 @@ sub init_date {
     return $self->{date};
 }
 
-# $adb->bin_encode(\@rids, [$id_type])
-# Encodes list of record IDs into 8-byte unified packed binary format.
-# If $id_type is 'ascii', enforces 8-byte limit and packs as a8*.
-# If $id_type is 'num', packs as 64-bit uint Q>*.
+# $adb->bin_encode(\@rids)
+# Encodes list of record IDs into 8-byte packed binary format (64-bit uint Q>*).
 # ------------------------------------------------
 sub bin_encode {
-    my ( $self, $rids, $id_type ) = @_;
+    my ( $self, $rids ) = @_;
 
     return '' unless ref($rids) eq 'ARRAY' && @$rids;
 
-    $id_type = lc($id_type) if defined $id_type;
-
-    if ( ( $id_type && $id_type eq 'num' ) || ( !$id_type && $rids->[0] =~ /^\d+$/ && $rids->[0] !~ /^0\d+/ ) ) {
-        return pack( "(Q>)*", @$rids );
-    }
-    else {
-        # Strict validation: Reject IDs exceeding 8 bytes to prevent silent truncation
-        for my $id (@$rids) {
-            if ( length("$id") > 8 ) {
-                cluck "[BIN_ENCODE] ASCII ID '$id' exceeds 8 bytes limit.\n";
-                return '';
-            }
-        }
-        return pack( "(a8)*", @$rids );
-    }
+    return pack( "(Q>)*", @$rids );
 }
 
-# $adb->bin_decode($binary_buffer, $start, $limit, $dir, [$id_type])
-# Decodes 8-byte unified binary buffer with O(1) substr slicing.
-# Deterministically detects numeric (Big-Endian leading \0) vs ASCII (a8).
+# $adb->bin_decode($binary_buffer, $start, $limit, $dir)
+# Decodes 8-byte binary buffer (64-bit uint Q>*) with O(1) substr slicing.
 # Returns ($total_count, @sliced_ids)
 # ------------------------------------------------
 sub bin_decode {
-    my ( $self, $buffer, $start, $limit, $dir, $id_type ) = @_;
+    my ( $self, $buffer, $start, $limit, $dir ) = @_;
 
     return ( 0, () ) unless defined $buffer && length($buffer) >= 8;
 
@@ -1207,7 +1206,6 @@ sub bin_decode {
     $start ||= 0;
     $limit ||= 0;
     $dir   ||= 'asc';
-    $id_type = lc($id_type) if defined $id_type;
 
     if ( lc($dir) eq 'desc' ) {
         my ( $real_start, $real_limit );
@@ -1227,13 +1225,7 @@ sub bin_decode {
         return ( $total, () ) if $real_limit <= 0;
 
         my $slice = substr( $buffer, $real_start * $rec_size, $real_limit * $rec_size );
-        my @ids;
-        if ( ( $id_type && $id_type eq 'num' ) || ( !$id_type && substr( $slice, 0, 1 ) eq "\0" ) ) {
-            @ids = unpack( "(Q>)*", $slice );
-        }
-        else {
-            @ids = map { s/\0+$//r } unpack( "(a8)*", $slice );
-        }
+        my @ids = unpack( "(Q>)*", $slice );
         my @ids_rev = reverse @ids;
         return ( $total, @ids_rev );
     }
@@ -1248,13 +1240,7 @@ sub bin_decode {
     return ( $total, () ) if $bytes_to_read <= 0;
 
     my $slice = substr( $buffer, $start * $rec_size, $bytes_to_read );
-    my @ids;
-    if ( ( $id_type && $id_type eq 'num' ) || ( !$id_type && substr( $slice, 0, 1 ) eq "\0" ) ) {
-        @ids = unpack( "(Q>)*", $slice );
-    }
-    else {
-        @ids = map { s/\0+$//r } unpack( "(a8)*", $slice );
-    }
+    my @ids = unpack( "(Q>)*", $slice );
     return ( $total, @ids );
 }
 
@@ -1349,25 +1335,20 @@ Tokenizes C<$string> into search index keywords, stripping punctuation, applying
 
   my %words = $adb->get_words("Kablosuz Kulaklık & Aksesuarlar");
 
-=head2 bin_encode(\@record_ids, [$id_type])
+=head2 bin_encode(\@record_ids)
 
-Packs a list of record IDs into a compact, fixed 8-byte binary buffer:
-=over 4
-=item * Numeric IDs (C<id_type =E<gt> 'num'>): Packed as 64-bit unsigned Big-Endian integers (C<QE<gt>>).
-=item * ASCII IDs (C<id_type =E<gt> 'ascii'>): Packed as fixed 8-byte ASCII strings (C<a8>), strictly validated against 8-byte limits.
-=back
+Packs a list of record IDs into a compact 8-byte 64-bit unsigned Big-Endian integer binary buffer (C<QE<gt>>).
 
-  my $packed_buffer = $adb->bin_encode([ 1, 2, 3 ], 'num');
+  my $packed_buffer = $adb->bin_encode([ 1, 2, 3 ]);
 
-=head2 bin_decode($binary_buffer, [$start], [$limit], [$direction], [$id_type])
+=head2 bin_decode($binary_buffer, [$start], [$limit], [$direction])
 
-Decodes an 8-byte binary buffer using O(1) C<substr> byte-offset slicing without unpacking the entire buffer into memory. Returns C<($total_count, @slice_ids)>.
+Decodes an 8-byte binary buffer (64-bit uint) using O(1) C<substr> byte-offset slicing without unpacking the entire buffer into memory. Returns C<($total_count, @slice_ids)>.
 
 =over 4
 =item * C<$start>: 0-based record offset.
 =item * C<$limit>: Maximum number of records to return (0 for all remaining).
 =item * C<$direction>: C<'asc'> (default) or C<'desc'> (slices from the end).
-=item * C<$id_type>: Optional C<'num'> or C<'ascii'> (auto-detected if omitted).
 =back
 
   my ($total, @page_ids) = $adb->bin_decode($packed_buffer, 0, 20, 'desc');

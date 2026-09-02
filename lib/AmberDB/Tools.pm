@@ -48,9 +48,11 @@ sub set_index {
     my ( $self, $tableid, @records ) = @_;
     my $adb = $self->{_adb} or return;
 
-    # 1. Table path must be created first to load schema.
-    defined $tableid or return;
     my $table_info = $adb->table_info($tableid) or return;
+    if ( $adb->config('simple') || $table_info->{use_simple} ) {
+        $self->{say} .= "    - Table '$tableid' is in simple mode, skipping index generation.\n";
+        return 1;
+    }
     my $table_path = $adb->table_path($tableid);
     return unless ( -e "$table_path.$adb->{db_ext}" );
 
@@ -108,7 +110,6 @@ sub set_readall {
 
     my $table_info = $adb->table_info($tableid);
     return unless $table_info;
-    $table_info->{id_type} //= "num";
 
     # Read records from table if absent
     if ( !scalar @records ) {
@@ -121,12 +122,7 @@ sub set_readall {
         return;
     }
 
-    if ( $table_info->{id_type} eq "num" ) {
-        @records = grep /^\d+$/, @records;
-    }
-    elsif ( $table_info->{id_type} eq "ascii" ) {
-        @records = grep /^\w+$/, @records;
-    }
+    @records = grep /^\d+$/, @records;
     scalar @records or return;
     @records = $adb->array_nodup(@records);
     @records = $adb->db_sortid( $tableid, @records );
@@ -155,12 +151,9 @@ sub set_readall {
         my $i_path = "$table_path.$ext";
         my $t_path = "$i_path.tmp";
 
-        my $last_id;
-        if ( $table_info->{id_type} eq "num" ) {
-            my $cur_max = (sort { $b <=> $a } @list)[0] // 0;
-            my $old_lastid = $adb->table_lastid($tableid) // 0;
-            $last_id = $cur_max > $old_lastid ? $cur_max : $old_lastid;
-        }
+        my $cur_max = (sort { $b <=> $a } @list)[0] // 0;
+        my $old_lastid = $adb->table_lastid($tableid) // 0;
+        my $last_id = $cur_max > $old_lastid ? $cur_max : $old_lastid;
 
         if ( $adb->table_write($t_path) ) {
             $adb->index_put( $t_path, "keys",   \@list, "ids" );
@@ -181,7 +174,6 @@ sub set_readall {
 }
 
 # Rebuilds search word index.
-# $adb->table_attr('table', 'id_type') (num, ascii)
 # my $ok = $tools->set_search($tableid, @records);
 # ------------------------------------------------
 sub set_search {
@@ -193,7 +185,6 @@ sub set_search {
     my $table_path = $adb->table_path($tableid);
     my $table_info = $adb->table_info($tableid);
     return unless exists( $table_info->{search_block} );
-    $table_info->{id_type} //= "num";
 
     # Read records from table if absent
     if ( !scalar @records ) {
@@ -208,9 +199,7 @@ sub set_search {
         my $is_junk = $table_info->{use_junk} ? $adb->junk_rules( $table_info, @fields ) : 0;
         foreach my $blk ( @{ $table_info->{search_block} } ) {
             my $b_idx = ref($blk) eq "ARRAY" ? $blk->[0] : $blk;
-            if ( $table_info->{id_type} eq "num" ) {
-                $b_idx =~ /^\d+$/ or next;
-            }
+            $b_idx =~ /^\d+$/ or next;
             my %recsearch = $adb->get_words( $fields[$b_idx], "write", $tableid );
 
             foreach my $key ( keys %recsearch ) {
@@ -229,9 +218,7 @@ sub set_search {
         my ( $src_map, $ext ) = @_;
         foreach my $blk ( @{ $table_info->{search_block} } ) {
             my $b_idx = ref($blk) eq "ARRAY" ? $blk->[0] : $blk;
-            if ( $table_info->{id_type} eq "num" ) {
-                $b_idx =~ /^\d+$/ or next;
-            }
+            $b_idx =~ /^\d+$/ or next;
             my $file_path = "${table_path}_$b_idx.$ext";
             my $tmp_path  = "$file_path.tmp";
 
@@ -280,7 +267,6 @@ sub set_fields {
     my $table_info = $adb->table_info($tableid);
     return unless exists( $table_info->{match_block} );
     return unless -e "$table_path.$adb->{db_ext}";
-    $table_info->{id_type} //= "num";
 
     my ( %fields, %junk_fields );
     exists( $table_info->{match_block} ) or return;
@@ -323,9 +309,7 @@ sub set_fields {
     my $write_fld_file = sub {
         my ( $fld_map, $ext ) = @_;
         foreach my $line ( @{ $table_info->{match_block} } ) {
-            if ( $table_info->{id_type} eq "num" ) {
-                $line =~ /^\d+$/ or next;
-            }
+            $line =~ /^\d+$/ or next;
             my $file_path = "${table_path}_$line.$ext";
             my $tmp_path  = "$file_path.tmp";
 
@@ -379,7 +363,6 @@ sub set_filters {
     return unless -e "$table_path.$adb->{db_ext}";
 
     my $table_info = $adb->table_info($tableid);
-    $table_info->{id_type} //= "num";
 
     # Both match_block and use_facet must be defined to create facet index
     return unless exists( $table_info->{match_block} );
@@ -413,9 +396,7 @@ sub set_filters {
         $fields[0] or next;
         my @pairs;
         foreach my $blk (@fblocks) {
-            if ( $table_info->{id_type} eq "num" ) {
-                $blk =~ /^\d+$/ or next;
-            }
+            $blk =~ /^\d+$/ or next;
             next unless $fields[$blk];
             my @vals;
             if    ( ref $fields[$blk] eq "ARRAY" ) { @vals = @{ $fields[$blk] } }
@@ -538,8 +519,6 @@ sub set_sort {
     my $table_info = $adb->table_info($tableid);
     return unless exists $table_info->{sort_block};
 
-    my $id_type = $table_info->{id_type} // 'num';
-
     if ( !@records ) {
         @records = $adb->read_all( $tableid, 0, 0, no_index => 1 );
     }
@@ -561,13 +540,13 @@ sub set_sort {
         # Sort all keys in-memory with deterministic tie-breaker
         my @sorted_ids = sort {
             ( ( $map{$a} // '' ) cmp ( $map{$b} // '' ) )
-              || ( $id_type eq 'ascii' ? ( $a cmp $b ) : ( $a <=> $b ) )
+              || ( $a <=> $b )
         } keys %map;
 
         # Map file write (.srt) with bin_encode keys
         $adb->table_write($tmp_srt);
         $adb->index_put( $tmp_srt, "count", scalar(@sorted_ids), "raw" );
-        $adb->index_put( $tmp_srt, "keys",  \@sorted_ids, "ids", $id_type );
+        $adb->index_put( $tmp_srt, "keys",  \@sorted_ids, "ids" );
         foreach my $k ( keys %map ) {
             $adb->index_put( $tmp_srt, $k, $map{$k}, "raw" );
         }
@@ -627,17 +606,14 @@ sub check_readall {
     return unless $tableid;
     my $table_path = $adb->table_path($tableid);
     my $table_info = $adb->table_info($tableid);
-    $table_info->{id_type} //= "num";
 
     my ( %diff, %recs );
     foreach my $rec (@records) {
         $rec = $rec->[0] if ref $rec eq "ARRAY";
         next unless defined $rec && $rec ne "";
         $recs{keys}->{$rec} = 1;
-        if ( $table_info->{id_type} eq "num" ) {
-            $recs{lastid} ||= $rec;
-            $rec > $recs{lastid} and $recs{lastid} = $rec;
-        }
+        $recs{lastid} ||= $rec;
+        $rec > $recs{lastid} and $recs{lastid} = $rec;
     }
 
     my (%inds);
@@ -646,17 +622,11 @@ sub check_readall {
     $adb->table_close($inx_path);
     foreach my $rec (@keys) {
         $inds{keys}->{$rec} = 1;
-        if ( $table_info->{id_type} eq "num" ) {
-            $inds{lastid} ||= $rec;
-            $rec > $inds{lastid} and $inds{lastid} = $rec;
-        }
+        $inds{lastid} ||= $rec;
+        $rec > $inds{lastid} and $inds{lastid} = $rec;
     }
 
-    if (
-        $table_info->{id_type} eq "num"
-        && ( ( $recs{lastid} // "" ) ne ( $inds{lastid} // "" ) )
-      )
-    {
+    if ( ( $recs{lastid} // "" ) ne ( $inds{lastid} // "" ) ) {
         $diff{lastid}->{recs} = $recs{lastid};
         $diff{lastid}->{inds} = $inds{lastid};
     }
@@ -691,9 +661,7 @@ sub check_search {
     foreach my $line (@records) {
         my @fields = @$line;
         foreach my $src ( @{ $table_info->{search_block} } ) {
-            if ( $table_info->{id_type} ne "ascii" ) {
-                $src =~ /^[0-9]+$/ or next;
-            }
+            $src =~ /^[0-9]+$/ or next;
             my %words = $adb->get_words( $fields[$src], "write" );
 
             foreach my $word ( keys %words ) {
@@ -703,9 +671,7 @@ sub check_search {
     }
 
     foreach my $src ( @{ $table_info->{search_block} } ) {
-        if ( $table_info->{id_type} eq "num" ) {
-            $src =~ /^\d+$/ or next;
-        }
+        $src =~ /^\d+$/ or next;
 
         my $src_path = "${table_path}_$src.src";
         next unless -e $src_path;

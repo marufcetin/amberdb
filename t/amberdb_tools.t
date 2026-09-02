@@ -26,7 +26,6 @@ $adb->table_attr( 'catalog_product', {
     match_block  => [2],
     use_facet    => 1,
     sort_block   => [ { blk => 3, type => 'numeric' } ],
-    id_type      => 'num',
 } );
 
 my $tools = AmberDB::Tools->new($adb);

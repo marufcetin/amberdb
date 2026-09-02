@@ -50,6 +50,14 @@ sub _resolve_field_value {
                 $ref_table = $1;
             }
 
+            if ($ref_table) {
+                my $ref_info = $self->table_info($ref_table);
+                if ( $self->config('simple') || ( $ref_info && $ref_info->{use_simple} ) ) {
+                    cluck "[AMBERDB_SCHEMA] Cannot resolve RDBM relation to simple table '$ref_table'\n";
+                    return '';
+                }
+            }
+
             my $ref_id = $record->[$b1];
             if ( $ref_table && defined $ref_id && $ref_id ne '' ) {
                 my @ref_rec = $self->read_id( $ref_table, $ref_id );
@@ -253,15 +261,24 @@ sub rdbm_target {
     return unless defined $blk && exists $table_info->{blocks}->[$blk];
     my $b_def = $table_info->{blocks}->[$blk];
     return unless ref($b_def) eq 'HASH' && defined $b_def->{rdbm} && $b_def->{rdbm} ne '';
+    my ( $t, $b );
     if ( ref( $b_def->{rdbm} ) eq 'HASH' ) {
-        my $t = $b_def->{rdbm}->{table};
-        my $b = $b_def->{rdbm}->{display} // 1;
-        return ( $t, $b );
+        $t = $b_def->{rdbm}->{table};
+        $b = $b_def->{rdbm}->{display} // 1;
     }
-    if ( $b_def->{rdbm} =~ /^([\w\-]+)[;:,](\d+)/ ) {
-        return ( $1, $2 );
+    elsif ( $b_def->{rdbm} =~ /^([\w\-]+)[;:,](\d+)/ ) {
+        ( $t, $b ) = ( $1, $2 );
     }
-    return;
+    return unless defined $t;
+
+    # Check if target table is simple mode (cannot bind RDBM to simple table)
+    my $target_info = $self->table_info($t);
+    if ( $self->config('simple') || ( $target_info && $target_info->{use_simple} ) ) {
+        cluck "[AMBERDB_SCHEMA] Cannot link foreign key (RDBM) to simple table '$t'\n";
+        return;
+    }
+
+    return ( $t, $b );
 }
 
 # my @record = $self->repeat_fields($table_info, @record);
@@ -443,7 +460,6 @@ sub match_add {
     return unless exists $table_info->{match_block};
     return unless ref($records) eq 'ARRAY' && @$records;
 
-    my $id_type = $table_info->{id_type} // 'num';
     my %acc;
 
     foreach my $blk ( @{ $table_info->{match_block} } ) {
@@ -478,7 +494,7 @@ sub match_add {
         foreach my $val ( keys %{ $acc{$blk} } ) {
             my ( undef, @existing ) = $self->index_get( $field_path, $val );
             my @recs = $self->array_nodup( @existing, @{ $acc{$blk}{$val} } );
-            $self->index_put( $field_path, $val, \@recs, "ids", $id_type );
+            $self->index_put( $field_path, $val, \@recs, "ids" );
         }
         $self->table_close($field_path);
     }
@@ -491,7 +507,6 @@ sub match_del {
     return unless exists $table_info->{match_block};
     return unless ref($records) eq 'ARRAY' && @$records;
 
-    my $id_type = $table_info->{id_type} // 'num';
     my %acc;
 
     foreach my $blk ( @{ $table_info->{match_block} } ) {
@@ -527,7 +542,7 @@ sub match_del {
             my ( undef, @existing ) = $self->index_get( $field_path, $val );
             my $keys = $self->array_punch( \@existing, $acc{$blk}{$val} );
             if (@$keys) {
-                $self->index_put( $field_path, $val, $keys, "ids", $id_type );
+                $self->index_put( $field_path, $val, $keys, "ids" );
             }
             else {
                 $self->index_del( $field_path, $val );
@@ -544,7 +559,6 @@ sub match_modify {
     return unless exists $table_info->{match_block};
     return unless ref($pairs) eq 'ARRAY' && @$pairs;
 
-    my $id_type = $table_info->{id_type} // 'num';
     my ( %del_acc, %add_acc );
 
     foreach my $blk ( @{ $table_info->{match_block} } ) {
@@ -599,7 +613,7 @@ sub match_modify {
                 @recs = $self->array_nodup( @recs, @{ $add_acc{$blk}{$val} } );
             }
             if (@recs) {
-                $self->index_put( $field_path, $val, \@recs, "ids", $id_type );
+                $self->index_put( $field_path, $val, \@recs, "ids" );
             }
             else {
                 $self->index_del( $field_path, $val );
@@ -616,7 +630,6 @@ sub search_add {
     return unless exists $table_info->{search_block};
     return unless ref($records) eq 'ARRAY' && @$records;
 
-    my $id_type = $table_info->{id_type} // 'num';
     foreach my $blk ( @{ $table_info->{search_block} } ) {
         my ( $real_blk, $src_table, $src_display ) =
             ref($blk) eq 'ARRAY' ? ( $blk->[0], $blk->[1], $blk->[2] )
@@ -646,7 +659,7 @@ sub search_add {
             $word or next;
             my ( undef, @existing ) = $self->index_get( $search_path, $word );
             my @recs = $self->array_nodup( @existing, @{ $word_acc{$word} } );
-            $self->index_put( $search_path, $word, \@recs, "ids", $id_type );
+            $self->index_put( $search_path, $word, \@recs, "ids" );
         }
         $self->table_close($search_path);
     }
@@ -659,7 +672,6 @@ sub search_del {
     return unless exists $table_info->{search_block};
     return unless ref($records) eq 'ARRAY' && @$records;
 
-    my $id_type = $table_info->{id_type} // 'num';
     foreach my $blk ( @{ $table_info->{search_block} } ) {
         my ( $real_blk, $src_table, $src_display ) =
             ref($blk) eq 'ARRAY' ? ( $blk->[0], $blk->[1], $blk->[2] )
@@ -691,7 +703,7 @@ sub search_del {
             my ( undef, @existing ) = $self->index_get( $search_path, $word );
             my $keys = $self->array_punch( \@existing, $word_acc{$word} );
             if (@$keys) {
-                $self->index_put( $search_path, $word, $keys, "ids", $id_type );
+                $self->index_put( $search_path, $word, $keys, "ids" );
             }
             else {
                 $self->index_del( $search_path, $word );
@@ -708,7 +720,6 @@ sub search_modify {
     return unless exists $table_info->{search_block};
     return unless ref($pairs) eq 'ARRAY' && @$pairs;
 
-    my $id_type = $table_info->{id_type} // 'num';
     foreach my $blk ( @{ $table_info->{search_block} } ) {
         my $real_blk    = ref($blk) eq 'ARRAY' ? $blk->[0] : $blk;
         my $search_path = "${table_path}_$real_blk.src";
@@ -746,7 +757,7 @@ sub search_modify {
                 @recs = $self->array_nodup( @recs, @{ $add_acc{$word} } );
             }
             if (@recs) {
-                $self->index_put( $search_path, $word, \@recs, "ids", $id_type );
+                $self->index_put( $search_path, $word, \@recs, "ids" );
             }
             else {
                 $self->index_del( $search_path, $word );
@@ -766,7 +777,6 @@ sub records_add {
     return unless exists $table_info->{record_index};
     return unless ref($new_rids) eq 'ARRAY' && @$new_rids;
 
-    my $id_type    = $table_info->{id_type} // 'num';
     my $index_path = "$table_path.inx";
     my @all_recs;
     my $idx_handle;
@@ -782,7 +792,7 @@ sub records_add {
         $lastid //= 0;
         my @recs = $self->array_nodup( @recs_ref, @$new_rids );
         @all_recs = @recs;
-        $self->index_put( $index_path, "keys",  \@recs, "ids", $id_type );
+        $self->index_put( $index_path, "keys",  \@recs, "ids" );
         $self->index_put( $index_path, "count", scalar @recs, "raw" );
         my @nums   = sort { $b <=> $a } grep { /^\d+$/ } @$new_rids;
         if ( @nums && $nums[0] > $lastid ) {
@@ -814,13 +824,12 @@ sub records_del {
     return unless exists $table_info->{record_index};
     return unless ref($del_rids) eq 'ARRAY' && @$del_rids;
 
-    my $id_type    = $table_info->{id_type} // 'num';
     my $index_path = "$table_path.inx";
     if ( -e $index_path && $self->table_write($index_path) ) {
         my ( undef, @recs_ref ) = $self->index_get( $index_path, "keys" );
         my $keys = $self->array_punch( \@recs_ref, $del_rids );
         if (@$keys) {
-            $self->index_put( $index_path, "keys",  $keys, "ids", $id_type );
+            $self->index_put( $index_path, "keys",  $keys, "ids" );
         }
         else {
             $self->index_del( $index_path, "keys" );
@@ -970,7 +979,6 @@ sub sort_add {
     return unless ref($records) eq 'ARRAY' && @$records;
 
     my ($tableid) = ( $table_path =~ /([^\\\/]+)$/ );
-    my $id_type   = $table_info->{id_type} // 'num';
 
     foreach my $cfg ( @{ $table_info->{sort_block} } ) {
         my ( $blk, $type, $len ) = ref($cfg) eq 'HASH'
@@ -1018,7 +1026,7 @@ sub sort_add {
         }
 
         $self->index_put( $sort_path, "count", scalar @keys, "raw" );
-        $self->index_put( $sort_path, "keys",  \@keys, "ids", $id_type );
+        $self->index_put( $sort_path, "keys",  \@keys, "ids" );
         foreach my $p (@put_pairs) {
             $self->index_put( $sort_path, $p->[0], $p->[1], "raw" );
         }
@@ -1035,7 +1043,6 @@ sub sort_modify {
     return unless ref($pairs) eq 'ARRAY' && @$pairs;
 
     my ($tableid) = ( $table_path =~ /([^\\\/]+)$/ );
-    my $id_type   = $table_info->{id_type} // 'num';
 
     foreach my $cfg ( @{ $table_info->{sort_block} } ) {
         my ( $blk, $type, $len ) = ref($cfg) eq 'HASH'
@@ -1091,7 +1098,7 @@ sub sort_modify {
 
         if ($modified) {
             $self->index_put( $sort_path, "count", scalar @keys, "raw" );
-            $self->index_put( $sort_path, "keys",  \@keys, "ids", $id_type );
+            $self->index_put( $sort_path, "keys",  \@keys, "ids" );
             foreach my $p (@put_pairs) {
                 $self->index_put( $sort_path, $p->[0], $p->[1], "raw" );
             }
@@ -1109,7 +1116,6 @@ sub sort_del {
     return unless ref($records) eq 'ARRAY' && @$records;
 
     my ($tableid) = ( $table_path =~ /([^\\\/]+)$/ );
-    my $id_type   = $table_info->{id_type} // 'num';
 
     foreach my $cfg ( @{ $table_info->{sort_block} } ) {
         my ( $blk ) = ref($cfg) eq 'HASH' ? $cfg->{blk} : $cfg;
@@ -1129,7 +1135,7 @@ sub sort_del {
         @keys = grep { !$del_map{$_} } @keys;
 
         $self->index_put( $sort_path, "count", scalar @keys, "raw" );
-        $self->index_put( $sort_path, "keys",  \@keys, "ids", $id_type );
+        $self->index_put( $sort_path, "keys",  \@keys, "ids" );
         $self->index_del( $sort_path, $_ ) for @del_ids;
         $self->table_close($sort_path);
 
@@ -1257,8 +1263,8 @@ sub sort_by_block {
 
     # If target block is ID (block 0 or 'id'), sort by primary key ID via array_sort
     if ( !$blk || $blk eq '0' || $blk eq 'id' ) {
-        my $id_type = $tableid ? ( $self->table_attr( $tableid, 'id_type' ) // 'num' ) : 'num';
-        return $self->array_sort( $id_type, $dir, undef, @$ids_ref );
+        my $id_sort_type = ( $self->config('simple') || ( $tableid && $self->table_attr( $tableid, 'use_simple' ) ) ) ? 'ascii' : 'num';
+        return $self->array_sort( $id_sort_type, $dir, undef, @$ids_ref );
     }
 
     my $table_path = $self->table_path($tableid);
@@ -1317,7 +1323,7 @@ sub sort_by_block_records {
             }
         }
     }
-    $type //= ( $blk == 0 ) ? ( $table_info->{id_type} // 'num' ) : 'auto';
+    $type //= ( $blk == 0 ) ? ( ( $self->config('simple') || ( $table_info && $table_info->{use_simple} ) ) ? 'ascii' : 'num' ) : 'auto';
 
     return $self->array_sort( $type, $dir, $blk, @$recs_ref );
 }

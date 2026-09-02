@@ -28,29 +28,22 @@ subtest 'Sort Methods Existence' => sub {
 };
 
 subtest 'Binary Encoding and Decoding (bin_encode / bin_decode)' => sub {
-    plan tests => 7;
+    plan tests => 5;
     my $adb = AmberDB->new();
 
     my @test_ids = ( 101, 102, 105, 120, 5000 );
-    my $encoded  = $adb->bin_encode( \@test_ids, 'num' );
+    my $encoded  = $adb->bin_encode( \@test_ids );
     ok( length($encoded) == 8 * 5, 'bin_encode produces correct byte length (5 x Q> = 40 bytes)' );
 
-    my ( $count, @decoded ) = $adb->bin_decode( $encoded, 0, 0, 'asc', 'num' );
+    my ( $count, @decoded ) = $adb->bin_decode( $encoded, 0, 0, 'asc' );
     is( $count, 5, 'bin_decode returns correct total count' );
     is_deeply( \@decoded, \@test_ids, 'bin_decode decodes all IDs in ASC order' );
 
-    my ( undef, @desc_decoded ) = $adb->bin_decode( $encoded, 0, 0, 'desc', 'num' );
+    my ( undef, @desc_decoded ) = $adb->bin_decode( $encoded, 0, 0, 'desc' );
     is_deeply( \@desc_decoded, [ reverse @test_ids ], 'bin_decode decodes all IDs in DESC order' );
 
-    my ( undef, @slice_decoded ) = $adb->bin_decode( $encoded, 1, 2, 'asc', 'num' );
+    my ( undef, @slice_decoded ) = $adb->bin_decode( $encoded, 1, 2, 'asc' );
     is_deeply( \@slice_decoded, [ 102, 105 ], 'bin_decode performs O(1) substr slicing (start=1, limit=2)' );
-
-    # ascii type
-    my @ascii_ids = ( 'abc', 'xyz', 'foo' );
-    my $aenc = $adb->bin_encode( \@ascii_ids, 'ascii' );
-    is( length($aenc), 8 * 3, 'bin_encode ascii correct byte length (3 x 8 = 24 bytes)' );
-    my ( undef, @adec ) = $adb->bin_decode( $aenc, 0, 0, 'asc', 'ascii' );
-    is_deeply( \@adec, \@ascii_ids, 'bin_decode ascii round-trip correct' );
 };
 
 
@@ -102,7 +95,6 @@ subtest 'AmberDB Sort Integration CRUD & Pagination' => sub {
     open my $fh, '>', $schema_file or die "Cannot create schema file: $!";
     print $fh <<'SCHEMA';
 {
-    id_type    => 'num',
     sort_block => [
         1,
         { blk => 2, type => 'num' },
@@ -208,7 +200,6 @@ subtest 'field_fetch & search_table Sorting Integration' => sub {
     open my $fh, '>', $schema_file or die "Cannot create schema file: $!";
     print $fh <<'SCHEMA';
 {
-    id_type      => 'num',
     sort_block   => [ 1, { blk => 2, type => 'num' } ],
     match_block  => [ 3 ],
     search_block => [ 1 ],
@@ -309,7 +300,6 @@ subtest 'Primary Key Binary Index (.inx) O(1) Seeking' => sub {
     open my $fh, '>', $schema_file or die "Cannot create schema file: $!";
     print $fh <<'SCHEMA';
 {
-    id_type      => 'num',
     record_index => 1,
 }
 SCHEMA
@@ -352,7 +342,6 @@ subtest 'convert_tables Batch Conversion' => sub {
     open my $fh, '>', $schema_file or die "Cannot create schema file: $!";
     print $fh <<'SCHEMA';
 {
-    id_type      => 'num',
     record_index => 1,
     match_block  => [ 1 ],
 }

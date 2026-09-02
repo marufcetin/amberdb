@@ -33,7 +33,6 @@ subtest '1. Unindexed Schema & Verification of No Index Files on Disk' => sub {
     my $tbl = 'catalog_fld_unidx';
     my $table_info = {
         record_index => 0,
-        id_type      => 'num',
         # No match_block defined (unindexed table scan mode)
     };
     $adb->table_attr( $tbl, $table_info );
@@ -253,7 +252,6 @@ subtest '7. CRUD Lifecycle & Bulk Operations (Unindexed)' => sub {
     my $tbl = 'catalog_fld_unidx_crud';
     $adb->table_attr( $tbl, {
         record_index => 0,
-        id_type      => 'num',
     } );
 
     # --- A) Single Record INSERT ---
