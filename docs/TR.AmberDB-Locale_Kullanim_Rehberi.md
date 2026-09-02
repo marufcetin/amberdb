@@ -1,4 +1,4 @@
-[🏠 Ana Sayfa](index_tr.md) &nbsp;•&nbsp; [📖 Hakkında](TR.AmberDB-Hakkinda.md) &nbsp;•&nbsp; [🚀 Hızlı Başlangıç](index_tr.md#-hızlı-başlangıç) &nbsp;•&nbsp; [📘 Tutorial](TR.AmberDB_Veritabani_Sistemi.md) &nbsp;•&nbsp; [🌐 Locale](TR.AmberDB-Locale_Kullanim_Rehberi.md) &nbsp;•&nbsp; [📋 Changes](https://github.com/marufcetin/amberdb/blob/main/Changes) &nbsp;•&nbsp; [📚 Wiki](https://github.com/marufcetin/amberdb/wiki) &nbsp;•&nbsp; [🇬🇧 English](EN.AmberDB-Locale_User-Guide.md)
+[🏠 Ana Sayfa](index_tr.html) &nbsp;•&nbsp; [📖 Hakkında](TR.AmberDB-Hakkinda.html) &nbsp;•&nbsp; [🚀 Hızlı Başlangıç](index_tr.html#-hızlı-başlangıç) &nbsp;•&nbsp; [📘 Tutorial](TR.AmberDB_Veritabani_Sistemi.html) &nbsp;•&nbsp; [🌐 Locale](TR.AmberDB-Locale_Kullanim_Rehberi.html) &nbsp;•&nbsp; [📋 Changes](https://github.com/marufcetin/amberdb/blob/main/Changes) &nbsp;•&nbsp; [📚 Wiki](https://github.com/marufcetin/amberdb/wiki) &nbsp;•&nbsp; [🇬🇧 English](EN.AmberDB-Locale_User-Guide.html)
 
 ---
 

@@ -1,4 +1,4 @@
-[🏠 Home](index.md) &nbsp;•&nbsp; [📖 About](EN.About_AmberDB.md) &nbsp;•&nbsp; [🚀 Quick Start](#-quick-start) &nbsp;•&nbsp; [📘 Tutorial](EN.AmberDB_User-Guide.md) &nbsp;•&nbsp; [🌐 Locale](EN.AmberDB-Locale_User-Guide.md) &nbsp;•&nbsp; [📋 Changes](https://github.com/marufcetin/amberdb/blob/main/Changes) &nbsp;•&nbsp; [📚 Wiki](https://github.com/marufcetin/amberdb/wiki) &nbsp;•&nbsp; [🇹🇷 Türkçe](index_tr.md)
+[🏠 Home](index.html) &nbsp;•&nbsp; [📖 About](EN.About_AmberDB.html) &nbsp;•&nbsp; [🚀 Quick Start](#-quick-start) &nbsp;•&nbsp; [📘 Tutorial](EN.AmberDB_User-Guide.html) &nbsp;•&nbsp; [🌐 Locale](EN.AmberDB-Locale_User-Guide.html) &nbsp;•&nbsp; [📋 Changes](https://github.com/marufcetin/amberdb/blob/main/Changes) &nbsp;•&nbsp; [📚 Wiki](https://github.com/marufcetin/amberdb/wiki) &nbsp;•&nbsp; [🇹🇷 Türkçe](index_tr.html)
 
 ---
 
@@ -17,12 +17,12 @@
 
 | Section | Description | Link |
 | :--- | :--- | :--- |
-| **About AmberDB** | Architecture overview, design philosophy, why AmberDB, and core capabilities. | [📖 Read About AmberDB](EN.About_AmberDB.md) |
-| **Tutorial & Developer Guide** | Comprehensive manual covering CRUD operations, schemas, transactions, indexing, search, and best practices. | [📘 Open Developer Guide](EN.AmberDB_User-Guide.md) |
-| **AmberDB::Locale Guide** | Multilingual (9 languages) string processing, locale-aware case folding, accent/circumflex unfolding, and collation. | [🌐 Open Locale Guide](EN.AmberDB-Locale_User-Guide.md) |
+| **About AmberDB** | Architecture overview, design philosophy, why AmberDB, and core capabilities. | [📖 Read About AmberDB](EN.About_AmberDB.html) |
+| **Tutorial & Developer Guide** | Comprehensive manual covering CRUD operations, schemas, transactions, indexing, search, and best practices. | [📘 Open Developer Guide](EN.AmberDB_User-Guide.html) |
+| **AmberDB::Locale Guide** | Multilingual (9 languages) string processing, locale-aware case folding, accent/circumflex unfolding, and collation. | [🌐 Open Locale Guide](EN.AmberDB-Locale_User-Guide.html) |
 | **Release Changes** | Version history, recent architectural updates, and changelog. | [📋 View Changes](https://github.com/marufcetin/amberdb/blob/main/Changes) |
 | **Project Wiki** | Method-by-method API documentation, concept deep-dives, flags, and file format references. | [📚 Open Project Wiki](https://github.com/marufcetin/amberdb/wiki) |
-| **🇹🇷 Türkçe Dokümantasyon** | Türkçe ana sayfa, mimari makale, geliştirici kılavuzu ve dil kütüphanesi dokümanları. | [🇹🇷 Türkçe Sayfaya Geç](index_tr.md) |
+| **🇹🇷 Türkçe Dokümantasyon** | Türkçe ana sayfa, mimari makale, geliştirici kılavuzu ve dil kütüphanesi dokümanları. | [🇹🇷 Türkçe Sayfaya Geç](index_tr.html) |
 
 ---
 
