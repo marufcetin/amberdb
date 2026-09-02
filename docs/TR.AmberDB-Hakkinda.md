@@ -1,3 +1,17 @@
+<div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; border-bottom: 2px solid #eaecef; padding-bottom: 12px; margin-bottom: 20px;">
+  <span style="font-size: 1.85rem; font-weight: 700; color: #24292e;">AmberDB</span>
+  <div style="font-size: 0.95rem;">
+    <a href="index_tr.md">🏠 Ana Sayfa</a> &nbsp;•&nbsp;
+    <a href="TR.AmberDB-Hakkinda.md">📖 Hakkında</a> &nbsp;•&nbsp;
+    <a href="index_tr.md#-hızlı-başlangıç">🚀 Hızlı Başlangıç</a> &nbsp;•&nbsp;
+    <a href="TR.AmberDB_Veritabani_Sistemi.md">📘 Tutorial</a> &nbsp;•&nbsp;
+    <a href="TR.AmberDB-Locale_Kullanim_Rehberi.md">🌐 Locale</a> &nbsp;•&nbsp;
+    <a href="https://github.com/marufcetin/amberdb/blob/main/Changes">📋 Changes</a> &nbsp;•&nbsp;
+    <a href="https://github.com/marufcetin/amberdb/wiki">📚 Wiki</a> &nbsp;•&nbsp;
+    <a href="EN.About_AmberDB.md">🇬🇧 English</a>
+  </div>
+</div>
+
 # AmberDB Hakkında
 
 AmberDB, JSON benzeri iç içe ve karmaşık yapıları destekleyen Array tabanlı kayıtları işleyen, Perl için gömülü bir NoSQL veritabanı motorudur. Şema tanımlarıyla oluşturulan özel indeksleri sayesinde blok eşleştirme, sorgulama, tam metin arama, filtreleme ve sıralama işlemlerini hızlı bir şekilde gerçekleştirirken şemasız ve indexsiz de aynı arama sorgulama kalitesini koruyabilir.

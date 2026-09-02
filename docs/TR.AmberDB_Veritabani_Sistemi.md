@@ -1,3 +1,17 @@
+<div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; border-bottom: 2px solid #eaecef; padding-bottom: 12px; margin-bottom: 20px;">
+  <span style="font-size: 1.85rem; font-weight: 700; color: #24292e;">AmberDB</span>
+  <div style="font-size: 0.95rem;">
+    <a href="index_tr.md">🏠 Ana Sayfa</a> &nbsp;•&nbsp;
+    <a href="TR.AmberDB-Hakkinda.md">📖 Hakkında</a> &nbsp;•&nbsp;
+    <a href="index_tr.md#-hızlı-başlangıç">🚀 Hızlı Başlangıç</a> &nbsp;•&nbsp;
+    <a href="TR.AmberDB_Veritabani_Sistemi.md">📘 Tutorial</a> &nbsp;•&nbsp;
+    <a href="TR.AmberDB-Locale_Kullanim_Rehberi.md">🌐 Locale</a> &nbsp;•&nbsp;
+    <a href="https://github.com/marufcetin/amberdb/blob/main/Changes">📋 Changes</a> &nbsp;•&nbsp;
+    <a href="https://github.com/marufcetin/amberdb/wiki">📚 Wiki</a> &nbsp;•&nbsp;
+    <a href="EN.AmberDB_User-Guide.md">🇬🇧 English</a>
+  </div>
+</div>
+
 # AmberDB — Geliştirici Kılavuzu ve Dokümantasyon
 
 > **Sürüm:** 5.22.2 · **İlk Tasarım:** 2005 · **Son Güncelleme:** 2026  

@@ -1,6 +1,18 @@
-# AmberDB::Locale — Comprehensive Guide
+<div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; border-bottom: 2px solid #eaecef; padding-bottom: 12px; margin-bottom: 20px;">
+  <span style="font-size: 1.85rem; font-weight: 700; color: #24292e;">AmberDB</span>
+  <div style="font-size: 0.95rem;">
+    <a href="index.md">🏠 Home</a> &nbsp;•&nbsp;
+    <a href="EN.About_AmberDB.md">📖 About</a> &nbsp;•&nbsp;
+    <a href="index.md#-quick-start">🚀 Quick Start</a> &nbsp;•&nbsp;
+    <a href="EN.AmberDB_User-Guide.md">📘 Tutorial</a> &nbsp;•&nbsp;
+    <a href="EN.AmberDB-Locale_User-Guide.md">🌐 Locale</a> &nbsp;•&nbsp;
+    <a href="https://github.com/marufcetin/amberdb/blob/main/Changes">📋 Changes</a> &nbsp;•&nbsp;
+    <a href="https://github.com/marufcetin/amberdb/wiki">📚 Wiki</a> &nbsp;•&nbsp;
+    <a href="TR.AmberDB-Locale_Kullanim_Rehberi.md">🇹🇷 Türkçe</a>
+  </div>
+</div>
 
----
+# AmberDB::Locale — Comprehensive Guide
 
 ## 1. Overview
 

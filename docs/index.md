@@ -1,8 +1,16 @@
-# AmberDB Documentation
-
-[🏠 Home](index.md) &nbsp;•&nbsp; [📖 About](EN.About_AmberDB.md) &nbsp;•&nbsp; [🚀 Quick Start](#-quick-start) &nbsp;•&nbsp; [📘 Tutorial](EN.AmberDB_User-Guide.md) &nbsp;•&nbsp; [🌐 Locale](EN.AmberDB-Locale_User-Guide.md) &nbsp;•&nbsp; [📋 Changes](https://github.com/marufcetin/amberdb/blob/main/Changes) &nbsp;•&nbsp; [📚 Wiki](https://github.com/marufcetin/amberdb/wiki) &nbsp;•&nbsp; [🇹🇷 Türkçe](index_tr.md)
-
----
+<div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; border-bottom: 2px solid #eaecef; padding-bottom: 12px; margin-bottom: 20px;">
+  <span style="font-size: 1.85rem; font-weight: 700; color: #24292e;">AmberDB</span>
+  <div style="font-size: 0.95rem;">
+    <a href="index.md">🏠 Home</a> &nbsp;•&nbsp;
+    <a href="EN.About_AmberDB.md">📖 About</a> &nbsp;•&nbsp;
+    <a href="#-quick-start">🚀 Quick Start</a> &nbsp;•&nbsp;
+    <a href="EN.AmberDB_User-Guide.md">📘 Tutorial</a> &nbsp;•&nbsp;
+    <a href="EN.AmberDB-Locale_User-Guide.md">🌐 Locale</a> &nbsp;•&nbsp;
+    <a href="https://github.com/marufcetin/amberdb/blob/main/Changes">📋 Changes</a> &nbsp;•&nbsp;
+    <a href="https://github.com/marufcetin/amberdb/wiki">📚 Wiki</a> &nbsp;•&nbsp;
+    <a href="index_tr.md">🇹🇷 Türkçe</a>
+  </div>
+</div>
 
 [![CPAN version](https://badge.fury.io/pl/AmberDB.svg)](https://metacpan.org/pod/AmberDB)
 [![Perl Version](https://img.shields.io/badge/perl-5.16%2B-blue.svg)](https://www.perl.org)
