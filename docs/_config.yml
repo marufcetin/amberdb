@@ -1,5 +1,7 @@
 title: AmberDB
 description: High-performance, embedded, multi-model document database engine for Perl
+url: "https://marufcetin.github.io"
+baseurl: "/amberdb"
 theme: jekyll-theme-primer
 markdown: kramdown
 kramdown:
@@ -8,8 +10,11 @@ kramdown:
   syntax_highlighter: rouge
 plugins:
   - jekyll-relative-links
+  - jekyll-seo-tag
+  - jekyll-sitemap
 relative_links:
   enabled: true
   collections: true
 include:
   - "*.md"
+  - "googlee366970b648e66a8.html"
