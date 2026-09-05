@@ -20,7 +20,7 @@ While Global Flags govern the entire database session, Table Schema Flags allow 
 
 | Flag Name | Data Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| **`id_type`** | `string` | `"num"` | Primary key format: `"num"` (64-bit integer, `Q*`) or `"ascii"` (max 8-byte fixed ASCII, `a8*`). |
+| **`use_simple`** | `boolean` | `0` | `1`: Enables simple key-value mode allowing arbitrary string keys up to 255 bytes (UUIDs, slugs, etc.) without binary index (`.inx`) files. |
 | **`auto_id`** | `boolean` | `1` | `1`: Automatically generates 64-bit IDs during `insert_id`. `0`: Requires explicit application-provided IDs. |
 | **`keep_deleted`**| `boolean` | `0` | `1`: Soft-deletes records into `.del` archive rather than permanently purging them. |
 | **`log_owner`** | `boolean` | `0` | `1`: Logs user timestamps, actions, and previous field values into `.aut` audit trail. |
@@ -44,7 +44,7 @@ While Global Flags govern the entire database session, Table Schema Flags allow 
 ```text
 Schema Flags to Physical Storage Mapping
 
- id_type / auto_id  ───────────────> .inx (8-Byte Packed Primary Index)
+ auto_id            ───────────────> .inx (8-Byte Packed Primary Index - Q>*)
  match_block        ───────────────> .fld (Inverted Match Index)
  search_block       ───────────────> .src (Full-Text Search Index)
  facet_block        ───────────────> .fac & .unq (Facet Bitsets & Dictionaries)

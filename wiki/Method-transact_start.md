@@ -30,10 +30,11 @@ eval {
     # Atomic multi-table updates
     $adb->modify_id("inventory", @stock_record);
     $adb->insert_id("orders", @order_record);
-    $adb->transact_end(); # Commit changes
+    $adb->transact_end(); # Commit if clean
 };
 if ($@) {
-    $adb->transact_rollback(); # Revert on failure
+    # On unhandled error or exception, roll back changes directly
+    $adb->transact_rollback();
 }
 ```
 
@@ -43,6 +44,7 @@ if ($@) {
 
 - [Concept: Strict 2PL Locking](Concept-Strict-2PL-Locking)
 - [Concept: Undo Journal Rollback](Concept-Undo-Journal-Rollback)
+- [Method: transact_error](Method-transact_error)
 - [Method: transact_end](Method-transact_end)
 - [Method: transact_rollback](Method-transact_rollback)
 - [File: .txn (Undo Journal)](File-txn)

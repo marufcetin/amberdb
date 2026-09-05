@@ -57,7 +57,7 @@ my @toplu_kayitlar = (
 );
 
 # Eklenen kayitlarin ID durum ozeti ($statu->{ID} = 1) doner:
-my $statu = $adb->insert_list("catalog_products", @toplu_kayitlar);
+my $statu = $adb->insert_list("catalog_product", @toplu_kayitlar);
 print "Toplu ekleme tamamlandi. Eklenen ID'ler: " . join(", ", keys %$statu) . "\n";
 ```
 

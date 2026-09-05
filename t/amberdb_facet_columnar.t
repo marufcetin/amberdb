@@ -43,14 +43,14 @@ subtest '1. .unq dictionary prefix architecture (s: and n:)' => sub {
     my $elek_id = $ids[0];
     ok( $elek_id =~ /^\d+$/, "ID is numeric" );
 
-    # Check forward key s:Elektronik
-    my $unq_file = "${table_path}_1.unq";
-    my ($stored_id) = $adb->index_get( $unq_file, "s:Elektronik", 'raw' );
-    is( $stored_id, $elek_id, "s:Elektronik maps to numeric ID $elek_id" );
+    # Check forward key 1:s:Elektronik
+    my $unq_file = "${table_path}.unq";
+    my ($stored_id) = $adb->index_get( $unq_file, "1:s:Elektronik", 'raw' );
+    is( $stored_id, $elek_id, "1:s:Elektronik maps to numeric ID $elek_id" );
 
-    # Check reverse key n:$elek_id
-    my ($stored_name) = $adb->index_get( $unq_file, "n:$elek_id", 'raw' );
-    is( $stored_name, 'Elektronik', "n:$elek_id maps back to 'Elektronik'" );
+    # Check reverse key 1:n:$elek_id
+    my ($stored_name) = $adb->index_get( $unq_file, "1:n:$elek_id", 'raw' );
+    is( $stored_name, 'Elektronik', "1:n:$elek_id maps back to 'Elektronik'" );
 
     # Test reading mode (read mode)
     my @read_ids = $adb->field_to_list( 'Elektronik', 'read', $table_path, $tinfo, 1 );
@@ -63,7 +63,7 @@ subtest '1. .unq dictionary prefix architecture (s: and n:)' => sub {
 
 # ---------------------------------------------------------------------------
 subtest '2. Columnar .fac files and active-only indexing' => sub {
-    plan tests => 5;
+    plan tests => 6;
 
     # Record format: [ $rid, $cat, $brand, $color, $status ]
     # Active products ($status == 1)
@@ -76,18 +76,24 @@ subtest '2. Columnar .fac files and active-only indexing' => sub {
 
     my $table_path = $adb->table_path('catalog_product');
 
-    # Check that block-specific .fac files exist
-    ok( -e "${table_path}_1.fac", "Block 1 .fac exists" );
-    ok( -e "${table_path}_2.fac", "Block 2 .fac exists" );
-    ok( -e "${table_path}_3.fac", "Block 3 .fac exists" );
+    # Check that unified .fac file exists
+    ok( -e "${table_path}.fac", "Unified .fac exists" );
 
-    # Check that inactive record 104 is NOT in ${table_path}_1.fac
-    my ($raw_104) = $adb->index_get( "${table_path}_1.fac", 104, 'raw' );
+    # Check that inactive record 104 is NOT in .fac
+    my ($raw_104) = $adb->index_get( "${table_path}.fac", "1:104", 'raw' );
     ok( !defined $raw_104, "Inactive record 104 is not indexed in .fac" );
 
-    # Check that active record 101 IS in ${table_path}_1.fac
-    my ($raw_101) = $adb->index_get( "${table_path}_1.fac", 101, 'raw' );
-    ok( defined $raw_101 && $raw_101 ne '', "Active record 101 is indexed in .fac" );
+    # Check that active record 101 IS in .fac for all configured blocks
+    my ($raw_101_b1) = $adb->index_get( "${table_path}.fac", "1:101", 'raw' );
+    ok( defined $raw_101_b1 && $raw_101_b1 ne '', "Active record 101 is indexed in 1:101" );
+    my ($raw_101_b2) = $adb->index_get( "${table_path}.fac", "2:101", 'raw' );
+    ok( defined $raw_101_b2 && $raw_101_b2 ne '', "Active record 101 is indexed in 2:101" );
+    my ($raw_101_b3) = $adb->index_get( "${table_path}.fac", "3:101", 'raw' );
+    ok( defined $raw_101_b3 && $raw_101_b3 ne '', "Active record 101 is indexed in 3:101" );
+
+    # Verify active ID set contains 101, 102, 103 but not 104
+    my ( undef, @acts ) = $adb->index_get( "${table_path}.fac", "active", "ids" );
+    is_deeply( [ sort { $a <=> $b } @acts ], [ 101, 102, 103 ], "Active IDs in .fac" );
 };
 
 # ---------------------------------------------------------------------------
@@ -136,21 +142,21 @@ subtest '5. Facet lifecycle with Junk transitions (Active -> Junk -> Active)' =>
     my $table_path = $adb->table_path('catalog_product');
 
     # Initial state: 101 is active (status 1) -> in .fac
-    my ($fac_101_init) = $adb->index_get( "${table_path}_1.fac", 101, 'raw' );
+    my ($fac_101_init) = $adb->index_get( "${table_path}.fac", "1:101", 'raw' );
     ok( defined $fac_101_init, "Initial: Active 101 is in .fac" );
 
     # Transition 1: Product 101 becomes out-of-sale (status 0) -> becomes junk -> removed from .fac
     $adb->modify_id( 'catalog_product', 101, 'Telefon', 'Apple', 'Siyah', 0 );
-    my ($fac_101_junk) = $adb->index_get( "${table_path}_1.fac", 101, 'raw' );
+    my ($fac_101_junk) = $adb->index_get( "${table_path}.fac", "1:101", 'raw' );
     ok( !defined $fac_101_junk, "Active -> Junk: 101 was removed from .fac" );
 
-    # Verify 101 is in junk .jinx
-    my ( undef, @jinx_keys ) = $adb->index_get( "$table_path.jinx", "keys" );
-    ok( ( grep { $_ == 101 } @jinx_keys ), "Product 101 is correctly indexed in .jinx" );
+    # Verify 101 is in junk j:keys in .inx
+    my ( undef, @jinx_keys ) = $adb->index_get( "$table_path.inx", "j:keys" );
+    ok( ( grep { $_ == 101 } @jinx_keys ), "Product 101 is correctly indexed in .inx (j:keys)" );
 
     # Transition 2: Product 101 becomes in-sale again (status 1) -> restored to active -> restored to .fac
     $adb->modify_id( 'catalog_product', 101, 'Telefon', 'Apple', 'Siyah', 1 );
-    my ($fac_101_restored) = $adb->index_get( "${table_path}_1.fac", 101, 'raw' );
+    my ($fac_101_restored) = $adb->index_get( "${table_path}.fac", "1:101", 'raw' );
     ok( defined $fac_101_restored && $fac_101_restored ne '', "Junk -> Active: 101 was restored to .fac" );
 };
 

@@ -4,7 +4,7 @@
 
 # Geliştirici Kılavuzu ve Dokümantasyon
 
-> **Sürüm:** 5.23.0 · **İlk Tasarım:** 2005 · **Son Güncelleme:** 2026  
+> **Sürüm:** 5.23.1 · **İlk Tasarım:** 2005 · **Son Güncelleme:** 2026  
 > **Namespace:** `AmberDB`  
 > **Dahili Modüller:** `Base`, `Index`, `Transact`, `Cache`, `Array`, `String`, `Date`, `Locale`, `Tools`
 
@@ -661,19 +661,20 @@ my $del_status = $adb->delete_list( 'orders', 'o_1', 'o_2' );
 
 ### 5.5 İşlemler (Transactions - ACID Desteği)
 
-Basit modda `transact_start`, `transact_commit` ve `transact_rollback` ACID desteği tam olarak çalışır. Geri alma (`rollback`) tetiklendiğinde ham `.db` dosyasındaki ekleme, düzenleme ve silmeler anında eski haline döndürülür:
+Basit modda `transact_start`, `transact_error` ve `transact_end` ACID desteği tam olarak çalışır. Hata bildirildiğinde (`transact_error`) veya bir işlem başarısız olduğunda `transact_end` otomatik olarak geri alma (`rollback`) tetikler ve ham `.db` dosyasındaki ekleme, düzenleme ve silmeler anında eski haline döndürülür:
 
 ```perl
 $adb->transact_start();
 eval {
     $adb->insert_id( 'sessions', 'token_123', 'GeciciVeri', time() );
-    # Beklenmeyen bir hata oluştuğunda:
-    die "Kritik islem hatasi" if $hata_var;
-    $adb->transact_end();
+    if ($hata_var) {
+        $adb->transact_error( 'sessions', 'Kritik islem hatasi' );
+    }
 };
 if ($@) {
-    $adb->transact_rollback(); # token_123 kaydı .db dosyasından tamamen silinir
+    $adb->transact_error( 'sessions', $@ );
 }
+my $txn = $adb->transact_end(); # Hata varsa otomatik rollback, yoksa commit
 ```
 
 ---
@@ -773,8 +774,8 @@ AmberDB, tablolara hızlı erişim sağlamak için veriyi şemada tanımlanan ku
 ### 6.2 8-Bayt İkili (Binary) Paketleme Standardı
 
 AmberDB, indeks dosyalarında maksimum performans ve minimum disk boyutu elde etmek için **8-baytlık homojen ikili paketleme** kullanır:
-- **Sayısal ID'ler (`id_type => "num"`):** `Q*` (64-bit unsigned integer) olarak paketlenir.
-- **Metin ID'ler (`id_type => "ascii"`):** `a8*` (8 bayt sabit uzunluklu) olarak paketlenir.
+- **Sayısal ID'ler:** İkili indeksler (`.inx`, `.srt`, `.fld`) kayıt kimliklerini saf 64-bit Big-Endian işaretsiz tam sayı (`(Q>)*`) olarak 8 baytlık sabit genişlikli bloklar halinde paketler.
+- **Metin Anahtarlar (`use_simple => 1`):** UUID, e-posta, slug veya serbest metin anahtarlar gerektiğinde ilgili tablo `use_simple => 1` bayrağı ile yapılandırılır. Bu modda ikili indeks (`.inx`) yükü ortadan kalkar ve 255 bayta kadar serbest anahtarlar doğrudan Berkeley DB anahtar-değer katmanında saklanır.
 
 Bu sayede milyonlarca kayıt içeren indeks dosyalarında sayfalama (`LIMIT/OFFSET`), belleğe tüm listeyi yüklemeden doğrudan `substr` ile $O(1)$ zero-copy ikili ofset dilimleme yöntemiyle gerçekleştirilir.
 
@@ -783,7 +784,7 @@ Bu sayede milyonlarca kayıt içeren indeks dosyalarında sayfalama (`LIMIT/OFFS
 AmberDB'de `match_block` içinde tanımlanan alanlar için indeksleme iki tamamlayıcı katmanda gerçekleşir:
 
 1. **İkili Eşleştirme İndeksi (`.fld`):**  
-   Her bir alan için `<tablo>_<blok>.fld` dosyası tutulur. Bu dosya, tekil değer anahtarları karşılığında ilgili kayıt ID'lerini 8-baytlık ikili paketlenmiş diziler (`Q*` / `a8*`) olarak saklar. `field_fetch` sorguları bu dosyadan doğrudan $O(1)$ tekil anahtar okuması yapar.
+   Her bir alan için `<tablo>_<blok>.fld` dosyası tutulur. Bu dosya, tekil değer anahtarları karşılığında ilgili kayıt ID'lerini 8-baytlık ikili paketlenmiş diziler (`(Q>)*`) olarak saklar. `field_fetch` sorguları bu dosyadan doğrudan $O(1)$ tekil anahtar okuması yapar.
 
 2. **Çift Yönlü Alan Sözlüğü (`.str`):**  
    Eğer indekslenen alan serbest metin (kategori adı, marka adı, yazar, etiket vb.) içeriyorsa, motor otomatik olarak `<tablo>_<blok>.str` sözlük dosyasını yönetir:
@@ -801,7 +802,6 @@ Sıralama yapılacak alanlar tablo şema dosyasında (`.table`) tanımlanır. Sa
 ```perl
 # dbstore/schema/catalog_product.table
 {
-    id_type    => 'num',
     sort_block => [
         4,                             # Blok 4: Başlık (Metin sıralaması)
         { blk => 10, type => 'num' },  # Blok 10: Fiyat (Sayısal sıralama)
@@ -872,12 +872,15 @@ AmberDB, gömülü (embedded) ve şema güdümlü mimarisine uygun olarak 4 teme
 
 ### 7.3 Transaction Yaşam Döngüsü
 
+Dış API ve uygulama kodlarında transaction süreçleri şu metotlar üzerinden yürütülür:
+
 1. **`transact_start()`**: Yeni bir işlem başlatır, `$dbase_dir/txn/` altında mikrosaniye hassasiyetinde bir `.txn` undo günlüğü açar ve yetim işlemleri onarır (`transact_recover`).
-2. **CRUD Çağrıları**: `insert_id`, `modify_id`, `delete_id` işlemleri hem ana `.db` dosyasına yazar, ilgili kaydın `flock` yazma kilidini alır ve `.txn` günlüğüne yapılan işlemin tersini (undo verisi) yazar.
-3. **`transact_end()`**: İşlemi sonlandırır.
-   - Herhangi bir hata oluşmadıysa: Günlük silinir, kilitler açılır ve değişiklikler kalıcı olur (`status => "commit"`).
-   - Taban veritabanında kritik bir hata oluştuysa: Günlük LIFO sırasıyla okunarak hem ana kayıtlar hem tüm indeksler eski haline geri döndürülür, kilitler serbest bırakılır (`status => "rollback"`).
-4. **`transact_rollback()`**: İş mantığına bağlı olarak (örneğin stok yetersizliği durumunda) işlemi zorla geri alır.
+2. **`transact_rollback()`**: İş mantığı veya operasyonel iptallerde (stok yetersizliği, bakiye yetersizliği, kullanıcı iptali vb.) işlemi doğrudan geri sarar; LIFO sırasıyla değişiklikleri geri alır, kilitleri serbest bırakır ve günlüğü temizler.
+3. **`transact_end()`**: Normal akış sonunda çağrılır; duruma bakar, herhangi bir hata veya geri alma durumu yoksa `transact_commit()` çalıştırarak işlemi kalıcı olarak onaylar (`status => "commit"`).
+4. **`transact_commit()`**: Herhangi bir durum kontrolü yapmadan işlemi doğrudan ve olumlu olarak kesinleştirir.
+
+> [!NOTE]
+> `transact_error($file_path, $message)` motorun iç dosya ve yazma güvenliği mekanizmasıdır. Yazılan dosya bir ana veri tablosu (`.$db_ext`) ise ve tabloda `no_transact` tanımlı değilse arka planda anında `transact_rollback()` çalıştırır. İkincil indeks dosyalarındaki yazma aksaklıkları ise işlemi geri almaz.
 
 ### 7.4 Örnek: Sipariş ve Stok Yönetimi Transaction'ı
 
@@ -1088,7 +1091,6 @@ AmberDB'de şema tasarımı **tamamen esnek ve katmanlıdır**:
 # dbstore/schema/catalog_product.table
 {
     name         => "Ürün Kataloğu",
-    id_type      => "num",                  # "num" (64-bit uint) veya "ascii" (max 8 bayt)
     record_index => 1,                      # .inx birincil indeksini ve auto-increment sayacını açar
     match_block  => [ 1, 2, 3, 11 ],        # .fld Birebir eşleşme (Kategori, Marka, Yazar, Statü)
     search_block => [ 4, 5, 7, 9 ],         # .src Tam metin arama (Ad, Alt Başlık, Açıklama, Barkod)
@@ -1141,7 +1143,6 @@ Aşağıda e-ticaret ürün kataloğu için kapsamlı bir `.table` şema örneğ
 # dbstore/schema/catalog_product.table
 {
     name         => "Ürün Kataloğu",
-    id_type      => "num",                  
     record_index => 1,                      
     match_block  => [ 1, 2, 3, 11 ],        
     search_block => [ 4, 5, 7, 9 ],         
@@ -1183,7 +1184,7 @@ Aşağıdaki tablo, bir `.table` dosyasında kullanılabilecek tüm üst düzey 
 | Parametre | Tip | Varsayılan | Eski / Alternatif Adı | Açıklama |
 | :--- | :--- | :--- | :--- | :--- |
 | `name` | `string` | `"Tablo"` | — | Tablonun insan tarafından okunabilir adı/başlığı. |
-| `id_type` | `string` | `"num"` | — | Birincil anahtar tipi: `"num"` (64-bit tamsayı) veya `"ascii"` (maks 8 bayt). |
+| `use_simple` | `0 / 1` | `0` | `simple` | `1` ise 255 bayta kadar serbest metin anahtarlarla (UUID, slug vb.) çalışan basit anahtar-değer modunu açar; `.inx` ikili indeksi üretilmez. |
 | `record_index` | `0 / 1` | `0` | `readall` | `1` ise `.inx` birincil indeksini, `table_count`, `table_lastid` ve otomatik sayaç desteğini aktif eder. |
 | `search_block` | `ARRAY` | `[]` | — | `.src` tam metin arama (inverted keyword) indeksine dahil edilecek blok numaraları. |
 | `match_block` | `ARRAY` | `[]` | `fields` | `.fld` birebir eşleşme / filtrelenmiş okuma indeksine dahil edilecek blok numaraları. |
@@ -2063,7 +2064,7 @@ dbstore/
 2. **Kritik İş Mantıklarında `transact_start` Kullanın:** Stok düşme, bakiye güncelleme ve sipariş onaylama gibi adımları mutlaka transaction bloğu içine alın.
 3. **Şemalarda Gereksiz Blokları İndekslemeyin:** Yalnızca filtrelenecek alanları `match_block`, aranacak alanları `search_block` olarak tanımlayın.
 4. **Sayfalama Dönen Değer İmzasını Doğru Karşılayın:** `read_all`, `field_fetch` ve `search_table` metotlarında `$limit > 0` verildiğinde dönen listenin ilk elemanının `$toplam` tamsayısı olduğunu unutmayın. Asla `my @kayitlar = $adb->read_all(..., 0, 20)` şeklinde tek diziye almayın (fatal crash verir); mutlaka `my ($toplam, @kayitlar)` şeklinde ilk elemanı toplam sayı olarak karşılayın.
-5. **Kayıt ID Tipi Seçimi:** Standart tablolar için `id_type => "num"` (sayısal) tercih edin; hem daha az yer kaplar hem de ikili sabit boyutlu ofsetler üzerinde en yüksek dilimleme hızını sunar.
+5. **Kayıt ID Tipi ve Basit Mod Seçimi:** Standart ilişkisel tablolar 64-bit tam sayı ID'ler ile çalışarak ikili sabit boyutlu ofsetler (`(Q>)*`) üzerinde en yüksek dilimleme hızını sunar. UUID, slug veya oturum belirteçleri gibi serbest metin anahtarları gerektiğinde ise tablo şemasına `use_simple => 1` vererek sıfır indeks ek yüküyle doğrudan anahtar-değer modunu kullanın.
 6. **Kayıt Dizisinde ID Standartı:** Kayıt dizilerinde (`@record`) her zaman 0. indisi Kayıt ID'si (`$record[0]`) olarak konumlandırın. Yeni kayıtta `0` verip `my $id = $record[0] = $adb->insert_id("tablo", @record);` şeklinde atayın. Okuma (`read_id`), güncelleme (`modify_id("tablo", @record)`) ve silme (`delete_id("tablo", $record[0])`) işlemlerini bu bütüncül dizi üzerinden yürütmek parametre kaymalarını ve hataları tamamen önler.
 
 ---
@@ -2131,13 +2132,16 @@ if ($mevcut[8] >= 1) { # Stok kontrolü
     my @siparis_kalemleri = ( [ $urun_id, "MacBook Pro M3", 1, 64999.00 ] );
     my $siparis_id = $adb->insert_id("orders", undef, "Müşteri Ahmet", time(), \@siparis_kalemleri, { status => "onaylandi" });
     
-    my $txn = $adb->transact_end();
-    if ($txn->{status} eq "commit") {
-        print "4. Sipariş #$siparis_id başarıyla tamamlandı! Kalan Stok: $mevcut[8]\n";
-    }
 } else {
+    # Operasyonel durum (stok yetersiz): Değişiklikleri doğrudan geri sar
     $adb->transact_rollback();
-    print "4. Hata: Stok kalmadı, işlem geri alındı!\n";
+}
+
+my $txn = $adb->transact_end();
+if ($txn->{status} eq "commit") {
+    print "4. Sipariş başarıyla tamamlandı! Kalan Stok: $mevcut[8]\n";
+} else {
+    print "4. Hata: Stok kalmadı veya işlem başarısız oldu, değişiklikler geri alındı!\n";
 }
 ```
 
@@ -2185,8 +2189,11 @@ if ($mevcut[8] >= 1) { # Stok kontrolü
 | `recs_cutting` | `$start, $limit, @liste` | `($toplam, @dilim)` | Dizi üzerinde bellek içi sayfalama dilimlemesi yapar. |
 | **İşlem Güvenliği (Transaction)** | | | |
 | `transact_start`| — | `1/undef` | Yeni bir işlem (transaction) başlatır. |
-| `transact_end`  | — | `\%sonuc` | İşlemi tamamlar (commit veya auto-rollback). |
-| `transact_rollback` | — | `\%sonuc` | İşlemi manuel olarak hemen geri alır. |
+| `transact_error`| `$kontekst, $mesaj` | `undef` | İşlem hatası bildirir (transact_end'in rollback yapmasını sağlar). |
+| `transact_end`  | — | `\%sonuc` | İşlemi tamamlar (hata yoksa commit, varsa otomatik rollback). |
+| `transact_rollback` | — | `\%sonuc` | (İç Metot) İşlemi hemen zorla geri alır. |
+| `transact_commit`   | — | `\%sonuc` | (İç Metot) Değişiklikleri diske yazar ve onaylar. |
+| `transact_recover`  | — | `\%sonuc` | Yetim/çökmüş işlemleri onarır. |
 | **Önbellek, Slug, Şema & Denetim** | | | |
 | `table_info`   | `$tablo` | `\%schema` | Tablonun tanımlı şema konfigürasyonunu döner. |
 | `table_attr`   | `$tablo, \%ozellikler` | `1` | Çalışma zamanında bellek içi şema günceller. |
@@ -2306,10 +2313,10 @@ Dışarıdan bir kısıtlama gibi algılanabilecek, ancak AmberDB'yi geleneksel 
 - **Gerçek ve Avantaj:** Yüz binlerce kaydın toplu aktarımında her satır için ayrı disk günlüğü tutmak ciddi bir I/O darboğazı yaratır. AmberDB, toplu aktarımlarda tek dosya oturumu açarak doğrudan belleğe ve diske yazar, böylece maksimum aktarım hızına (high throughput) ulaşır.
 > **Geliştirici Özgürlüğü:** Bir listenin atomik ve geri alınabilir (transactional) olarak işlenmesi gerekiyorsa, geliştirici işlemleri bir döngü içerisinde tekil CRUD metodları (`insert_id`, `modify_id`, `delete_id`) ile `transact_start()` ve `transact_end()` bloğuna alır. Böylece liste hem atomik hem de tam geri alınabilir olur.
 
-#### 25.2.3 Sabit İkili Anahtar Boyutları: Kısıtlama mı, Zero-Copy Dilimleme Hızı mı?
-- **Genel Algı:** *"ASCII birincil anahtarlar neden en fazla 8 bayt ile sınırlandırılmış?"*
-- **Gerçek ve Avantaj:** AmberDB ön tanımlı olarak 64-bit tam sayılar (`id_type => "num"`, `Q*`) kullanır. ASCII seçildiğinde uygulanan 8-bayt (`a8*`) sınırı, dizin belleğinde değişken uzunluklu string parser çalıştırma ihtiyacını ortadan kaldırır. Sayfalama (`LIMIT/OFFSET`) işlemlerinde bellekten veri deserialization yapmadan doğrudan sabit bayt ofsetleriyle (`substr` zero-copy) dilimleme yapılmasına olanak tanır.
+#### 25.2.3 Sabit 8-Bayt İkili Adımlar ve Serbest Metin Anahtarlar: Kısıtlama mı, Mimari Tercih mi?
+- **Genel Algı:** *"İlişkisel ve indeksli tablolarda neden sadece 64-bit pozitif tam sayılar destekleniyor?"*
+- **Gerçek ve Avantaj:** AmberDB'nin ilişkisel ve indeksli tabloları birincil anahtar olarak saf 64-bit Big-Endian tam sayılar (`(Q>)*`) kullanır. Sabit 8-baytlık kayıt adımı, dizin belleğinde değişken uzunluklu string ayrıştırma ihtiyacını tamamen ortadan kaldırır. Sayfalama (`LIMIT/OFFSET`) işlemlerinde bellekten veri deserialization yapmadan doğrudan sabit bayt ofsetleriyle (`substr` zero-copy) dilimleme yapılmasına olanak tanır. UUID, e-posta veya oturum belirteçleri gibi serbest metin anahtarlarına ihtiyaç duyulan senaryolar için AmberDB, tablo bazında **`use_simple => 1`** modu sunar; bu modda 255 bayta kadar serbest metin anahtarları Berkeley DB üzerinde sıfır indeksleme I/O ek yüküyle doğrudan çalışır.
 
 ---
 
-*Bu doküman `AmberDB` v5.23.0 motorunun güncel kod mimarisi ve geliştirici pratikleri doğrultusunda hazırlanmıştır.*
+*Bu doküman `AmberDB` v5.23.1 motorunun güncel kod mimarisi ve geliştirici pratikleri doğrultusunda hazırlanmıştır.*

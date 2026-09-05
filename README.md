@@ -16,7 +16,7 @@
 - **Ultra High-Performance**: Leverages Berkeley DB (`DB_File`) hash storage with $O(1)$ binary slicing and configurable in-memory buffers.
 - **JOIN-Free JSON-like Extensible Block Records**: Eliminates complex relational SQL `JOIN` overhead by storing hierarchical, extensible block records. Newly added blocks and attributes are automatically indexed on the fly for low-latency multi-dimensional querying.
 - **Schema-Driven Dynamic Runtime Manipulation**: Table-specific schemas govern field validations, encodings, and index mappings. Schemas and values are fully mutable and can be modified dynamically at runtime without requiring table recreation or migrations.
-- **8-Byte Packed Binary Indexing**: Primary and secondary indexes use unified 8-byte packed binary buffers (`Q*` / `a8*`), enabling $O(1)$ substring slicing, sub-millisecond pagination, and memory-efficient `keys_only` scalar pipelines.
+- **8-Byte Packed Binary Indexing**: Primary and secondary indexes use unified 8-byte packed binary buffers (`Q>*`), enabling $O(1)$ substring slicing, sub-millisecond pagination, and memory-efficient `keys_only` scalar pipelines (with `use_simple => 1` mode for arbitrary string keys).
 - **Intelligent & Locale-Aware Accent Search**: Advanced full-text search engine (`.src`) equipped with regional language and accent intelligence, phonetic devoicing (`b/d/g -> p/t/k`), circumflex/accent unfolding (`â/î/û -> a/i/u`), apostrophe suffix stop-words, and prefix wildcard matching.
 - **Columnar Facet Indexing (`.fac`)**: High-performance multi-dimensional facet filtering with index-level bitwise intersections and bidirectional string dictionaries (`.str`) for e-commerce, catalogs, and large categorical datasets.
 - **Multi-Tier Junk & Lifecycle Management**: Segregates active records from historical/archived data (`.db` master vs `.jnk` tier) with seamless single-pass hybrid queries (`jnktype => 'A' | 'B' | 'AB' | 'BA'`).
@@ -25,7 +25,7 @@
   - **Pillar 1 (Continuous Recovery Stream):** Automatic append-only audit stream in `backup/YYYY/YYYY-MM-DD.csv` capturing every `insert`, `modify`, and `delete`.
   - **Pillar 2 (Native Portable Archive):** Compressed, portable `.amberdb` archives containing schemas (`schema/*.table`, `schema/*.dbase`) and authoritative data files (`tables/*.db`, `tables/*.del`, `tables/*.aut`, `tables/*.cnt`, `tables/*_*.str`) with SHA-256 integrity verification. Derived indexes are excluded to save space and reconstructed deterministically on restore.
 - **Multi-Granularity Concurrency Control**: Non-blocking shared reads and exclusive writes at both table-level and individual record-level using OS-native `flock`.
-- **Multilingual Locale Engine**: Out-of-the-box support for 9 languages (`en`, `tr`, `de`, `fr`, `es`, `ja`, `ru`, `ar`, `az`) with language-specific case folding (e.g. Turkish `ı/I` and `i/İ`), collation, currency, and date formatting.
+- **Multilingual Locale Engine**: Out-of-the-box support for 10 languages (`gb` [default Global Base], `en`, `tr`, `de`, `fr`, `es`, `ja`, `ru`, `ar`, `az`) with language-specific case folding (e.g. Turkish `ı/I` and `i/İ`), cross-lingual accent folding, collation, currency, and date formatting.
 - **High-Throughput 2-Phase Batch Operations**: High-performance batch ingestion pipeline (`insert_list`, `modify_list`, `delete_list`) opens master `.db` once for batch writing and executes single-pass index merging (`.inx`, `.src`, `.fld`, `.fac`, `.srt`), delivering 50x-100x faster ETL data imports without per-record locking overhead.
 - **RAM-Disk Acceleration**: Integrated CLI tools and automation for mounting `tmpfs` (Linux) or `ImDisk` (Windows) for sub-microsecond in-memory table access.
 
@@ -39,18 +39,18 @@ AmberDB organizes database files into a clean, deterministic physical directory 
 dbstore/
 ├── schema/                      ← Database Group & Table Schemas
 │   ├── catalog.dbase            ← Database group configuration
-│   └── catalog_products.table   ← Product table schema
+│   └── catalog_product.table   ← Product table schema
 ├── tables/                      ← Master Data & Derived Index Files
-│   ├── catalog_products.db      ← Primary key-value data table (DB_File Hash)
-│   ├── catalog_products.del     ← Soft-deleted records archive (keep_deleted)
-│   ├── catalog_products.aut     ← User audit trail log (log_owner)
-│   ├── catalog_products.cnt     ← View/hit counters (use_counter)
-│   ├── catalog_products_1.str   ← Bidirectional string-to-ID dictionary
-│   ├── catalog_products.inx     ← Primary 8-byte packed ID index
-│   ├── catalog_products_1.fld   ← Inverted exact-match field index
-│   ├── catalog_products_2.src   ← Full-text keyword search index
-│   ├── catalog_products_3.fac   ← Columnar facet filter bitset index
-│   └── catalog_products_4.srt   ← Monotonic binary pre-sorted index
+│   ├── catalog_product.db      ← Primary key-value data table (DB_File Hash)
+│   ├── catalog_product.del     ← Soft-deleted records archive (keep_deleted)
+│   ├── catalog_product.aut     ← User audit trail log (log_owner)
+│   ├── catalog_product.cnt     ← View/hit counters (use_counter)
+│   ├── catalog_product_1.str   ← Bidirectional string-to-ID dictionary
+│   ├── catalog_product.inx     ← Primary 8-byte packed ID index
+│   ├── catalog_product_1.fld   ← Inverted exact-match field index
+│   ├── catalog_product_2.src   ← Full-text keyword search index
+│   ├── catalog_product_3.fac   ← Columnar facet filter bitset index
+│   └── catalog_product_4.srt   ← Monotonic binary pre-sorted index
 └── backup/                      ← Disaster Recovery & Archives
     └── 2026/
         ├── 2026-08-28.csv       ← Continuous time-series audit stream (Pillar 1)
@@ -136,19 +136,19 @@ my $adb = AmberDB->new(
 # --- INSERT ---
 # Record structure: (ID, Title, Category, Price, CreatedDate, Status)
 # Pass ID = 0 to auto-generate a unique 64-bit ID
-my $id = $adb->insert_id("catalog_products", 0, "Wireless Headphones", "Electronics", 149.99, "2026-08-28", 1);
+my $id = $adb->insert_id("catalog_product", 0, "Wireless Headphones", "Electronics", 149.99, "2026-08-28", 1);
 print "Created Product ID: $id\n";
 
 # --- READ ---
-my @product = $adb->read_id("catalog_products", $id);
+my @product = $adb->read_id("catalog_product", $id);
 print "Product Title: $product[1]\n";
 
 # --- UPDATE ---
 $product[3] = 129.99; # Update Price
-$adb->modify_id("catalog_products", @product);
+$adb->modify_id("catalog_product", @product);
 
 # --- DELETE ---
-$adb->delete_id("catalog_products", $id);
+$adb->delete_id("catalog_product", $id);
 ```
 
 ### 3. Querying & Pagination
@@ -160,13 +160,13 @@ $adb->delete_id("catalog_products", $id);
 
 ```perl
 # --- 1. Unpaginated Queries (Returns pure record or ID array) ---
-my @all_products = $adb->read_all("catalog_products");
-my @all_ids      = $adb->read_all("catalog_products", 0, 0, keys_only => 1); # ID list (ultra low-memory)
-my @sorted_all   = $adb->read_all("catalog_products", 0, 0, sort => -3);      # Unpaginated ascending sort
+my @all_products = $adb->read_all("catalog_product");
+my @all_ids      = $adb->read_all("catalog_product", 0, 0, keys_only => 1); # ID list (ultra low-memory)
+my @sorted_all   = $adb->read_all("catalog_product", 0, 0, sort => -3);      # Unpaginated ascending sort
 
 # --- 2. Paginated Queries (limit > 0: first element is $total_count integer) ---
 my ($total_count, @page_products) = $adb->read_all(
-    "catalog_products",
+    "catalog_product",
     start => 0,
     limit => 20,
     sort  => { blk => 3, reverse => 1 } # Sort descending by Price (field 3)
@@ -174,7 +174,7 @@ my ($total_count, @page_products) = $adb->read_all(
 print "Total Matching: $total_count, Page Size: " . scalar(@page_products) . "\n";
 
 # Paginated high-efficiency pipeline returning only record IDs (keys_only)
-my ($total, @page_ids) = $adb->read_all("catalog_products", 0, 50, keys_only => 1);
+my ($total, @page_ids) = $adb->read_all("catalog_product", 0, 50, keys_only => 1);
 ```
 
 ### 4. Full-Text Search
@@ -182,7 +182,7 @@ my ($total, @page_ids) = $adb->read_all("catalog_products", 0, 50, keys_only => 
 ```perl
 # Search product catalog with language normalization and filtering
 my ($total, @results) = $adb->search_table(
-    "catalog_products",
+    "catalog_product",
     "wireless headphone",
     start => 0,
     limit => 20,
@@ -192,7 +192,7 @@ my ($total, @results) = $adb->search_table(
 ### 5. Multi-Block Field & Facet Filtering
 
 ```perl
-my $res = $adb->field_filter("catalog_products", {
+my $res = $adb->field_filter("catalog_product", {
     type   => "and",
     filter => {
         2 => "Electronics",
@@ -268,7 +268,7 @@ my @batch_products = (
 );
 
 # Ingest batch in a single I/O pass with automatic index compilation
-my $status = $adb->insert_list("catalog_products", @batch_products);
+my $status = $adb->insert_list("catalog_product", @batch_products);
 # Returns hashref of created IDs: { 101 => 1, 102 => 1, 103 => 1 }
 
 # --- BATCH UPDATE ---
@@ -276,10 +276,10 @@ my @updates = (
     [ 101, "Mechanical Keyboard RGB v2", "Accessories", 139.99, "2026-08-28", 1 ],
     [ 102, "Ergonomic Office Chair XL",  "Furniture",   369.50, "2026-08-28", 1 ],
 );
-$adb->modify_list("catalog_products", @updates);
+$adb->modify_list("catalog_product", @updates);
 
 # --- BATCH DELETE ---
-$adb->delete_list("catalog_products", 101, 102, 103);
+$adb->delete_list("catalog_product", 101, 102, 103);
 ```
 
 ---

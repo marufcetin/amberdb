@@ -1,4 +1,4 @@
-[🏠 Ana Sayfa](index_tr.html) &nbsp;•&nbsp; [📖 Hakkında](TR.AmberDB-Hakkinda.html) &nbsp;•&nbsp; [🚀 Hızlı Başlangıç](#-hızlı-başlangıç) &nbsp;•&nbsp; [📘 Tutorial](TR.AmberDB_Veritabani_Sistemi.html) &nbsp;•&nbsp; [🌐 Locale](TR.AmberDB-Locale_Kullanim_Rehberi.html) &nbsp;•&nbsp; [📋 Changes](https://github.com/marufcetin/amberdb/blob/main/Changes) &nbsp;•&nbsp; [📚 Wiki](https://github.com/marufcetin/amberdb/wiki) &nbsp;•&nbsp; [🇬🇧 English](index.html)
+[🏠 Ana Sayfa](index_tr.html) &nbsp;•&nbsp; [📖 Hakkında](TR.AmberDB-Hakkinda.html) &nbsp;•&nbsp; [🚀 Hızlı Başlangıç](#-hızlı-başlangıç) &nbsp;•&nbsp; [📘 Tutorial](TR.AmberDB_Veritabani_Sistemi.html) &nbsp;•&nbsp; [📊 Benchmark](TR.AmberDB-vs-SQLite_Benchmark.html) &nbsp;•&nbsp; [🌐 Locale](TR.AmberDB-Locale_Kullanim_Rehberi.html) &nbsp;•&nbsp; [📋 Changes](https://github.com/marufcetin/amberdb/blob/main/Changes) &nbsp;•&nbsp; [📚 Wiki](https://github.com/marufcetin/amberdb/wiki) &nbsp;•&nbsp; [🇬🇧 English](index.html)
 
 ---
 
@@ -19,7 +19,8 @@
 | :--- | :--- | :--- |
 | **AmberDB Hakkında** | Mimari genel bakış, tasarım felsefesi, neden AmberDB ve temel yetenekler. | [📖 AmberDB Hakkında Oku](TR.AmberDB-Hakkinda.html) |
 | **Tutorial & Geliştirici Kılavuzu** | Tüm CRUD işlemleri, Şema mimarisi, ACID işlemler, İndeksleme, Arama motoru, Facet ve En İyi Pratikler. | [📘 Geliştirici Kılavuzunu Aç](TR.AmberDB_Veritabani_Sistemi.html) |
-| **AmberDB::Locale Rehberi** | Çok dilli (9 dil) metin işleme, yerelleştirme, aksan/şapka açılımları ve büyük/küçük harf (ı/I, i/İ) dönüşümleri. | [🌐 Locale Rehberini Aç](TR.AmberDB-Locale_Kullanim_Rehberi.html) |
+| **Büyük Benchmark Raporu (600K Film)** | 600,000 gerçek IMDb kaydıyla AmberDB vs SQLite 3 derin sayfalama, arama, filtreleme ve nokta okuma karşılaştırması. | [📊 Benchmark Raporunu Oku](TR.AmberDB-vs-SQLite_Benchmark.html) |
+| **AmberDB::Locale Rehberi** | Çok dilli (Global Base varsayılan 10 dil) metin işleme, yerelleştirme, evrensel aksan açılımları ve büyük/küçük harf dönüşümleri. | [🌐 Locale Rehberini Aç](TR.AmberDB-Locale_Kullanim_Rehberi.html) |
 | **Sürüm Notları (Changes)** | Sürüm geçmişi, son mimari güncellemeler ve değişiklik günlüğü. | [📋 Değişiklikleri Gör](https://github.com/marufcetin/amberdb/blob/main/Changes) |
 | **GitHub Wiki** | Metod bazlı API dokümantasyonu, mimari konseptler, bayraklar ve dosya formatları. | [📚 Proje Wiki Sayfasını Aç](https://github.com/marufcetin/amberdb/wiki) |
 | **🇬🇧 English Documentation** | English landing page, overview article, complete developer guide, and locale manual. | [🇬🇧 Switch to English](index.html) |

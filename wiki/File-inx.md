@@ -10,7 +10,7 @@
 
 ## 1. Definition and Overview
 
-The `.inx` file contains a tightly packed, fixed-width contiguous sequence of 64-bit unsigned integers (`pack("Q*", @ids)` / `pack("a8*", @ids)`). It allows $O(1)$ count lookups via file length arithmetic (`-s $file / 8`) and instantaneous paginated slice reading via binary file seek offsets.
+The `.inx` file contains a tightly packed, fixed-width contiguous sequence of 64-bit Big-Endian unsigned integers (`pack("(Q>)*", @ids)`). It allows $O(1)$ count lookups via file length arithmetic (`-s $file / 8`) and instantaneous paginated slice reading via binary file seek offsets.
 
 ---
 

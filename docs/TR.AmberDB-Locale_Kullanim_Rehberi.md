@@ -30,7 +30,8 @@
 
 ```
 AmberDB::Locale                 ← Ana motor (tüm mantık burada)
-├── AmberDB::Locale::Lang::en   ← İngilizce veri (varsayılan/fallback)
+├── AmberDB::Locale::Lang::gb   ← Global Base veri (varsayılan/fallback)
+├── AmberDB::Locale::Lang::en   ← İngilizce veri
 ├── AmberDB::Locale::Lang::tr   ← Türkçe veri
 ├── AmberDB::Locale::Lang::de   ← Almanca veri
 ├── AmberDB::Locale::Lang::fr   ← Fransızca veri
@@ -38,6 +39,7 @@ AmberDB::Locale                 ← Ana motor (tüm mantık burada)
 ├── AmberDB::Locale::Lang::ru   ← Rusça veri
 ├── AmberDB::Locale::Lang::az   ← Azerice veri
 ├── AmberDB::Locale::Lang::ar   ← Arapça veri
+├── AmberDB::Locale::Lang::ja   ← Japonca veri
 └── AmberDB::Locale::Currency   ← ISO 4217 evrensel para birimi verisi
 ```
 
@@ -59,15 +61,15 @@ my $lang = AmberDB::Locale->new({ language => "de" });
 # 3) Pozisyonel string API
 my $lang = AmberDB::Locale->new("fr");
 
-# 4) Argümansız → varsayılan "en"
+# 4) Argümansız → varsayılan "gb" (Global Base)
 my $lang = AmberDB::Locale->new();
 ```
 
 ### Dahili davranışlar
 
 - **Önbellekleme:** Aynı dil için ikinci `new()` çağrısı mevcut nesneyi döndürür (singleton benzeri).
-- **Alias desteği:** `"turkish"`, `"tr_tr"`, `"tr-tr"` gibi etiketler otomatik olarak `"tr"`'ye eşlenir.
-- **Fallback:** Bilinmeyen bir dil istenirse `cluck` ile uyarı verilir ve `en`'ye düşülür.
+- **Alias desteği:** `"global"`, `"gl"`, `"turkish"`, `"tr_tr"`, `"tr-tr"` gibi etiketler otomatik olarak eşlenir.
+- **Fallback:** Bilinmeyen bir dil istenirse `cluck` ile uyarı verilir ve `gb`'ye düşülür.
 - **Collator:** `Unicode::Collate::Locale` yüklenmeye çalışılır; başarısız olursa `Unicode::Collate` tabanına, o da yoksa özel `sort_map` Schwartzian transform'una düşülür.
 
 ### AmberDB entegrasyonu

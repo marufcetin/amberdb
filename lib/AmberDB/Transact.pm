@@ -6,48 +6,50 @@ use Carp qw(croak cluck);
 use Fcntl qw(:flock);
 use IO::Handle;
 
+our $VERSION = '5.24.0';
+
 # Journal field separator — ASCII Record Separator (0x1E).
 # Tab cannot be used because raw DB values contain literal tabs.
 my $TXN_SEP = "\x1e";
 
-# $adb->transact_error($context, $message);
+# $adb->transact_error($file_path, $message);
 # -
-# Records a transaction-aware error. Tags with txn_id if transaction is active.
-# Base errors trigger rollback in transact_end unless the error originates from:
-#   1. Secondary index files (.inx, .src, .fld, .fac, .slg)
-#   2. Tables configured with 'no_transact => 1' in schema or via table_attr()
+# Records a file/write error during database operations.
+# Tags with txn_id if transaction is active.
+# Base table write errors (matching configured .$db_ext) trigger immediate rollback
+# unless configured with 'no_transact => 1'.
+# Secondary files (.inx, .src, .fld, .fac, .slg, etc.) do NOT trigger rollback.
 # -
 sub transact_error {
-    my ( $self, $context, $message ) = @_;
+    my ( $self, $file_path, $message ) = @_;
 
-    $context ||= "transaction";
-    $message ||= "transaction error";
+    return unless defined $file_path && length $file_path;
+    $message ||= "database write error";
 
-    my $is_index = ( $context =~ /\.(inx|src|fld|fac|slg)/ ) ? 1 : 0;
+    my $db_ext = $self->{db_ext} || "db";
+    my $no_rollback = 1;
 
-    my $is_no_transact = 0;
-    if ( !$is_index && $self->can('table_info') ) {
-        my $clean_ctx = $context;
-        $clean_ctx =~ s{\.[^.]+$}{};
-        if ( my ($t_name) = $clean_ctx =~ m{([^/\\]+)$} ) {
-            my $t_info = eval { $self->table_info($t_name) };
-            $is_no_transact = ( $t_info && $t_info->{no_transact} ) ? 1 : 0;
-        }
+    # Veri tablosu dosyasi kontrolu: dosya yolu .$db_ext ile bitiyorsa ana tablodur
+    if ( my ($t_name) = $file_path =~ m{([^/\\:]+)\.\Q$db_ext\E$} ) {
+        my $t_info = ( $self->can('table_info') ) ? eval { $self->table_info($t_name) } : undef;
+        $no_rollback = ( $t_info && $t_info->{no_transact} ) ? 1 : 0;
     }
 
     my $error = {
-        context        => $context,
-        message        => $message,
-        txn_id         => ( $self->{_txn} && $self->{_txn}->{file} ) || undef,
-        is_index       => ( $is_index || $is_no_transact ) ? 1 : 0,
-        is_no_transact => $is_no_transact,
+        context     => $file_path,
+        message     => $message,
+        txn_id      => ( $self->{_txn} && $self->{_txn}->{file} ) || undef,
+        no_rollback => $no_rollback ? 1 : 0,
     };
 
     push @{ $self->{_error} ||= [] }, $error;
     shift @{ $self->{_error} } if @{ $self->{_error} } > 100;
 
-    unless ( $error->{is_index} ) {
-        cluck "[DB_TXN_ERROR] $context: $message\n";
+    unless ( $error->{no_rollback} ) {
+        cluck "[DB_TXN_ERROR] $file_path: $message\n";
+        if ( $self->{_txn} && $self->{_txn}->{active} ) {
+            return $self->transact_rollback();
+        }
     }
 
     return;
@@ -63,7 +65,7 @@ sub transact_start {
     my ( $self ) = @_;
 
     if ( $self->{_txn} && $self->{_txn}->{active} ) {
-        $self->transact_error( "transaction", "Transaction already active: $self->{_txn}->{file}" );
+        $self->transact_error( $self->{_txn}->{file} || "txn", "Transaction already active: $self->{_txn}->{file}" );
         return;
     }
 
@@ -72,7 +74,7 @@ sub transact_start {
 
     my $txn_dir = $self->path('txn_dir') || ( ( $self->path('dbase_dir') || "." ) . "/txn" );
     unless ( -d $txn_dir ) {
-        $self->transact_error( "transaction", "Transaction directory does not exist: $txn_dir" );
+        $self->transact_error( $txn_dir, "Transaction directory does not exist: $txn_dir" );
         return;
     }
 
@@ -82,14 +84,14 @@ sub transact_start {
     my $txn_file = "$txn_dir/txn_$txn_id.txn";
 
     open my $fh, "+>>", $txn_file or do {
-        $self->transact_error( "transaction", "Cannot open journal: $txn_file ($!)" );
+        $self->transact_error( $txn_file, "Cannot open journal: $txn_file ($!)" );
         return;
     };
 
     # Lock journal file non-blocking to establish active process ownership
     unless ( flock( $fh, LOCK_EX | LOCK_NB ) ) {
         close $fh;
-        $self->transact_error( "transaction", "Cannot lock journal file (in use): $txn_file" );
+        $self->transact_error( $txn_file, "Cannot lock journal file (in use): $txn_file" );
         return;
     }
 
@@ -131,13 +133,21 @@ sub _txn_release_locks {
 # -
 sub transact_end {
     my ( $self ) = @_;
-    return unless $self->{_txn} && $self->{_txn}->{active};
+    return unless $self->{_txn};
+
+    if ( $self->{_txn}->{rolled_back} ) {
+        my $res = delete $self->{_txn}->{result};
+        delete $self->{_txn};
+        return $res;
+    }
+
+    return unless $self->{_txn}->{active};
 
     my $txn_file = $self->{_txn}->{file};
 
-    # Only base errors (is_index == 0) for this transaction trigger rollback
+    # Only base errors (no_rollback is false) for this transaction trigger rollback
     my @critical = grep {
-        ( $_->{txn_id} // '' ) eq $txn_file && !$_->{is_index}
+        ( $_->{txn_id} // '' ) eq $txn_file && !$_->{no_rollback}
     } @{ $self->{_error} || [] };
 
     if ( $self->{_txn}->{fh} ) {
@@ -179,27 +189,44 @@ sub transact_end {
 # ------------------------------------------------
 sub transact_rollback {
     my ( $self ) = @_;
-    return unless $self->{_txn} && $self->{_txn}->{active};
+    return unless $self->{_txn};
+
+    if ( $self->{_txn}->{rolled_back} ) {
+        return $self->{_txn}->{result};
+    }
+
+    return unless $self->{_txn}->{active};
 
     my $txn_file = $self->{_txn}->{file};
+
+    my @critical = grep {
+        ( $_->{txn_id} // '' ) eq $txn_file && !$_->{no_rollback}
+    } @{ $self->{_error} || [] };
 
     if ( $self->{_txn}->{fh} ) {
         flock( $self->{_txn}->{fh}, LOCK_UN );
         close $self->{_txn}->{fh};
+        delete $self->{_txn}->{fh};
     }
     $self->{_txn}->{active} = 0;
 
     $self->_txn_apply_rollback($txn_file) if -e $txn_file;
     unlink $txn_file if -e $txn_file;
+    $self->set_cache();
 
     $self->_txn_release_locks();
-    my $txn_state = delete $self->{_txn};
 
-    return {
+    my $ops = $self->{_txn}->{ops} || 0;
+    my $result = {
         status => "rollback",
+        errors => \@critical,
         txn_id => $txn_file,
-        ops    => $txn_state->{ops},
+        ops    => $ops,
     };
+    $self->{_txn}->{rolled_back} = 1;
+    $self->{_txn}->{result}      = $result;
+
+    return $result;
 }
 
 # $adb->_txn_log($tableid, $action, $rid, $new_raw, $old_raw);
@@ -219,7 +246,20 @@ sub _txn_log {
     $new_raw //= "";
     $old_raw //= "";
 
-    print $fh join( $TXN_SEP, $ts, $tableid, $action, $rid, $new_raw, $old_raw ), "\n";
+    my $safe_enc = sub {
+        my ($s) = @_;
+        return "" unless defined $s && length($s);
+        $s =~ s/\\/\\\\/g;
+        $s =~ s/\n/\\n/g;
+        $s =~ s/\r/\\r/g;
+        $s =~ s/\x1e/\\e/g;
+        return $s;
+    };
+
+    my $new_safe = $safe_enc->($new_raw);
+    my $old_safe = $safe_enc->($old_raw);
+
+    print $fh join( $TXN_SEP, $ts, $tableid, $action, $rid, $new_safe, $old_safe ), "\n";
 
     $fh->flush;
     if ( $self->config('txn_sync') ) {
@@ -233,7 +273,7 @@ sub _txn_log {
 # $adb->_txn_apply_rollback($txn_file);
 # ------------------------------------------------
 # Reads journal in reverse order (LIFO), applies undo operations to BOTH
-# base database records AND index files (.inx, .src, .fld, .fac, .srt, .slg, .jinx, .jsrc, .jfld).
+# base database records AND index files (.inx, .src, .fld, .fac, .slg).
 # add  → delete base record + revert .aut audit entry + delete index entries
 # edit → restore old base record + revert .aut audit entry + revert index entries (new → old)
 # del  → restore old base record + revert .del archive entry + revert .aut audit entry + re-add index entries
@@ -261,11 +301,21 @@ sub _txn_apply_rollback {
 
     my %affected_tables;
 
+    my $safe_dec = sub {
+        my ($s) = @_;
+        return "" unless defined $s && length($s);
+        $s =~ s/\\([nre\\])/$1 eq 'n' ? "\n" : $1 eq 'r' ? "\r" : $1 eq 'e' ? "\x1e" : "\\"/eg;
+        return $s;
+    };
+
     foreach my $line ( reverse @lines ) {
         chomp $line;
         my ( $ts, $tableid, $action, $rid, $new_raw, $old_raw ) =
             split /\x1e/, $line, 6;
         next unless $tableid && $action && $rid;
+
+        $new_raw = $safe_dec->($new_raw) if defined $new_raw;
+        $old_raw = $safe_dec->($old_raw) if defined $old_raw;
 
         $affected_tables{$tableid} = 1;
 
@@ -302,13 +352,11 @@ sub _txn_apply_rollback {
                     my $slug_map = $self->get_slug( $tableid, 0, $rid );
                     my $slug     = $slug_map->{$rid};
                     if ($slug) {
-                        if ( $self->table_write("${table_path}_0.slg") ) {
-                            $self->recs_del( "${table_path}_0.slg", $rid );
-                            $self->table_close("${table_path}_0.slg");
-                        }
-                        if ( $self->table_write("${table_path}_1.slg") ) {
-                            $self->recs_del( "${table_path}_1.slg", $slug );
-                            $self->table_close("${table_path}_1.slg");
+                        my $slg_path = "${table_path}.slg";
+                        if ( $self->table_write($slg_path) ) {
+                            $self->recs_del( $slg_path, "0:$rid" );
+                            $self->recs_del( $slg_path, "1:$slug" );
+                            $self->table_close($slg_path);
                         }
                     }
                 }
@@ -342,9 +390,10 @@ sub _txn_apply_rollback {
                     my $new_slug = $slug_map->{$rid};
                     my $old_slug = $self->set_slug( $tableid, \@old_rec, 1 );
                     if ( $new_slug && $old_slug && $new_slug ne $old_slug ) {
-                        if ( $self->table_write("${table_path}_1.slg") ) {
-                            $self->recs_del( "${table_path}_1.slg", $new_slug );
-                            $self->table_close("${table_path}_1.slg");
+                        my $slg_path = "${table_path}.slg";
+                        if ( $self->table_write($slg_path) ) {
+                            $self->recs_del( $slg_path, "1:$new_slug" );
+                            $self->table_close($slg_path);
                         }
                     }
                 }
@@ -577,7 +626,7 @@ AmberDB::Transact - ACID-compliant transactions with Strict Two-Phase Locking (S
 =head1 DESCRIPTION
 
 C<AmberDB::Transact> provides ACID-compliant transaction undo logging, Strict Two-Phase Locking (Strict 2PL), and automated LIFO rollback for C<AmberDB>.
-It records binary undo journal entries (C<txn/txn_*.txn>) using ASCII record separators (0x1E) for atomic operations across base database files (C<.db>), soft-delete archives (C<.del>), user audit histories (C<.aut>), and all associated index files (C<.inx>, C<.src>, C<.fld>, C<.fac>, C<.srt>, C<.slg>, C<.jinx>, C<.jsrc>, C<.jfld>).
+It records binary undo journal entries (C<txn/txn_*.txn>) using ASCII record separators (0x1E) for atomic operations across base database files (C<.db>), soft-delete archives (C<.del>), user audit histories (C<.aut>), and all associated index files (C<.inx>, C<.src>, C<.fld>, C<.fac>, C<.slg>).
 
 Transactions maintain process ownership via exclusive non-blocking C<flock> on journal files, hold record-level write locks throughout the transaction lifecycle, and guarantee crash durability through C<IO::Handle> buffer flushing, optional filesystem sync (C<txn_sync =E<gt> 1>), and automated orphaned journal recovery (C<transact_recover>).
 

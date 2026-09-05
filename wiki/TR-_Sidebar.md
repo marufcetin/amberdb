@@ -21,7 +21,7 @@
 - [Dosya Yapisi (Uzantilar)](TR-Concept-File-Structure)
 - [Tekrarli Genisleyen Bloklar](TR-Concept-Repeat-Blocks)
 - [Otomatik ID](TR-Concept-Auto-ID)
-- [ASCII ID](TR-Concept-ASCII-ID)
+- [Metin Anahtarlar & Basit Mod](TR-Concept-ASCII-ID)
 - [Iliskisel Kayitlar](TR-Concept-Relational-Records)
 - [Kayit Anatomisi](TR-Concept-Record-Anatomy)
 - [JOIN-Free Mimari](TR-Concept-JOIN-Free-Architecture)
@@ -77,6 +77,7 @@
 
 ### Islemler ve Kilitler
 - [transact_start](TR-Method-transact_start)
+- [transact_error](TR-Method-transact_error)
 - [transact_end](TR-Method-transact_end)
 - [transact_commit](TR-Method-transact_commit)
 - [transact_rollback](TR-Method-transact_rollback)
@@ -141,7 +142,7 @@
 - [no_backup](TR-Flag-no_backup)
 - [jnktype](TR-Flag-jnktype)
 - [keys_only](TR-Flag-keys_only)
-- [id_type](TR-Flag-id_type)
+- [use_simple](TR-Flag-use_simple)
 - [language](TR-Flag-language)
 
 ---

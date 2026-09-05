@@ -1,5 +1,77 @@
 Revision history for AmberDB
 
+5.24.0  2026-09-05
+        - [BINARY RECORD SERIALIZATION ARCHITECTURE (ABR v5)] Native Pure Perl Binary Serialization:
+          * Introduced high-performance native pure Perl binary record serialization format (ABR v5 / Format 5) replacing legacy delimiter and regex text serialization (db_encode / db_decode), aligning format versioning with historical eras (v1: 2003 FlatDB, v2: 2005 \T, v3: 2021 <TAB>, v4: 2026 HTML entities, v5: 2026 ABR Binary).
+          * Zero CPAN Dependencies: Built strictly on core built-in Perl primitives (pack, unpack, substr, vec), completely eliminating version brittleness and security vulnerabilities associated with external serializers like Storable.
+          * Magic Header Architecture: Prefixes binary records with a 5-byte magic sequence (\x00ABR\x05); null-byte prefix guarantees zero collision with legacy plain text or data strings.
+          * Schema Type Coverage: Transparently maps all 9 AmberDB schema types into 1-byte typed nodes: UNDEF (0x00), SCALAR_RAW (0x01), SCALAR_UTF8 (0x02, via lossless utf8::encode/decode), ARRAY (0x03, 16-bit Big-Endian count), and HASH (0x04, 16-bit Big-Endian count).
+          * Nested Data Structures: Fully supports arbitrarily nested arrays, hashes, and repeat blocks with strict recursion depth guarding ($depth <= 32) to prevent stack overflow or circular reference hangs.
+          * Transparent Legacy Fallback: db_decode automatically falls back to _db_decode_legacy for non-ABR records, allowing mixed-version legacy tables to operate without downtime.
+          * Benchmarks: Achieves ~130,000 encodes/sec (+150% faster) and ~69,000 decodes/sec (+64% faster) on flat records; achieves ~4,300 decodes/sec (+35% faster) on complex deeply nested multi-level records.
+
+        - [BINARY INDEX ARCHITECTURE REFACTORING] Complete Migration of All Indexes to 8-Byte Packed Binary Buffers:
+          * Migrated all secondary index subsystems (.inx, .fld, .src, .fac, .slg, and Tier B Junk .jinx, .jfld, .jsrc) to pure 8-byte fixed-width packed binary buffers (pack "Q>", unpack "(Q>)*").
+          * Core Binary Primitives in AmberDB::Base: Implemented bin_add, bin_punch, bin_sort, bin_find, and bin_count operating directly on raw byte buffers via substr() and memory-aligned index(), achieving C-level execution speed.
+          * High-Level Cleanup: Completely eradicated high-level Perl array/hash manipulations (array_nodup, array_punch) from the core engine indexing path.
+          * Consolidated Pre-Sorted Indexing: Standalone .srt files are formally deprecated and eliminated; sort indexes are directly maintained inside .inx.
+          * Direct 64-bit Uint Indexing: Non-foreign key numeric fields in .fld bypass synthetic dictionary ID generation, indexing pure 64-bit unsigned integers directly into binary keys.
+          * Batch Foreign Key Pre-Fetching: Integrated batch RDBM ID pre-fetching in search and junk indexing pipelines, reducing disk I/O overhead to zero during keyword tokenization.
+
+        - [LEGACY TABLE MIGRATION & RECONSTRUCTION ENGINE] Automated update_table & update_all in AmberDB::Tools:
+          * Multi-Era Format Detection: Implemented _detect_record_format and decode_legacy_record recognizing and decoding all historical formats across AmberDB history: 2003 FlatDB (v1), 2004-2006 \T arrays (v2), 2019-2025 <TAB0>..<TAB3> hierarchical tabs (v3), 2026 HTML entities (v4), and modern ABR v5 (v5).
+          * Automated Timestamped Backups: Automatically backs up migrating tables as <table_name>-v<detected_ver>-<YYYY-MMDD>.db prior to rewriting.
+          * Authoritative Data Preservation:
+            - .unq (Unique & Synonym Dictionary): Identified as non-reconstructible authoritative master data; strictly exempted from derived index cleanup, preserved live, and snapshot-copied to <table_name>-v<ver>-<date>.unq.
+            - .del (Soft-Deleted Records Archive): Detected via exist_table($table, 'del'), backed up, and all archived records migrated to ABR v5.
+            - .aut (Audit Trail Log): Detected via exist_table($table, 'aut'), backed up, and user modification history migrated to ABR v5.
+            - .cnt (Read Counter): Detected via exist_table($table, 'cnt'), backed up, and live counter state preserved.
+          * Clean Re-indexing via insert_list: Cleans up all derived and legacy indexes (qw(inx src fld fac slg srt jinx jfld jsrc)) and rebuilds table data and indexes atomically through $adb->insert_list.
+
+        - [COMMAND LINE UTILITY] Automated Migration Script (bin/update_tables.pl):
+          * Added CLI migration script bin/update_tables.pl supporting --all, --table=<names>, --dbase=<dir>, --force, and --help options.
+          * Provides granular per-table progress reporting and comprehensive post-migration summary (tables processed, upgraded, already up-to-date, record counts, and companion file backups).
+
+        - [TRANSACTION SAFETY, SEARCH & CSV COMPATIBILITY]
+          * Transact Journal Escaping: Escaped \n, \r, \x1e, and \\ in binary record payloads logged to .txn journals, preventing binary length bytes from splitting WAL records or corrupting field boundaries.
+          * CSV Line Preservation: In tie2csv and vacuum, exported CSV records using _db_encode_legacy so exported files remain clean single-line human-readable text.
+          * Unindexed Search Word Extraction: Fixed search_table in unindexed mode to decode record fields before passing them to get_words, preventing binary length bytes from corrupting search tokens.
+
+        - [QUERY ENGINE & INDEX PERFORMANCE OPTIMIZATIONS] Adaptive Binary Intersect & Pure-Index Candidate Filtering:
+          * Adaptive Binary Search Pruning (bin_crop): Introduced dynamic thresholding between XS unpack probing and 8-byte aligned O(log N) binary search (substr). For massive posting lists (e.g. 600K records), eliminates huge Perl scalar allocations and byte-alignment collision issues, dropping multi-field pruning from 4.1 ms to 0.058 ms (58 us).
+          * Pure-Index Candidate Probing (search_table): Refactored multi-value/range filtering (e.g. 27-year date intervals) to evaluate candidate IDs directly against sorted 8-byte aligned index buffers via binary search, completely eliminating slow inverted unioning, zero .db reads, and zero massive 50,000-element Perl hash allocations.
+          * Batch Unindexed Fallback: Replaced iterative table_readid loops in unindexed search fallbacks with single-pass read_list batching, eliminating repetitive open/close file descriptor syscalls.
+
+        - [TEST COVERAGE & PACKAGING]
+          * Added comprehensive test suite t/amberdb_update_table.t covering multi-era format decoding, update_table migration, backup naming, .del/.aut/.cnt/.unq handling, and update_all batch discovery.
+          * Updated MANIFEST to include bin/update_tables.pl and new test suites.
+          * All 47 test files (440 assertions) passing with 100% success rate.
+
+5.23.2  2026-09-03
+        - [LOCALE ENGINE & MULTILINGUAL ARCHITECTURE] 10th Language - Global Base (gb) and Default Locale:
+          * Introduced Global Base (gb) as the 10th supported language and new universal default/fallback locale (replacing en).
+          * Implemented comprehensive multilingual Latin character preservation in alphabet_chars across European, Turkish, Nordic, French, German, Spanish, and Slavic-Latin alphabets.
+          * Added cross-lingual, accent-tolerant search regex mapping (regex_map) matching accented and unaccented variations (e.g. cafe matches café, munchen matches münchen, seker matches şeker).
+          * Implemented canonical accent folding in accent_map for high-recall inverted search indexing (.src).
+          * Added lossless Unicode ligature conversion in ascii_map (ß->ss, æ->ae, œ->oe, ı->i, ø->o, ł->l, đ->d, ð->d, þ->th, ə->e) for clean URL slug and ASCII ID generation.
+          * Configured international English numbering, date formatting, and ISO standard decimal/group separators.
+          * Added language aliases: 'gb', 'global', 'gl', 'universal', 'uni', 'gb_base'.
+          * Added dedicated test coverage in t/amberdb-locale_09_gb.t.
+        - [TRANSACTION ARCHITECTURE & API REFINEMENT] Pure File-Path Error Model and Operational Rollback:
+          * Refactored transact_error($file_path, $message) to exclusively accept physical file paths; eliminated artificial "transaction" and "system" string contexts.
+          * Simplified table identification via single exact regex /([^\/\\:]+)\.$db_ext$/: directly extracts table ID and inspects schema no_transact attribute; non-db extensions (.inx, .src, .fld, .fac, .slg, .aut, .del, .txn) never trigger rollback (no_rollback = 1).
+          * Added immediate early return in transact_error if $file_path is undefined or empty.
+          * Established strict API role separation: application code directly invokes transact_rollback() for business logic cancellations (insufficient stock, credit limits, validation aborts) and unexpected eval exceptions; transact_error is reserved for internal physical storage/write safety.
+          * Unified legacy is_index and is_no_transact flags into single no_rollback attribute.
+          * Restructured insert_id to strictly validate mandatory $tableid at entry prior to resolving table paths, with proper ref guard for $rid.
+
+5.23.1  2026-09-02
+        - [DISTRIBUTION & METADATA] Unified Versioning and MetaCPAN Curation:
+          * Unified $VERSION across all internal and standalone modules to 5.23.1 for consistent release identification and stack-trace debugging.
+          * Added no_index -> file specification in Makefile.PL for internal engine modules (Base, Cache, Index, Transact, Locale::Currency), curating the MetaCPAN release page to highlight the 6 public standalone modules.
+          * Excluded wiki/ documentation directory from CPAN distribution package (via MANIFEST.SKIP), reducing tarball size by ~30% and eliminating 246 redundant packaging entries.
+          * Updated main AmberDB abstract to "High-performance embedded NoSQL database engine for Perl".
+
 5.23.0  2026-09-02
         - [ARCHITECTURE & ID SIMPLIFICATION] Pure 64-bit Binary Engine & Deprecation of 8-Byte ASCII IDs:
           * Deprecated 8-byte ASCII IDs (a8) across binary index structures in favor of pure 64-bit Big-Endian unsigned integer packing (Q>*), guaranteeing O(1) binary slicing with fixed 8-byte record strides.

@@ -24,13 +24,13 @@ is( $tr->language, 'tr', 'Constructor: language tag stored' );
 my $en = AmberDB::Locale->new( language => 'en' );
 is( $en->language, 'en', 'Constructor: English locale' );
 
-# Unknown locale falls back to en
+# Unknown locale falls back to gb
 my $xx;
 {
     local $SIG{__WARN__} = sub {};    # suppress fallback warning
     $xx = AmberDB::Locale->new( language => 'zz' );
 }
-is( $xx->language, 'en', 'Constructor: unknown locale falls back to en' );
+is( $xx->language, 'gb', 'Constructor: unknown locale falls back to gb' );
 
 # ============================================================
 # 3. Turkish casing — uc()

@@ -4,7 +4,7 @@ use 5.016;
 use warnings;
 use Carp qw(croak cluck);
 
-our $VERSION = '5.23.0';
+our $VERSION = '5.24.0';
 my $CREATED = '2018-02-23';
 
 # TODO
@@ -34,12 +34,19 @@ sub new {
 # ------------------------------------------------
 sub array_nodup {
 
-    my ( $self, @arrays ) = @_;
+    my $self = shift;
 
-    scalar @arrays or return;
+    # Fast path when passed an array reference: avoids Perl stack copying
+    if ( @_ == 1 && ref( $_[0] ) eq 'ARRAY' ) {
+        my %exist;
+        my @res = grep { defined($_) && $_ ne '' && !$exist{$_}++ } @{ $_[0] };
+        return wantarray ? @res : \@res;
+    }
+
+    scalar @_ or return;
 
     my %exist;
-    @arrays = grep { $_ && !$exist{$_}++ } @arrays;
+    my @arrays = grep { defined($_) && $_ ne '' && !$exist{$_}++ } @_;
 
     return @arrays;
 }
@@ -48,7 +55,7 @@ sub array_nodup {
 # my $a2 = [ qw/b c d f g/ ];
 # my $a3 = [ qw/c d h i/ ];
 # my $cropped = $Array->array_crop($a1, $a2, $a3);
-# find intersection areas of lists...
+# find intersection areas of lists (Shortest-List-First with early-exit)...
 # ------------------------------------------------
 sub array_crop {
 
@@ -56,27 +63,42 @@ sub array_crop {
 
     scalar @arrays or return [];
 
-    my @result;
-    my $exist = {};
+    # Ensure all elements are array references; if any is empty or not an ARRAY, intersection is empty
+    for my $arr (@arrays) {
+        return [] unless ref($arr) eq 'ARRAY' && @$arr;
+    }
 
-    my $i      = scalar @arrays;
-    my $array1 = shift @arrays;
-    foreach my $field (@$array1) {
-        $exist->{$field} = 1;
+    if ( @arrays == 1 ) {
+        my %seen;
+        my @res = grep { defined($_) && $_ ne '' && !$seen{$_}++ } @{ $arrays[0] };
+        return \@res;
     }
-    foreach my $liste (@arrays) {
-        ref($liste) eq 'ARRAY' or next;
-        my $aktif = {};    # avoid multiple duplicates within same list
-        foreach my $field (@$liste) {
-            next if ( $aktif->{$field} );
-            $aktif->{$field} = 1;
-            $exist->{$field} += 1;
+
+    # Shortest-List-First: Sort arrays by element count ascending
+    @arrays = sort { scalar(@$a) <=> scalar(@$b) } @arrays;
+
+    my $smallest = shift @arrays;
+    my %candidates;
+    foreach my $item (@$smallest) {
+        $candidates{$item} = 1 if defined $item && $item ne '';
+    }
+    return [] unless %candidates;
+
+    # Sequentially filter candidates against subsequent arrays
+    foreach my $arr (@arrays) {
+        my %seen;
+        foreach my $item (@$arr) {
+            $seen{$item} = 1 if defined $item;
         }
+        foreach my $cand ( keys %candidates ) {
+            delete $candidates{$cand} unless exists $seen{$cand};
+        }
+        return [] unless %candidates; # Early exit if intersection is empty
     }
-    foreach my $field (@$array1) {
-        $exist->{$field} == $i or next;
-        push @result, $field;
-    }
+
+    # Reconstruct result maintaining order of the smallest array (deduplicated)
+    my %emitted;
+    my @result = grep { exists $candidates{$_} && !$emitted{$_}++ } @$smallest;
 
     return \@result;
 }
@@ -108,29 +130,29 @@ sub array_add {
 }
 
 # my $kalan = $Array->array_punch($liste1, $liste2, $liste3);
-# subtracts items in subsequent lists from first list...
+# subtracts items in subsequent lists from first list (single-pass)...
 # ------------------------------------------------
 sub array_punch {
 
-    my @result;
-    my $exist = {};
     my ( $self, $array, @arrays ) = @_;
 
-    $array         or return;
-    scalar @arrays or return;
+    $array or return [];
+    ref($array) eq 'ARRAY' or return [];
 
+    my %exclude;
     foreach my $liste (@arrays) {
-        ref($liste) eq 'ARRAY' or next;
+        next unless ref($liste) eq 'ARRAY';
         foreach my $part (@$liste) {
-            $exist->{$part} += 1;
+            $exclude{$part} = 1 if defined $part;
         }
     }
+
+    my %seen;
+    my @result;
     foreach my $part (@$array) {
-        ( $exist->{$part} ) and next;
+        next if !defined $part || exists $exclude{$part} || $seen{$part}++;
         push @result, $part;
     }
-
-    @result = $self->array_nodup(@result);
 
     return \@result;
 }

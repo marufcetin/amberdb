@@ -4,7 +4,7 @@
 
 # Developer Guide and Comprehensive Documentation
 
-> **Version:** 5.23.0 · **Initial Design:** 2005 · **Last Updated:** 2026  
+> **Version:** 5.23.1 · **Initial Design:** 2005 · **Last Updated:** 2026  
 > **Namespace:** `AmberDB`  
 > **Built-in Modules:** `Base`, `Index`, `Transact`, `Cache`, `Array`, `String`, `Date`, `Locale`, `Tools`
 
@@ -664,18 +664,20 @@ Since secondary index files are omitted, queries stream sequentially across the 
 
 ### 5.5 ACID Transactions
 
-In Simple Mode, `transact_start`, `transact_commit`, and `transact_rollback` provide full ACID transaction safety. When a `rollback` is triggered, raw modifications in the `.db` file are restored:
+In Simple Mode, `transact_start`, `transact_error`, and `transact_end` provide full ACID transaction safety. When an error is logged (`transact_error`) or an operation fails, `transact_end` automatically triggers rollback, restoring raw modifications in the `.db` file:
 
 ```perl
 $adb->transact_start();
 eval {
     $adb->insert_id( 'sessions', 'token_123', 'TempData', time() );
-    die "Critical error" if $failed;
-    $adb->transact_end();
+    if ($failed) {
+        $adb->transact_error( 'sessions', 'Critical transaction error' );
+    }
 };
 if ($@) {
-    $adb->transact_rollback(); # token_123 is cleanly reverted from the .db file
+    $adb->transact_error( 'sessions', $@ );
 }
+my $txn = $adb->transact_end(); # Auto-rollbacks on error, commits if clean
 ```
 
 ---
@@ -775,8 +777,8 @@ AmberDB maintains structured binary index files based on the schema configuratio
 ### 6.2 Unified 8-Byte Binary Packing Standard
 
 AmberDB achieves high throughput and compact disk storage through uniform **8-byte binary packing**:
-- **Numeric IDs (`id_type => "num"`):** Packed as `Q*` (64-bit unsigned integers, native endian).
-- **ASCII IDs (`id_type => "ascii"`):** Packed as `a8*` (fixed 8-byte null-padded ASCII).
+- **Numeric Record IDs:** Binary indexes (`.inx`, `.srt`, `.fld`) pack record IDs as pure 64-bit Big-Endian unsigned integers (`(Q>)*`) into fixed 8-byte record strides.
+- **Arbitrary String Keys (`use_simple => 1`):** When arbitrary string keys (UUIDs, slugs, emails, session tokens) are needed, tables configure `use_simple => 1`. This strips `.inx` binary index overhead and allows keys up to 255 bytes directly in Berkeley DB key-value hash storage.
 
 This binary layout enables zero-copy slicing for pagination (`LIMIT/OFFSET`) directly through raw byte offsets ($O(1)$ `substr` slicing) without decoding full record buffers into memory.
 
@@ -785,7 +787,7 @@ This binary layout enables zero-copy slicing for pagination (`LIMIT/OFFSET`) dir
 For fields declared under `match_block`, AmberDB indexes data across two complementary tiers:
 
 1. **Packed Binary Inverted Match Index (`.fld`):**  
-   Maintains a dedicated `<table_name>_<blk>.fld` file per block. Keys map directly to 8-byte packed binary arrays (`Q*` / `a8*`) containing matching record IDs. Queries via `field_fetch` perform direct $O(1)$ key lookups into this file.
+   Maintains a dedicated `<table_name>_<blk>.fld` file per block. Keys map directly to 8-byte packed binary arrays (`(Q>)*`) containing matching record IDs. Queries via `field_fetch` perform direct $O(1)$ key lookups into this file.
 
 2. **Bidirectional String-to-ID Dictionary (`.str`):**  
    For non-relational free-text attributes (Category Name, Brand Name, Author, Status Tags), the engine automatically manages a companion `<table_name>_<blk>.str` dictionary:
@@ -803,7 +805,6 @@ Define sortable blocks in your `.table` schema file. Specify a simple block inde
 ```perl
 # dbstore/schema/catalog_product.table
 {
-    id_type    => 'num',
     sort_block => [
         4,                             # Block 4: Title (String sorting)
         { blk => 10, type => 'num' },  # Block 10: Price (Numeric sorting)
@@ -874,12 +875,14 @@ AmberDB guarantees the four classical ACID properties through embedded flat-file
 
 ### 7.3 Transaction Workflow
 
+In the public API, transaction workflows are driven by 3 primary methods:
+
 1. **`transact_start()`**: Opens a microsecond-stamped undo journal (`.txn`) in `$dbase_dir/txn/` and recovers any orphaned transactions left by dead processes (`transact_recover`).
-2. **CRUD Operations**: `insert_id`, `modify_id`, `delete_id` write updates to the base `.db` file, acquire record write locks (`flock`), and record reverse undo entries in the `.txn` journal.
-3. **`transact_end()`**: Finalizes the transaction.
-   - If clean: Deletes journal, releases held locks, and commits changes (`status => "commit"`).
-   - If base errors occurred: Evaluates journal in reverse (LIFO) order, restoring base records and index states to their pre-transaction snapshot, releases locks (`status => "rollback"`).
-4. **`transact_rollback()`**: Manually triggers immediate rollback based on business logic.
+2. **CRUD Operations & `transact_error($context, $message)`**: `insert_id`, `modify_id`, `delete_id` write updates to the base `.db` file, acquire record write locks (`flock`), and record reverse undo entries in the `.txn` journal. If a business logic constraint or validation fails, call `$adb->transact_error(...)`; `transact_error` immediately invokes `transact_rollback()` to revert all mutations in reverse LIFO order, unlinks the `.txn` journal, and atomically releases all locks (no need to call `transact_end()` upon failure).
+3. **`transact_end()`**: Finalizes and commits the transaction if everything proceeded normally without errors (`status => "commit"`). If an unhandled underlying database error occurred, it executes an automatic LIFO rollback (`status => "rollback"`).
+
+> [!NOTE]
+> `transact_commit()` and `transact_rollback()` are internal engine methods executed automatically by `transact_end()` and `transact_error()`. Application code should signal business rule violations using `transact_error()`, and conclude normal successful workflows via `transact_end()`.
 
 ### 7.4 Practical Example: Checkout & Inventory Transaction
 
@@ -1090,7 +1093,6 @@ Schema design in AmberDB is **modular, tiered, and highly flexible**:
 # dbstore/schema/catalog_product.table
 {
     name         => "Product Catalog",
-    id_type      => "num",                  # "num" (64-bit uint) or "ascii" (max 8 bytes)
     record_index => 1,                      # Enable .inx primary record index & auto-increment counter
     match_block  => [ 1, 2, 3, 11 ],        # .fld Exact field match indexes (Category, Brand, Author, Status)
     search_block => [ 4, 5, 7, 9 ],         # .src Full-text search fields (Title, Subtitle, Description, Barcode)
@@ -1139,7 +1141,6 @@ Schema design in AmberDB is **modular, tiered, and highly flexible**:
 # dbstore/schema/catalog_product.table
 {
     name         => "Product Catalog",
-    id_type      => "num",
     record_index => 1,
     match_block  => [ 1, 2, 3 ],
     search_block => [ 4, 5 ],
@@ -1155,7 +1156,7 @@ The following reference table details all top-level parameters supported in `.ta
 | Parameter | Type | Default | Legacy / Alias | Description |
 | :--- | :--- | :--- | :--- | :--- |
 | `name` | `string` | `"Table"` | — | Human-readable table title. |
-| `id_type` | `string` | `"num"` | — | Primary key format: `"num"` (64-bit unsigned int) or `"ascii"` (max 8-byte alphanumeric string). |
+| `use_simple` | `0 / 1` | `0` | `simple` | When `1`, enables key-value mode allowing arbitrary string keys up to 255 bytes (UUIDs, slugs, tokens) with zero `.inx` index overhead. |
 | `record_index` | `0 / 1` | `0` | `readall` | When `1`, enables the `.inx` primary binary index, `table_count`, `table_lastid`, and auto-increment. |
 | `search_block` | `ARRAY` | `[]` | — | Block numbers indexed in `.src` for full-text inverted search. |
 | `match_block` | `ARRAY` | `[]` | `fields` | Block numbers indexed in `.fld` for exact field-to-ID matching and relational lookup. |
@@ -2067,7 +2068,7 @@ dbstore/
 2. **Wrap Multi-Step Writes in `transact_start`:** Always wrap inventory deductions, checkout sequences, or multi-table balance updates inside transactions.
 3. **Index Only Required Fields:** Only assign fields to `match_block` or `search_block` if they are actively queried to minimize disk write overhead.
 4. **Always Handle Pagination Return Signatures Correctly:** When passing `$limit > 0` to `read_all`, `field_fetch`, or `search_table`, remember that the first returned value is `$total_count` integer. Never unpack into a single array (`my @records = $adb->read_all(..., 0, 20)`) as `$records[0]` will be an integer scalar causing fatal crashes upon dereferencing. Always unpack paginated queries as `my ($total_count, @records)`.
-5. **Choose Numeric IDs Where Possible:** Standardize on `id_type => "num"` for optimal 64-bit binary packing performance.
+5. **Choose Primary Key Architecture Appropriately:** Standard relational tables enforce pure 64-bit integer IDs for optimal binary packing performance (`(Q>)*`). For arbitrary string identifiers (UUIDs, slugs, session tokens), configure the table with `use_simple => 1` for zero indexing overhead directly in Berkeley DB.
 6. **Standardize on Record Array ID at Index 0:** Always maintain the Primary Key ID at Index 0 (`$record[0]`) within record arrays (`@record`). For new records, initialize with `0` and assign the returned ID via `my $id = $record[0] = $adb->insert_id("table", @record);`. Performing retrieval (`read_id`), updating (`modify_id("table", @record)`), and deletion (`delete_id("table", $record[0])`) against this unified structure ensures clean code and eliminates positional argument shifting bugs.
 
 ---
@@ -2135,13 +2136,15 @@ if ($current[8] >= 1) { # Check available inventory
     my @order_items = ( [ $product_id, "MacBook Pro M3", 1, 1999.00 ] );
     my $order_id = $adb->insert_id("orders", undef, "Customer John", time(), \@order_items, { status => "confirmed" });
     
-    my $txn = $adb->transact_end();
-    if ($txn->{status} eq "commit") {
-        print "4. Order #$order_id placed! Remaining stock: $current[8]\n";
-    }
 } else {
-    $adb->transact_rollback();
-    print "4. Error: Out of stock! Transaction rolled back.\n";
+    $adb->transact_error("catalog_product", "Out of stock");
+}
+
+my $txn = $adb->transact_end();
+if ($txn->{status} eq "commit") {
+    print "4. Order placed! Remaining stock: $current[8]\n";
+} else {
+    print "4. Error: Out of stock or operation failed, transaction rolled back!\n";
 }
 ```
 
@@ -2189,8 +2192,11 @@ if ($current[8] >= 1) { # Check available inventory
 | `recs_cutting` | `$start, $limit, @list`| `($count, @slice)` | In-memory array pagination slicer. |
 | **Transaction Management** | | | |
 | `transact_start`| — | `1/undef` | Starts a new transaction with undo journaling. |
-| `transact_end`  | — | `\%result` | Commits transaction or triggers auto-rollback. |
-| `transact_rollback` | — | `\%result` | Forces immediate manual rollback. |
+| `transact_error`| `$context, $message` | `undef` | Records transaction error (ensures transact_end rolls back). |
+| `transact_end`  | — | `\%result` | Concludes transaction (commits clean or triggers auto-rollback). |
+| `transact_rollback` | — | `\%result` | (Internal) Forces immediate manual rollback. |
+| `transact_commit`   | — | `\%result` | (Internal) Flushes and commits active transaction. |
+| `transact_recover`  | — | `\%result` | Recovers orphaned/crashed transactions. |
 | **Cache, Slug, Schema & Audit** | | | |
 | `table_info`   | `$table` | `\%schema` | Retrieves active table schema configuration hash. |
 | `table_attr`   | `$table, \%attrs` | `1` | Dynamically mutates in-memory table schema at runtime. |
@@ -2310,11 +2316,11 @@ The following architectural choices might appear restrictive from an ad-hoc SQL 
 - **Reality & Advantage:** Appending individual undo-journal entries during ingestion of hundreds of thousands of records introduces severe disk I/O bottlenecks. AmberDB opens a single file session and streams data directly to memory and disk buffers with batch index rebuilds, unlocking maximum batch ingestion throughput.
 > **Developer Flexibility:** When a batch of operations strictly requires transactional atomicity and rollback capability, simply execute a standard loop of single-record CRUD calls (`insert_id`, `modify_id`, `delete_id`) inside a `transact_start()` and `transact_end()` block.
 
-#### 25.2.3 Fixed Binary Key Lengths: Limitation or Zero-Copy Slicing Speed?
-- **Common Perception:** *"Why are ASCII primary keys limited to a maximum of 8 bytes?"*
-- **Reality & Advantage:** AmberDB defaults to 64-bit unsigned integers (`id_type => "num"`, `Q*`). When ASCII is explicitly configured, the 8-byte fixed-width standard (`a8*`) eliminates the need for dynamic variable-length string parsing in index memory. This enables instant $O(1)$ zero-copy slicing for pagination (`LIMIT/OFFSET`) directly via raw byte offsets (`substr`).
+#### 25.2.3 Fixed 8-Byte Binary Record Strides & Arbitrary String Keys: Limitation or Conscious Design?
+- **Common Perception:** *"Why do relational indexed tables only support positive 64-bit integer IDs?"*
+- **Reality & Advantage:** AmberDB's relational and indexed tables strictly enforce pure 64-bit Big-Endian unsigned integers (`(Q>)*`) as primary keys. Fixed 8-byte record strides eliminate the need for dynamic variable-length string parsing in index memory. This enables instantaneous $O(1)$ zero-copy slicing for pagination (`LIMIT/OFFSET`) directly via raw byte offsets (`substr`). For applications requiring arbitrary string keys (UUIDs, emails, or session tokens), AmberDB provides per-table **`use_simple => 1`** mode, allowing arbitrary string keys up to 255 bytes stored directly in Berkeley DB with zero indexing I/O overhead.
 
 ---
 
-*This documentation is maintained for `AmberDB` v5.23.0 and aligns with active codebase architecture and developer practices.*
+*This documentation is maintained for `AmberDB` v5.23.1 and aligns with active codebase architecture and developer practices.*
 

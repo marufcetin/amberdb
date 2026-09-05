@@ -20,18 +20,18 @@ Standard AmberDB Directory Hierarchy (dbstore/)
  dbstore/
  ├── schema/                      ← Schema Definitions
  │   ├── catalog.dbase            ← Database group configuration
- │   └── catalog_products.table   ← Table schema definition
+ │   └── catalog_product.table   ← Table schema definition
  ├── tables/                      ← Master Data & Derived Indexes
- │   ├── catalog_products.db      ← Berkeley DB primary table
- │   ├── catalog_products.del     ← Soft-deleted recycle bin archive
- │   ├── catalog_products.aut     ← User modification audit ledger
- │   ├── catalog_products.cnt     ← High-concurrency hit counter store
- │   ├── catalog_products.inx     ← 8-byte packed primary ID index
- │   ├── catalog_products_1.fld   ← Inverted exact-match index
- │   ├── catalog_products_2.src   ← Full-text phonetic search index
- │   ├── catalog_products_3.fac   ← Columnar facet bitset index
- │   ├── catalog_products_4.srt   ← Monotonic binary sorted index
- │   └── catalog_products_1.unq   ← Bidirectional dictionary and uniqueness index
+ │   ├── catalog_product.db      ← Berkeley DB primary table
+ │   ├── catalog_product.del     ← Soft-deleted recycle bin archive
+ │   ├── catalog_product.aut     ← User modification audit ledger
+ │   ├── catalog_product.cnt     ← High-concurrency hit counter store
+ │   ├── catalog_product.inx     ← 8-byte packed primary ID index
+ │   ├── catalog_product_1.fld   ← Inverted exact-match index
+ │   ├── catalog_product_2.src   ← Full-text phonetic search index
+ │   ├── catalog_product_3.fac   ← Columnar facet bitset index
+ │   ├── catalog_product_4.srt   ← Monotonic binary sorted index
+ │   └── catalog_product_1.unq   ← Bidirectional dictionary and uniqueness index
  ├── backup/                      ← Continuous WAL & .amberdb Archives
  │   └── 2026/
  │       ├── 2026-09-01.csv       ← Continuous daily audit stream (Pillar 1)

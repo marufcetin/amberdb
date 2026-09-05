@@ -30,7 +30,7 @@ AmberDB Unified NoSQL Architecture
  │  └─────────────────┘ └─────────────────┘ └────────────────┘ │
  │  ┌─────────────────┐ ┌─────────────────┐ ┌────────────────┐ │
  │  │ AmberDB::Cache  │ │ AmberDB::Locale │ │AmberDB::Tools  │ │
- │  │ RAM-Disk (tmpfs)│ │ 9 Locales & UCA │ │ Reindex/Vacuum │ │
+ │  │ RAM-Disk (tmpfs)│ │10 Locales & UCA │ │ Reindex/Vacuum │ │
  │  └─────────────────┘ └─────────────────┘ └────────────────┘ │
  └─────────────────────────────────────────────────────────────┘
                      |
@@ -53,7 +53,7 @@ AmberDB provides a lightweight, dependency-free internal component ecosystem:
 | **`AmberDB::Index`** | 8-byte packed binary indexes (`.inx`), inverted field matching (`.fld`), full-text search (`.src`), columnar facet navigation (`.fac`), and pre-sorted indexes (`.srt`). |
 | **`AmberDB::Transact`** | ACID transaction lifecycle, disk-backed undo journaling (`.txn`), Strict 2PL multi-process locks, and automatic orphaned journal crash recovery (`transact_recover`). |
 | **`AmberDB::Cache`** | OS-level RAM-Disk (`tmpfs` / `ImDisk`) shared memory caching (`.cache`), TTL expiration, and in-memory table mirroring. |
-| **`AmberDB::Locale`** | Regional language engine supporting 9 locales (`en`, `tr`, `de`, `fr`, `es`, `ja`, `ru`, `ar`, `az`) with case folding, phonetic softening, accent expansion, and Unicode Collation (UCA). |
+| **`AmberDB::Locale`** | Regional language engine supporting 10 locales (`gb` [default Global Base], `en`, `tr`, `de`, `fr`, `es`, `ja`, `ru`, `ar`, `az`) with case folding, phonetic softening, accent expansion, and Unicode Collation (UCA). |
 | **`AmberDB::Array`** | High-speed array manipulation primitives (sorted comparison, deduplication, slicing, crop). |
 | **`AmberDB::String`** | String sanitization, HTML stripping, ASCII transliteration, and SEO URL slug generation. |
 | **`AmberDB::Date`** | High-precision date/time calculations, epoch conversions, and localized date formatting. |
@@ -67,7 +67,7 @@ AmberDB provides a lightweight, dependency-free internal component ecosystem:
 Replaces expensive relational SQL `JOIN` operations with extensible document blocks. Child rows (e.g., order line items, attribute matrices) are stored horizontally within the parent record and automatically indexed for fast retrieval.
 
 ### 2. 8-Byte Packed Binary Indexing
-Primary (`.inx`) and secondary indexes are formatted as 8-byte packed binary arrays (`Q*` / `a8*`). This minimizes memory consumption and enables $O(1)$ sub-millisecond pagination (`LIMIT / OFFSET`) using raw zero-copy `substr` slicing.
+Primary (`.inx`) and secondary indexes are formatted as 8-byte packed binary arrays (`(Q>)*`). This minimizes memory consumption and enables $O(1)$ sub-millisecond pagination (`LIMIT / OFFSET`) using raw zero-copy `substr` slicing (with `use_simple => 1` mode available for arbitrary string keys).
 
 ### 3. Strict 2PL ACID Transactions & Undo-Journal
 Multi-table operations are guarded by disk-backed undo journals (`.txn`) and Strict Two-Phase Locking (Strict 2PL). In the event of a process crash or power loss, orphaned journals are automatically rolled back in LIFO order upon the next access.

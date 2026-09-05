@@ -80,12 +80,12 @@ subtest '4. Transact transact_error and rollback' => sub {
     $adb->{_error} = [];
     $adb->transact_start();
 
-    $adb->transact_error( "test_table", "Simulated fatal error" );
+    $adb->transact_error( "test_table.db", "Simulated fatal error" );
     my $res = $adb->transact_end();
 
     is( $res->{status}, 'rollback', "Transaction rolled back due to transact_error" );
     ok( @{ $res->{errors} } > 0, "Errors captured in rollback response" );
-    is( $res->{errors}->[0]->{context}, "test_table", "Correct error context captured" );
+    is( $res->{errors}->[0]->{context}, "test_table.db", "Correct error context captured" );
 };
 
 # ---------------------------------------------------------------------------

@@ -20,18 +20,18 @@ Standart AmberDB Dizin Agaci (dbstore/)
  dbstore/
  ├── schema/                      ← Sema Tanim Dosyalari
  │   ├── catalog.dbase            ← Veritabani grup yapilandirmasi
- │   └── catalog_products.table   ← Tablo sema tanimi
+ │   └── catalog_product.table   ← Tablo sema tanimi
  ├── tables/                      ← Ana Veri ve Ikincil Indeksler
- │   ├── catalog_products.db      ← Berkeley DB ana veri tablosu
- │   ├── catalog_products.del     ← Cop kutusu yumusak silme arşivi
- │   ├── catalog_products.aut     ← Kullanici hareket denetim izi
- │   ├── catalog_products.cnt     ← Goruntulenme/hit sayac depolari
- │   ├── catalog_products.inx     ← 8-byte paketli birincil ID indeksi
- │   ├── catalog_products_1.fld   ← Birebir eslesme ters indeksi
- │   ├── catalog_products_2.src   ← Fonetik tam metin arama indeksi
- │   ├── catalog_products_3.fac   ← Kolon tabanli facet bitset indeksi
- │   ├── catalog_products_4.srt   ← Onceden siralanmis binary indeks
- │   └── catalog_products_1.unq   ← Cift yonlu sozluk ve tekillik indeksi
+ │   ├── catalog_product.db      ← Berkeley DB ana veri tablosu
+ │   ├── catalog_product.del     ← Cop kutusu yumusak silme arşivi
+ │   ├── catalog_product.aut     ← Kullanici hareket denetim izi
+ │   ├── catalog_product.cnt     ← Goruntulenme/hit sayac depolari
+ │   ├── catalog_product.inx     ← 8-byte paketli birincil ID indeksi
+ │   ├── catalog_product_1.fld   ← Birebir eslesme ters indeksi
+ │   ├── catalog_product_2.src   ← Fonetik tam metin arama indeksi
+ │   ├── catalog_product_3.fac   ← Kolon tabanli facet bitset indeksi
+ │   ├── catalog_product_4.srt   ← Onceden siralanmis binary indeks
+ │   └── catalog_product_1.unq   ← Cift yonlu sozluk ve tekillik indeksi
  ├── backup/                      ← Surekli WAL ve .amberdb Arsivleri
  │   └── 2026/
  │       ├── 2026-09-01.csv       ← Gunluk surekli denetim akisi (Pillar 1)

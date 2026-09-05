@@ -12,7 +12,10 @@
 
 The **8-Byte Packed Binary Indexing Mechanism** is AmberDB's core indexing format for primary ID lists (`.inx`), pre-sorted query matrices (`.srt`), and cold storage primary indexes (`.jinx`).
 
-Rather than storing record IDs as variable-length text strings or serialized Perl arrays, AmberDB packs record IDs into dense, fixed-width 8-byte binary integers using Perl's `pack("Q*", @ids)` / `pack("a8*", @ids)` format. This ensures that every entry occupies exactly 8 bytes of physical storage, allowing sub-millisecond $O(1)$ substring slicing, zero-copy pointer arithmetic, and massive memory savings.
+Rather than storing record IDs as variable-length text strings or serialized Perl arrays, AmberDB packs record IDs into dense, fixed-width 8-byte binary integers using Perl's `pack("(Q>)*", @ids)` format. This ensures that every entry occupies exactly 8 bytes of physical storage, allowing sub-millisecond $O(1)$ substring slicing, zero-copy pointer arithmetic, and massive memory savings.
+
+> [!NOTE]
+> For tables requiring arbitrary string keys (UUIDs, emails, slugs up to 255 bytes), AmberDB provides per-table **Simple Mode (`use_simple => 1`)**, which operates directly on Berkeley DB key-value hash storage with zero binary index overhead.
 
 ```text
 Physical 8-Byte Packed Binary Buffer Layout (.inx / .srt)
@@ -35,7 +38,7 @@ To paginate through 1,000,000 records to fetch page 50 (records 1,000 to 1,020),
 1. Slicing offset is calculated instantly: `$offset = 1000 * 8 = 8000`.
 2. Target chunk length: `$length = 20 * 8 = 160` bytes.
 3. The exact 160-byte slice is extracted via `substr($binary_buffer, 8000, 160)` in $O(1)$ time.
-4. The 20 IDs are unpacked via `unpack("Q*", $slice)` without loading the remaining 999,980 records into memory.
+4. The 20 IDs are unpacked via `unpack("(Q>)*", $slice)` without loading the remaining 999,980 records into memory.
 
 ### `keys_only` Memory-Efficient Query Pipelines
 When passing `keys_only => 1` to `read_all`, `field_fetch`, or `search_table`, AmberDB skips loading and deserializing full record payloads from the `.db` master table. The unpacked binary IDs are returned directly to the caller, reducing memory footprint by over 95%.

@@ -120,13 +120,13 @@ SCHEMA
     my $id2 = $adb->insert_id( 'products', 2, '112, 167', 'Kitap 2' );
     my $id3 = $adb->insert_id( 'products', 3, '49', 'Kitap 3' );
 
-    my $fld_path = $adb->table_path('products') . '_1.fld';
-    ok( -e $fld_path, 'products_1.fld index file exists' );
+    my $fld_path = $adb->table_path('products') . '.fld';
+    ok( -e $fld_path, 'products.fld index file exists' );
 
-    # Verify .fld contains numeric keys 49, 112, 167
-    my ( undef, @recs_49 )  = $adb->index_get( $fld_path, '49' );
-    my ( undef, @recs_112 ) = $adb->index_get( $fld_path, '112' );
-    my ( undef, @recs_167 ) = $adb->index_get( $fld_path, '167' );
+    # Verify .fld contains numeric keys 1:49, 1:112, 1:167
+    my ( undef, @recs_49 )  = $adb->index_get( $fld_path, '1:49' );
+    my ( undef, @recs_112 ) = $adb->index_get( $fld_path, '1:112' );
+    my ( undef, @recs_167 ) = $adb->index_get( $fld_path, '1:167' );
 
     is_deeply( [ sort @recs_49 ],  [ 1, 3 ], 'key 49 contains products 1, 3' );
     is_deeply( [ sort @recs_112 ], [ 1, 2 ], 'key 112 contains products 1, 2' );
@@ -180,18 +180,18 @@ SCHEMA
     my $id1 = $adb->insert_id( 'tags', 1, 'Edebiyat, Dünya Klasikleri, Rus Romanları', 'Makale 1' );
     my $id2 = $adb->insert_id( 'tags', 2, 'Dünya Klasikleri, Bilim Kurgu', 'Makale 2' );
 
-    my $unq_path = $adb->table_path('tags') . '_1.unq';
-    my $fld_path = $adb->table_path('tags') . '_1.fld';
+    my $unq_path = $adb->table_path('tags') . '.unq';
+    my $fld_path = $adb->table_path('tags') . '.fld';
 
-    ok( -e $unq_path, 'tags_1.unq dictionary file exists' );
-    ok( -e $fld_path, 'tags_1.fld index file exists' );
+    ok( -e $unq_path, 'tags.unq dictionary file exists' );
+    ok( -e $fld_path, 'tags.fld index file exists' );
 
-    # Check lastid and string mappings in .unq using s: prefix
-    my ($lastid)  = $adb->index_get( $unq_path, 'lastid', 'raw' );
-    my ($id_edeb) = $adb->index_get( $unq_path, 's:Edebiyat', 'raw' );
-    my ($id_dunya)= $adb->index_get( $unq_path, 's:Dünya Klasikleri', 'raw' );
-    my ($id_rus)  = $adb->index_get( $unq_path, 's:Rus Romanları', 'raw' );
-    my ($id_bilim)= $adb->index_get( $unq_path, 's:Bilim Kurgu', 'raw' );
+    # Check lastid and string mappings in .unq using 1:s: prefix
+    my ($lastid)  = $adb->index_get( $unq_path, '1:lastid', 'raw' );
+    my ($id_edeb) = $adb->index_get( $unq_path, '1:s:Edebiyat', 'raw' );
+    my ($id_dunya)= $adb->index_get( $unq_path, '1:s:Dünya Klasikleri', 'raw' );
+    my ($id_rus)  = $adb->index_get( $unq_path, '1:s:Rus Romanları', 'raw' );
+    my ($id_bilim)= $adb->index_get( $unq_path, '1:s:Bilim Kurgu', 'raw' );
 
     is( $lastid, 4, 'lastid in .unq equals 4' );
     is( $id_edeb, 1, 'Edebiyat assigned ID 1' );
@@ -199,9 +199,9 @@ SCHEMA
     is( $id_rus, 3, 'Rus Romanları assigned ID 3' );
     is( $id_bilim, 4, 'Bilim Kurgu assigned ID 4' );
 
-    # Check .fld index keys (only numeric IDs 1, 2, 3, 4)
-    my ( undef, @fld_1 ) = $adb->index_get( $fld_path, '1' );
-    my ( undef, @fld_2 ) = $adb->index_get( $fld_path, '2' );
+    # Check .fld index keys (only numeric IDs 1, 2, 3, 4 with 1: prefix)
+    my ( undef, @fld_1 ) = $adb->index_get( $fld_path, '1:1' );
+    my ( undef, @fld_2 ) = $adb->index_get( $fld_path, '1:2' );
     is_deeply( \@fld_1, [1], 'key 1 (Edebiyat) has record 1' );
     is_deeply( [ sort @fld_2 ], [1, 2], 'key 2 (Dünya Klasikleri) has records 1, 2' );
 
@@ -256,15 +256,15 @@ SCHEMA
     $adb->insert_id( 'news', 1, 'Teknoloji, Yapay Zeka', 'Haber 1' );
     $adb->insert_id( 'news', 2, 'Yapay Zeka, Robotik',   'Haber 2' );
 
-    my $unq_path = $adb->table_path('news') . '_1.unq';
-    my ($lastid) = $adb->index_get( $unq_path, 'lastid', 'raw' );
+    my $unq_path = $adb->table_path('news') . '.unq';
+    my ($lastid) = $adb->index_get( $unq_path, '1:lastid', 'raw' );
     is( $lastid, 3, 'initial lastid is 3' );
 
     # Modify news 1: replace 'Teknoloji' with new topic 'Uzay'
     $adb->modify_id( 'news', 1, 'Uzay, Yapay Zeka', 'Haber 1' );
 
-    my ($new_lastid) = $adb->index_get( $unq_path, 'lastid', 'raw' );
-    my ($id_uzay)    = $adb->index_get( $unq_path, 's:Uzay', 'raw' );
+    my ($new_lastid) = $adb->index_get( $unq_path, '1:lastid', 'raw' );
+    my ($id_uzay)    = $adb->index_get( $unq_path, '1:s:Uzay', 'raw' );
     is( $new_lastid, 4, 'lastid incremented to 4 after adding Uzay' );
     is( $id_uzay, 4, 'Uzay assigned ID 4' );
 
@@ -344,20 +344,20 @@ SCHEMA
     # Run match_add for the whole batch
     $adb->match_add( $table_path, $table_info, \@batch );
 
-    my $unq_path = File::Spec->catfile( $temp_dir, 'batch_test_1.unq' );
-    my $fld_path = File::Spec->catfile( $temp_dir, 'batch_test_1.fld' );
+    my $unq_path = File::Spec->catfile( $temp_dir, 'batch_test.unq' );
+    my $fld_path = File::Spec->catfile( $temp_dir, 'batch_test.fld' );
 
-    ok( -e $unq_path, 'batch_test_1.unq exists' );
-    ok( -e $fld_path, 'batch_test_1.fld exists' );
+    ok( -e $unq_path, 'batch_test.unq exists' );
+    ok( -e $fld_path, 'batch_test.fld exists' );
 
-    my ($lastid)   = $adb->index_get( $unq_path, 'lastid', 'raw' );
-    my ($id_fizik) = $adb->index_get( $unq_path, 's:Fizik', 'raw' );
-    my ($id_kimya) = $adb->index_get( $unq_path, 's:Kimya', 'raw' );
+    my ($lastid)   = $adb->index_get( $unq_path, '1:lastid', 'raw' );
+    my ($id_fizik) = $adb->index_get( $unq_path, '1:s:Fizik', 'raw' );
+    my ($id_kimya) = $adb->index_get( $unq_path, '1:s:Kimya', 'raw' );
 
     is( $lastid, 5, 'lastid is 5 after batch match_add' );
 
-    # Verify .fld index for Fizik (ID 1) contains records 1 and 3
-    my ( undef, @recs_fizik ) = $adb->index_get( $fld_path, $id_fizik );
+    # Verify .fld index for Fizik (ID 1) contains records 1 and 3 with 1: prefix
+    my ( undef, @recs_fizik ) = $adb->index_get( $fld_path, "1:$id_fizik" );
     is_deeply( [ sort @recs_fizik ], [ 1, 3 ], 'Fizik index correctly maps to records 1 and 3 across batch' );
 
     # Verify field_to_list read mode does not open-close erroneously
@@ -405,10 +405,10 @@ SCHEMA
     my $id1 = $adb->insert_id( 'users', 101, 'john_doe', 'john@example.com', 'John Doe' );
     is( $id1, 101, 'First user inserted successfully' );
 
-    # Verify .unq file has s:john_doe => 101 and n:101 => john_doe
-    my $unq_user = $adb->table_path('users') . '_1.unq';
-    my ($u101) = $adb->index_get( $unq_user, 's:john_doe', 'raw' );
-    is( $u101, 101, 'users_1.unq recorded s:john_doe => 101' );
+    # Verify .unq file has 1:s:john_doe => 101 and 1:n:101 => john_doe
+    my $unq_user = $adb->table_path('users') . '.unq';
+    my ($u101) = $adb->index_get( $unq_user, '1:s:john_doe', 'raw' );
+    is( $u101, 101, 'users.unq recorded 1:s:john_doe => 101' );
 
     # 2. Duplicate username insert should fail
     my $id2 = $adb->insert_id( 'users', 102, 'john_doe', 'other@example.com', 'Another User' );
@@ -498,15 +498,15 @@ SCHEMA
     is( $k1, 1001, 'Book 1001 inserted with string publisher' );
 
     # Verify .fld index of catalog_book has resolved 'Can Yayınları' to ID 10
-    my $book_fld = $adb->table_path('catalog_book') . '_1.fld';
-    my ( undef, @books_10 ) = $adb->index_get( $book_fld, '10' );
+    my $book_fld = $adb->table_path('catalog_book') . '.fld';
+    my ( undef, @books_10 ) = $adb->index_get( $book_fld, '1:10' );
     is_deeply( \@books_10, [1001], 'Book 1001 correctly indexed under numeric Brand ID 10' );
 
     # Insert book 1002 passing brand ID 10 directly
     my $k2 = $adb->insert_id( 'catalog_book', 1002, 10, 'Suç ve Ceza' );
     is( $k2, 1002, 'Book 1002 inserted with numeric publisher ID' );
 
-    my ( undef, @books_10_all ) = $adb->index_get( $book_fld, '10' );
+    my ( undef, @books_10_all ) = $adb->index_get( $book_fld, '1:10' );
     is_deeply( [ sort @books_10_all ], [ 1001, 1002 ], 'Both books match Brand ID 10' );
 
     # Insert book 1003 passing new brand 'İthaki Yayınları' (auto-registered)

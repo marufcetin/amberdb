@@ -12,7 +12,7 @@
 
 **Strict Two-Phase Locking (Strict 2PL)** is the concurrency control protocol implemented in AmberDB's transaction engine (`AmberDB::Transact`) and locking manager (`flock_open`). Under Strict 2PL:
 1. **Growing Phase:** A transaction may acquire shared (`LOCK_SH`) or exclusive (`LOCK_EX`) locks on multiple tables and record keys as needed, but may not release any locks during its execution.
-2. **Shrinking Phase:** All acquired locks are retained until the transaction explicitly commits (`transact_end` / `transact_commit`) or rolls back (`transact_rollback`), at which point all locks are released atomically in a single burst.
+2. **Shrinking Phase:** All acquired locks are retained until the transaction explicitly commits (`transact_end` / `transact_commit`) or an error triggers rollback (`transact_error` / `transact_rollback`), at which point all locks are released atomically in a single burst.
 
 This protocol mathematically guarantees **Serializability (ACID Isolation)** and completely prevents dirty reads, unrepeatable reads, lost updates, and cascading rollbacks across multi-process environments.
 
@@ -74,7 +74,7 @@ eval {
     $adb->transact_end();
 };
 if ($@) {
-    # Error occurred: automatically executes LIFO rollback and releases locks
+    # Revert transaction and release all locks on unexpected error
     $adb->transact_rollback();
     warn "Transaction failed: $@\n";
 }
@@ -86,6 +86,8 @@ if ($@) {
 
 - [Concept: Undo Journal Rollback](Concept-Undo-Journal-Rollback)
 - [Method: transact_start](Method-transact_start)
+- [Method: transact_error](Method-transact_error)
 - [Method: transact_end](Method-transact_end)
+- [Method: transact_rollback](Method-transact_rollback)
 - [Method: flock_open](Method-flock_open)
 - [Method: flock_close](Method-flock_close)

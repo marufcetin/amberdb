@@ -18,7 +18,6 @@
 
 ```perl
 {
-    id_type      => 'ascii',
     auto_id      => 1,
     keep_deleted => 1,
     use_junk     => 1,

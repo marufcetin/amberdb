@@ -4,6 +4,8 @@ use 5.016;
 use warnings;
 use Carp qw(croak cluck);
 
+our $VERSION = '5.24.0';
+
 # $adb->facet_rules($table_info, @record);
 # ------------------------------------------------
 sub facet_rules {
@@ -49,35 +51,34 @@ sub facet_add {
         }
     }
 
+    my $fac_path = "$table_path.fac";
+    return unless @active_records || ( $table_info->{facet_rules} && @new_active );
+    return unless $self->table_write($fac_path);
+
     # Genel aktif ID setini ${table_path}.fac dosyasına kaydet
     if ( $table_info->{facet_rules} && @new_active ) {
-        my $fac_active_path = "$table_path.fac";
-        if ( $self->table_write($fac_active_path) ) {
-            my ( undef, @acts ) = $self->index_get( $fac_active_path, "active", "ids" );
-            @acts = $self->array_nodup( @acts, @new_active );
-            $self->index_put( $fac_active_path, "active", \@acts, "ids" );
-            $self->table_close($fac_active_path);
-        }
+        my ($raw_acts) = $self->index_get( $fac_path, "active", "raw" );
+        $raw_acts = $self->bin_add( $raw_acts, \@new_active );
+        $self->index_put( $fac_path, "active", $raw_acts, "bin" );
     }
 
-    return unless @active_records;
+    if (@active_records) {
+        # SADECE AKTİF kayıtları blok öneki ile (${table_path}.fac) dosyasına yaz
+        for my $blk_cfg ( @{ $table_info->{facet_block} } ) {
+            my $blk = ref($blk_cfg) eq 'HASH' ? $blk_cfg->{blk} : $blk_cfg;
 
-    # SADECE AKTİF kayıtları blok bazlı ayrık ileri indekslere (${table_path}_$blk.fac) yaz
-    for my $blk_cfg ( @{ $table_info->{facet_block} } ) {
-        my $blk = ref($blk_cfg) eq 'HASH' ? $blk_cfg->{blk} : $blk_cfg;
-        my $blk_fac_path = "${table_path}_$blk.fac";
-        next unless $self->table_write($blk_fac_path);
-
-        for my $rec (@active_records) {
-            my $rid = $rec->[0];
-            next unless defined $rec->[$blk] && $rec->[$blk] ne '';
-            my @ids = $self->field_to_list( $rec->[$blk], 'write', $table_path, $table_info, $blk );
-            if (@ids) {
-                $self->index_put( $blk_fac_path, $rid, join( "\t", @ids ), 'raw' );
+            for my $rec (@active_records) {
+                my $rid = $rec->[0];
+                next unless defined $rec->[$blk] && $rec->[$blk] ne '';
+                my @ids = $self->field_to_list( $rec->[$blk], 'write', $table_path, $table_info, $blk );
+                if (@ids) {
+                    $self->index_put( $fac_path, "$blk:$rid", join( "\t", @ids ), 'raw' );
+                }
             }
         }
-        $self->table_close($blk_fac_path);
     }
+
+    $self->table_close($fac_path);
 }
 
 # $adb->facet_modify($table_path, $table_info, \@pairs);
@@ -112,54 +113,53 @@ sub facet_modify {
         }
     }
 
+    my $fac_path = "$table_path.fac";
+    my $need_modify = ( $table_info->{facet_rules} && ( @add_active || @remove_active ) )
+      || @became_passive || @became_active || @stayed_active;
+    return 1 unless $need_modify;
+
+    return unless $self->table_write($fac_path);
+
     # Genel aktif ID setini güncelle
     if ( $table_info->{facet_rules} && ( @add_active || @remove_active ) ) {
-        my $fac_active_path = "$table_path.fac";
-        if ( $self->table_write($fac_active_path) ) {
-            my ( undef, @acts ) = $self->index_get( $fac_active_path, "active", "ids" );
-            if (@remove_active) {
-                my %del_map = map { $_ => 1 } @remove_active;
-                @acts = grep { !$del_map{$_} } @acts;
-            }
-            if (@add_active) {
-                @acts = $self->array_nodup( @acts, @add_active );
-            }
-            if (@acts) { $self->index_put( $fac_active_path, "active", \@acts, "ids" ) }
-            else       { $self->index_del( $fac_active_path, "active" ) }
-            $self->table_close($fac_active_path);
+        my ($raw_acts) = $self->index_get( $fac_path, "active", "raw" );
+        $raw_acts //= '';
+        if (@remove_active) {
+            $raw_acts = $self->bin_punch( $raw_acts, \@remove_active );
+        }
+        if (@add_active) {
+            $raw_acts = $self->bin_add( $raw_acts, \@add_active );
+        }
+        if ( length($raw_acts) >= 8 ) {
+            $self->index_put( $fac_path, "active", $raw_acts, "bin" );
+        }
+        else {
+            $self->index_del( $fac_path, "active" );
         }
     }
 
-    # 1. Pasife dönenleri tüm blok .fac dosyalarından sil
+    # 1. Pasife dönenleri .fac dosyasından sil ($blk:$rid)
     if (@became_passive) {
         for my $blk_cfg ( @{ $table_info->{facet_block} } ) {
             my $blk = ref($blk_cfg) eq 'HASH' ? $blk_cfg->{blk} : $blk_cfg;
-            my $blk_fac_path = "${table_path}_$blk.fac";
-            next unless -e $blk_fac_path;
-            if ( $self->table_write($blk_fac_path) ) {
-                for my $p (@became_passive) {
-                    $self->index_del( $blk_fac_path, $p->[0] );
-                }
-                $self->table_close($blk_fac_path);
+            for my $p (@became_passive) {
+                $self->index_del( $fac_path, "$blk:$p->[0]" );
             }
         }
     }
 
-    # 2. Aktife dönenleri tüm blok .fac dosyalarına yaz
+    # 2. Aktife dönenleri .fac dosyasına yaz ($blk:$rid)
     if (@became_active) {
         for my $blk_cfg ( @{ $table_info->{facet_block} } ) {
             my $blk = ref($blk_cfg) eq 'HASH' ? $blk_cfg->{blk} : $blk_cfg;
-            my $blk_fac_path = "${table_path}_$blk.fac";
-            next unless $self->table_write($blk_fac_path);
             for my $p (@became_active) {
                 my ( $rid, undef, $new_rec ) = @$p;
                 next unless defined $new_rec->[$blk] && $new_rec->[$blk] ne '';
                 my @ids = $self->field_to_list( $new_rec->[$blk], 'write', $table_path, $table_info, $blk );
                 if (@ids) {
-                    $self->index_put( $blk_fac_path, $rid, join( "\t", @ids ), 'raw' );
+                    $self->index_put( $fac_path, "$blk:$rid", join( "\t", @ids ), 'raw' );
                 }
             }
-            $self->table_close($blk_fac_path);
         }
     }
 
@@ -167,7 +167,6 @@ sub facet_modify {
     if (@stayed_active) {
         for my $blk_cfg ( @{ $table_info->{facet_block} } ) {
             my $blk = ref($blk_cfg) eq 'HASH' ? $blk_cfg->{blk} : $blk_cfg;
-            my $blk_fac_path = "${table_path}_$blk.fac";
 
             my @changed_pairs;
             for my $p (@stayed_active) {
@@ -180,26 +179,26 @@ sub facet_modify {
             }
 
             next unless @changed_pairs;
-            next unless $self->table_write($blk_fac_path);
 
             for my $p (@changed_pairs) {
                 my ( $rid, undef, $new_rec ) = @$p;
                 if ( defined $new_rec->[$blk] && $new_rec->[$blk] ne '' ) {
                     my @ids = $self->field_to_list( $new_rec->[$blk], 'write', $table_path, $table_info, $blk );
                     if (@ids) {
-                        $self->index_put( $blk_fac_path, $rid, join( "\t", @ids ), 'raw' );
+                        $self->index_put( $fac_path, "$blk:$rid", join( "\t", @ids ), 'raw' );
                     }
                     else {
-                        $self->index_del( $blk_fac_path, $rid );
+                        $self->index_del( $fac_path, "$blk:$rid" );
                     }
                 }
                 else {
-                    $self->index_del( $blk_fac_path, $rid );
+                    $self->index_del( $fac_path, "$blk:$rid" );
                 }
             }
-            $self->table_close($blk_fac_path);
         }
     }
+
+    $self->table_close($fac_path);
 
     return 1;
 }
@@ -213,33 +212,40 @@ sub facet_del {
     return unless $table_info->{use_facet};
     return unless ref($records) eq 'ARRAY' && @$records;
 
+    my $fac_path = "$table_path.fac";
+    return 1 unless -e $fac_path;
+    return unless $self->table_write($fac_path);
+
     # Genel aktif ID setinden sil
     if ( $table_info->{facet_rules} ) {
         my @remove_active = map { $_->[0] } @$records;
-        my $fac_active_path = "$table_path.fac";
-        if ( @remove_active && $self->table_write($fac_active_path) ) {
-            my ( undef, @acts ) = $self->index_get( $fac_active_path, "active", "ids" );
-            my %del_map = map { $_ => 1 } @remove_active;
-            @acts = grep { !$del_map{$_} } @acts;
-            if (@acts) { $self->index_put( $fac_active_path, "active", \@acts, "ids" ) }
-            else       { $self->index_del( $fac_active_path, "active" ) }
-            $self->table_close($fac_active_path);
+        if (@remove_active) {
+            my ($raw_acts) = $self->index_get( $fac_path, "active", "raw" );
+            if ( defined $raw_acts && length($raw_acts) > 0 ) {
+                my $orig_len = length($raw_acts);
+                $raw_acts = $self->bin_punch( $raw_acts, \@remove_active );
+                if ( length($raw_acts) != $orig_len ) {
+                    if ( length($raw_acts) >= 8 ) {
+                        $self->index_put( $fac_path, "active", $raw_acts, "bin" );
+                    }
+                    else {
+                        $self->index_del( $fac_path, "active" );
+                    }
+                }
+            }
         }
     }
 
-    # Blok bazlı ayrık indekslerden (${table_path}_$blk.fac) sil
+    # Blok bazlı indekslerden ($blk:$rid) sil
     for my $blk_cfg ( @{ $table_info->{facet_block} || [] } ) {
         my $blk = ref($blk_cfg) eq 'HASH' ? $blk_cfg->{blk} : $blk_cfg;
-        my $blk_fac_path = "${table_path}_$blk.fac";
-        next unless -e $blk_fac_path;
-        if ( $self->table_write($blk_fac_path) ) {
-            for my $rec (@$records) {
-                my $rid = $rec->[0];
-                $self->index_del( $blk_fac_path, $rid );
-            }
-            $self->table_close($blk_fac_path);
+        for my $rec (@$records) {
+            my $rid = $rec->[0];
+            $self->index_del( $fac_path, "$blk:$rid" );
         }
     }
+
+    $self->table_close($fac_path);
 
     return 1;
 }
@@ -310,21 +316,22 @@ sub field_fltkeys {
 
     return {} unless @base_ids;
 
-    # Doğrudan ilgili bloğun ayrık indeksinden (${table_path}_${target_block}.fac) oku
-    my $blk_fac = "${table_path}_${target_block}.fac";
+    # Doğrudan ilgili bloğun indeksinden (${table_path}.fac) oku ($target_block:$rid)
+    my $fac_path = "${table_path}.fac";
     my %count_map;
 
-    if ( -e $blk_fac ) {
-        my $unq_path = "${table_path}_${target_block}.unq";
+    if ( -e $fac_path ) {
+        my $unq_path = "${table_path}.unq";
         my $has_unq  = -e $unq_path;
-        my $res      = $self->recs_get( $blk_fac, @base_ids );
+        my @keys     = map { "$target_block:$_" } @base_ids;
+        my $res      = $self->recs_get( $fac_path, @keys );
         for my $id (@base_ids) {
-            my $raw = $res ? $res->{$id} : undef;
+            my $raw = $res ? $res->{"$target_block:$id"} : undef;
             next unless defined $raw && $raw ne '';
             my @vals = ( index( $raw, "\t" ) == -1 ) ? ($raw) : split /\t/, $raw;
             for my $v (@vals) {
                 if ($has_unq) {
-                    my ($text) = $self->index_get( $unq_path, "n:$v", 'raw' );
+                    my ($text) = $self->index_get( $unq_path, "$target_block:n:$v", 'raw' );
                     $v = $text if defined $text && $text ne '';
                 }
                 $count_map{$v}++;
@@ -361,21 +368,22 @@ sub field_allfltkeys {
     }
 
     my %all_counts;
-    for my $blk (@$blks) {
-        my $blk_fac = "${table_path}_${blk}.fac";
-        next unless -e $blk_fac;
-        my $unq_path = "${table_path}_${blk}.unq";
-        my $has_unq  = -e $unq_path;
+    return \%all_counts unless -e $fac_path;
 
+    my $unq_path = "${table_path}.unq";
+    my $has_unq  = -e $unq_path;
+
+    for my $blk (@$blks) {
         if (@scan_ids) {
-            my $res = $self->recs_get( $blk_fac, @scan_ids );
+            my @keys = map { "$blk:$_" } @scan_ids;
+            my $res  = $self->recs_get( $fac_path, @keys );
             for my $id (@scan_ids) {
-                my $raw = $res ? $res->{$id} : undef;
+                my $raw = $res ? $res->{"$blk:$id"} : undef;
                 next unless defined $raw && $raw ne '';
                 my @vals = ( index( $raw, "\t" ) == -1 ) ? ($raw) : split /\t/, $raw;
                 for my $v (@vals) {
                     if ($has_unq) {
-                        my ($text) = $self->index_get( $unq_path, "n:$v", 'raw' );
+                        my ($text) = $self->index_get( $unq_path, "$blk:n:$v", 'raw' );
                         $v = $text if defined $text && $text ne '';
                     }
                     $all_counts{$blk}{$v}++;
@@ -384,14 +392,17 @@ sub field_allfltkeys {
         }
         else {
             $self->recs_scan(
-                $blk_fac,
+                $fac_path,
                 sub {
                     my ( $k, $raw ) = @_;
                     return unless defined $raw && $raw ne '';
+                    return unless $k =~ /^(\d+):(\d+)$/;
+                    my ( $k_blk, $rid ) = ( $1, $2 );
+                    return unless $k_blk eq $blk;
                     my @vals = ( index( $raw, "\t" ) == -1 ) ? ($raw) : split /\t/, $raw;
                     for my $v (@vals) {
                         if ($has_unq) {
-                            my ($text) = $self->index_get( $unq_path, "n:$v", 'raw' );
+                            my ($text) = $self->index_get( $unq_path, "$blk:n:$v", 'raw' );
                             $v = $text if defined $text && $text ne '';
                         }
                         $all_counts{$blk}{$v}++;
@@ -573,14 +584,14 @@ sub facet_menu {
             }
         }
         else {
-            # .unq sözlük dosyasından n: prefixi ile çift yönlü çözümle
-            my $unq_file = "${table_path}_${blk}.unq";
+            # .unq sözlük dosyasından $blk:n: prefixi ile çift yönlü çözümle
+            my $unq_file = "${table_path}.unq";
             if ( -e $unq_file && @vals ) {
-                my @n_keys = map { "n:$_" } @vals;
+                my @n_keys = map { "$blk:n:$_" } @vals;
                 my $res = $self->recs_get( $unq_file, map { $self->utf_encode("$_") } @n_keys );
                 if ($res) {
                     for my $val (@vals) {
-                        my $k = $self->utf_encode("n:$val");
+                        my $k = $self->utf_encode("$blk:n:$val");
                         if ( defined $res->{$k} && $res->{$k} ne '' ) {
                             $name_map{$val} = $res->{$k};
                         }
@@ -680,11 +691,11 @@ B<Inheritance Note:> C<AmberDB> inherits from C<AmberDB::Index::Facet> via C<use
 
 =over 4
 
-=item * B<1. Columnar Per-Block Storage (C<_${blk}.fac>):> Facet data is stored in partitioned columnar forward index files (C<${table_path}_${blk}.fac>). Each file maps Record ID to packed value IDs, enabling fast single-column scans.
+=item * B<1. Columnar Unified Storage (C<$table_path.fac>):> Facet data is stored in a unified columnar forward index file (C<$table_path.fac>). Each record's block values are keyed as C<$blk:$rid> mapping to packed value IDs, enabling fast single-column and multi-column scans.
 
 =item * B<2. Active-Only Storage Guarantee:> Facet index files store B<only currently active records>. Inactive, discontinued, or out-of-stock records violating C<facet_rules> / C<junk_rules> are excluded during indexing, eliminating the overhead of scanning historical records.
 
-=item * B<3. Bidirectional String Dictionary (C<_${blk}.unq>):> Text facets (e.g. colors, specifications) map transparently between string labels and compact numeric dictionary IDs.
+=item * B<3. Bidirectional String Dictionary (C<.unq>):> Text facets (e.g. colors, specifications) map transparently between string labels and compact numeric dictionary IDs.
 
 =item * B<4. Dynamic Scoping (C<base_ids>):> When computing facet counts within search results or subcategories, passing C<base_ids =E<gt> \@ids> bounds the aggregation strictly to matching records.
 
@@ -715,13 +726,13 @@ C<{ count =E<gt> $total, ids =E<gt> \@filtered_ids, groups =E<gt> \@groups, acti
 
 =head2 field_fltkeys($tableid, \%opts)
 
-Calculates facet key counts for a target block directly from active C<_${target_block}.fac>. Automatically resolves dictionary string labels.
+Calculates facet key counts for a target block directly from active C<.fac>. Automatically resolves dictionary string labels.
 
   my $counts = $adb->field_fltkeys("catalog_product", { target_block => 2, base_ids => \@scoped_ids });
 
 =head2 field_allfltkeys($tableid, \@blk_list, \@base_scope)
 
-Calculates facet key counts across multiple active block files in a single pass.
+Calculates facet key counts across multiple configured blocks from unified C<.fac> in a single pass.
 
 =head2 facet_rules($table_info, @record)
 

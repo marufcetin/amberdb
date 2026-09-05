@@ -20,7 +20,7 @@ AmberDB'de iliskisel baglantilar iki guclu mekanizma ile yonetilir:
 ```text
 search_block Otomatik Harici Metin Cozumleme Mimarisi
 
- [Urun Kaydi: catalog_products]
+ [Urun Kaydi: catalog_product]
   - [1] Baslik: "Sony WH-1000XM5"  (Dogrudan Text) ──┐
   - [2] Kategori FK: 12            (rdbm Referans) ──┼──> [AmberDB search_add Boru Hatti]
                                                      │         │
@@ -50,7 +50,7 @@ Tablo semasinda `match_block => [ 2 ]` tanimlandiginda, motor `"5,12,89"` degeri
 
 ```perl
 # 12 Numarali kategorideki tum urunleri SIFIR JOIN ile $O(1) hizinda bul:
-my ($toplam, @urunler) = $adb->field_fetch("catalog_products", 2 => 12);
+my ($toplam, @urunler) = $adb->field_fetch("catalog_product", 2 => 12);
 ```
 
 ---
@@ -63,7 +63,7 @@ SQL veritabanlarinda bu arama `JOIN categories ON ... WHERE categories.name LIKE
 
 AmberDB'de ise gelistiricinin manuel olarak metin birlestirmesine gerek yoktur. Tablo semasinda iliskili blok `search_block` listesine eklendiginde, motor indeksleme aninda harici tabloya giderek ilgili metni otomatik olarak cozer:
 
-### 1. Tablo Semasi (`schema/catalog_products.table`):
+### 1. Tablo Semasi (`schema/catalog_product.table`):
 ```perl
 {
     fields => [
@@ -95,11 +95,11 @@ my @urun = (
 # insert_id aninda AmberDB:
 # - Blok 1'deki "Sony WH-1000XM5" metnini alir.
 # - Blok 2'deki 12 degerini gorup "catalog_categories" dosyasini acar, 12 ID'li kaydin 1. blogundaki "Kablosuz Ses Sistemleri" metnini okur.
-# - Her iki metnin kelimelerini birlestirerek catalog_products_1.src indeksine yazar.
-$adb->insert_id("catalog_products", @urun);
+# - Her iki metnin kelimelerini birlestirerek catalog_product_1.src indeksine yazar.
+$adb->insert_id("catalog_product", @urun);
 
 # 3. Artik kullanici "Sony Ses Sistemleri" aradiginda urun SIFIR JOIN ile aninda bulunur:
-my ($toplam, @bulunanlar) = $adb->search_table("catalog_products", "sony ses sistemleri");
+my ($toplam, @bulunanlar) = $adb->search_table("catalog_product", "sony ses sistemleri");
 print "Eslesen urun sayisi: $toplam\n";
 ```
 

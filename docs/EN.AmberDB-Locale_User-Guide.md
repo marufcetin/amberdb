@@ -28,7 +28,8 @@
 
 ```
 AmberDB::Locale                 ← Main engine (all logic here)
-├── AmberDB::Locale::Lang::en   ← English data (default/fallback)
+├── AmberDB::Locale::Lang::gb   ← Global Base data (default/fallback)
+├── AmberDB::Locale::Lang::en   ← English data
 ├── AmberDB::Locale::Lang::tr   ← Turkish data
 ├── AmberDB::Locale::Lang::de   ← German data
 ├── AmberDB::Locale::Lang::fr   ← French data
@@ -36,6 +37,7 @@ AmberDB::Locale                 ← Main engine (all logic here)
 ├── AmberDB::Locale::Lang::ru   ← Russian data
 ├── AmberDB::Locale::Lang::az   ← Azerbaijani data
 ├── AmberDB::Locale::Lang::ar   ← Arabic data
+├── AmberDB::Locale::Lang::ja   ← Japanese data
 └── AmberDB::Locale::Currency   ← ISO 4217 universal currency data
 ```
 
@@ -57,15 +59,15 @@ my $lang = AmberDB::Locale->new({ language => "de" });
 # 3) Positional string API
 my $lang = AmberDB::Locale->new("fr");
 
-# 4) No args → defaults to "en"
+# 4) No args → defaults to "gb" (Global Base)
 my $lang = AmberDB::Locale->new();
 ```
 
 ### Internal behaviors
 
 - **Caching:** A second `new()` call for the same language returns the existing instance (singleton-like).
-- **Alias support:** Labels like `"turkish"`, `"tr_tr"`, `"tr-tr"` are automatically mapped to `"tr"`.
-- **Fallback:** If an unknown language is requested, a `cluck` warning is emitted and it falls back to `en`.
+- **Alias support:** Labels like `"global"`, `"gl"`, `"turkish"`, `"tr_tr"`, `"tr-tr"` are automatically mapped to canonical codes.
+- **Fallback:** If an unknown language is requested, a `cluck` warning is emitted and it falls back to `gb`.
 - **Collator:** Attempts to load `Unicode::Collate::Locale`; if it fails, falls back to base `Unicode::Collate`, and if that's also unavailable, uses a custom `sort_map` Schwartzian transform.
 
 ### AmberDB integration

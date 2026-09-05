@@ -12,7 +12,7 @@
 
 **Strict Two-Phase Locking (Strict 2PL / Kati Iki Fazli Kilitleme)**, AmberDB'nin islem motorunda (`AmberDB::Transact`) ve kilit yoneticisinde (`flock_open`) uygulanan eszamanlilik kontrol protokoludur. Strict 2PL kuralina gore:
 1. **Buyume Fazi (Growing Phase):** Bir islem calisirken ihtiyac duydugu tablolari veya kayit anahtarlarini paylasimli (`LOCK_SH`) ya da ozel (`LOCK_EX`) olarak kilitler; ancak islem surerken hicbir kilidi serbest birakamaz.
-2. **Kuculme Fazi (Shrinking Phase):** Edinilen tum kilitler islem kesinlesene (`transact_end` / `transact_commit`) veya geri alinana (`transact_rollback`) kadar elde tutulur ve islem tamamlandiginda tum kilitler atomik olarak ayni anda serbest birakilir.
+2. **Kuculme Fazi (Shrinking Phase):** Edinilen tum kilitler islem kesinlesene (`transact_end` / `transact_commit`) veya hata bildirilene / geri alinana (`transact_error` / `transact_rollback`) kadar elde tutulur ve islem tamamlandiginda tum kilitler atomik olarak ayni anda serbest birakilir.
 
 Bu protokol, cok surecli (multi-process) calisma ortaminda **Serilestirilebilirlik (ACID Isolation)** garantisi saglar; kirli okuma (dirty read), kayip guncelleme (lost update) ve zincirleme geri alma (cascading rollback) problemlerini tamamen engeller.
 
@@ -74,7 +74,7 @@ eval {
     $adb->transact_end();
 };
 if ($@) {
-    # Hata olusursa otomatik LIFO geri alma yapar ve kilitleri serbest birakir
+    # Beklenmeyen hata durumunda tum kilitleri ve islemleri geri sar
     $adb->transact_rollback();
     warn "Islem basarisiz: $@\n";
 }
@@ -86,6 +86,8 @@ if ($@) {
 
 - [Kavram: Undo Journal ve Rollback](TR-Concept-Undo-Journal-Rollback)
 - [Metot: transact_start](TR-Method-transact_start)
+- [Metot: transact_error](TR-Method-transact_error)
 - [Metot: transact_end](TR-Method-transact_end)
+- [Metot: transact_rollback](TR-Method-transact_rollback)
 - [Metot: flock_open](TR-Method-flock_open)
 - [Metot: flock_close](TR-Method-flock_close)

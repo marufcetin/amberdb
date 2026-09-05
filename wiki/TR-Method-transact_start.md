@@ -30,10 +30,11 @@ eval {
     # Cok tablolu atomik islemler
     $adb->modify_id("inventory", @stok_kaydi);
     $adb->insert_id("orders", @siparis_kaydi);
-    $adb->transact_end(); # Islemi tamamla
+    $adb->transact_end(); # Her sey yolundaysa commit
 };
 if ($@) {
-    $adb->transact_rollback(); # Hata durumunda geri al
+    # Beklenmeyen bir hata veya istisna durumunda dogrudan geri sar
+    $adb->transact_rollback();
 }
 ```
 
@@ -43,6 +44,7 @@ if ($@) {
 
 - [Kavram: Strict 2PL Kilitleri](TR-Concept-Strict-2PL-Locking)
 - [Kavram: Undo Journal ve Rollback](TR-Concept-Undo-Journal-Rollback)
+- [Metot: transact_error](TR-Method-transact_error)
 - [Metot: transact_end](TR-Method-transact_end)
 - [Metot: transact_rollback](TR-Method-transact_rollback)
 - [Dosya: .txn (Islem Gunlugu)](TR-File-txn)

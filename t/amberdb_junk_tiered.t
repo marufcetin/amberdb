@@ -100,27 +100,27 @@ subtest '2. CRUD partitioning into .inx / .jinx, .fld / .jfld, .src / .jsrc' => 
     my @p2 = ( "Roman", 1, "Yazar B", "Kitap Beta", (("") x 15), 0 );
     $adb->insert_id( 'catalog_product', 2, @p2 );
 
-    # Check .inx vs .jinx
+    # Check .inx keys vs j:keys
     my ( undef, @inx_ids )  = $adb->index_get( "$tpath.inx", "keys" );
-    my ( undef, @jinx_ids ) = $adb->index_get( "$tpath.jinx", "keys" );
+    my ( undef, @jinx_ids ) = $adb->index_get( "$tpath.inx", "j:keys" );
 
-    is_deeply( \@inx_ids, [1], "Active product 1 written to .inx" );
-    is_deeply( \@jinx_ids, [2], "Junk product 2 written to .jinx" );
+    is_deeply( \@inx_ids, [1], "Active product 1 written to .inx (keys)" );
+    is_deeply( \@jinx_ids, [2], "Junk product 2 written to .inx (j:keys)" );
 
-    # Check search words in .src vs .jsrc (block 4 is name)
-    my ( undef, @src_alfa ) = $adb->index_get( "${tpath}_4.src", "alfa" );
-    my ( undef, @jsrc_beta ) = $adb->index_get( "${tpath}_4.jsrc", "beta" );
+    # Check search words in .src (block 4 is name, junk prefixed with j:)
+    my ( undef, @src_alfa ) = $adb->index_get( "$tpath.src", "4:alfa" );
+    my ( undef, @jsrc_beta ) = $adb->index_get( "$tpath.src", "j:4:beta" );
 
     is_deeply( \@src_alfa, [1], "'alfa' indexed in active .src" );
-    is_deeply( \@jsrc_beta, [2], "'beta' indexed in junk .jsrc" );
+    is_deeply( \@jsrc_beta, [2], "'beta' indexed in junk .src (j:4:beta)" );
 
-    # Check fields in .fld vs .jfld (block 1 is Roman)
+    # Check fields in .fld (block 1 is Roman, junk prefixed with j:)
     my @roman_id = $adb->field_to_list( "Roman", 'read', $tpath, $adb->table_info('catalog_product'), 1 );
-    my ( undef, @fld_roman )  = $adb->index_get( "${tpath}_1.fld", $roman_id[0] );
-    my ( undef, @jfld_roman ) = $adb->index_get( "${tpath}_1.jfld", $roman_id[0] );
+    my ( undef, @fld_roman )  = $adb->index_get( "$tpath.fld", "1:$roman_id[0]" );
+    my ( undef, @jfld_roman ) = $adb->index_get( "$tpath.fld", "j:1:$roman_id[0]" );
 
     is_deeply( \@fld_roman, [1], "Roman category for product 1 in .fld" );
-    is_deeply( \@jfld_roman, [2], "Roman category for product 2 in .jfld" );
+    is_deeply( \@jfld_roman, [2], "Roman category for product 2 in .fld (j:1:...)" );
 };
 
 # ---------------------------------------------------------------------------
@@ -134,20 +134,20 @@ subtest '3. Automatic Status Transition (junk_transition on modify_id)' => sub {
     $adb->modify_id( 'catalog_product', 1, @p1_mod );
 
     my ( undef, @inx_after )  = $adb->index_get( "$tpath.inx", "keys" );
-    my ( undef, @jinx_after ) = $adb->index_get( "$tpath.jinx", "keys" );
+    my ( undef, @jinx_after ) = $adb->index_get( "$tpath.inx", "j:keys" );
 
-    ok( !grep( { $_ == 1 } @inx_after ), "Product 1 removed from active .inx" );
-    ok( grep( { $_ == 1 } @jinx_after ), "Product 1 added to junk .jinx" );
+    ok( !grep( { $_ == 1 } @inx_after ), "Product 1 removed from active keys in .inx" );
+    ok( grep( { $_ == 1 } @jinx_after ), "Product 1 added to j:keys in .inx" );
 
     # Modify Product 1 back to Active (set sales_status to 1)
     my @p1_act = ( "Roman", 1, "Yazar A", "Kitap Alfa", (("") x 15), 1 );
     $adb->modify_id( 'catalog_product', 1, @p1_act );
 
     my ( undef, @inx_back )  = $adb->index_get( "$tpath.inx", "keys" );
-    my ( undef, @jinx_back ) = $adb->index_get( "$tpath.jinx", "keys" );
+    my ( undef, @jinx_back ) = $adb->index_get( "$tpath.inx", "j:keys" );
 
-    ok( grep( { $_ == 1 } @inx_back ), "Product 1 restored back to active .inx" );
-    ok( !grep( { $_ == 1 } @jinx_back ), "Product 1 removed from junk .jinx" );
+    ok( grep( { $_ == 1 } @inx_back ), "Product 1 restored back to active keys in .inx" );
+    ok( !grep( { $_ == 1 } @jinx_back ), "Product 1 removed from j:keys in .inx" );
 };
 
 # ---------------------------------------------------------------------------
@@ -188,13 +188,13 @@ subtest '5. Rebuilding indexes with AmberDB::Tools' => sub {
     $tools->set_fields('catalog_product');
 
     my ( undef, @rebuilt_inx )  = $adb->index_get( "$tpath.inx", "keys" );
-    my ( undef, @rebuilt_jinx ) = $adb->index_get( "$tpath.jinx", "keys" );
+    my ( undef, @rebuilt_jinx ) = $adb->index_get( "$tpath.inx", "j:keys" );
 
-    is_deeply( \@rebuilt_inx, [1], "Tools rebuild preserved active .inx" );
-    is_deeply( \@rebuilt_jinx, [2], "Tools rebuild preserved junk .jinx" );
+    is_deeply( \@rebuilt_inx, [1], "Tools rebuild preserved active keys in .inx" );
+    is_deeply( \@rebuilt_jinx, [2], "Tools rebuild preserved j:keys in .inx" );
 
-    my ( undef, @rebuilt_jsrc ) = $adb->index_get( "${tpath}_4.jsrc", "beta" );
-    is_deeply( \@rebuilt_jsrc, [2], "Tools rebuild created .jsrc successfully" );
+    my ( undef, @rebuilt_jsrc ) = $adb->index_get( "$tpath.src", "j:4:beta" );
+    is_deeply( \@rebuilt_jsrc, [2], "Tools rebuild created j:4:beta in .src successfully" );
 };
 
 done_testing();

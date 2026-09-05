@@ -57,7 +57,7 @@ $adb->config("no_write", 1); # Lock database into read-only mode
 
 # 4. Stream IDs with keys_only
 $adb->config("keys_only", 1);
-my ($total, @id_list) = $adb->read_all("catalog_products", 0, 100);
+my ($total, @id_list) = $adb->read_all("catalog_product", 0, 100);
 $adb->config("keys_only", 0); # Reset back to full record mode
 ```
 

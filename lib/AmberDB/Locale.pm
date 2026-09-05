@@ -6,7 +6,7 @@ use utf8;
 use Encode qw(decode encode);
 use Carp qw(croak cluck);
 
-our $VERSION = '5.23.0';
+our $VERSION = '5.24.0';
 my $CREATED  = '2017-07-22';
 
 my %LOCALE_CACHE;
@@ -41,7 +41,7 @@ sub new {
     #   1. new(language => "tr")     — named-param API
     #   2. new({ language => "tr" }) — unblessed hash ref API
     #   3. new("tr")                 — positional string API
-    #   4. new()                     — no args; use default ("en")
+    #   4. new()                     — no args; use default ("gb")
     if ( @_ ) {
         if ( @_ == 1 && !ref( $_[0] ) ) {
             $lang = $_[0];
@@ -77,11 +77,17 @@ sub new {
         'japanese'    => 'ja',
         'ja_jp'       => 'ja',
         'ja-jp'       => 'ja',
+        'global'      => 'gb',
+        'gb'          => 'gb',
+        'gl'          => 'gb',
+        'universal'   => 'gb',
+        'uni'         => 'gb',
+        'gb_base'     => 'gb',
     );
 
     $lang = lc( $lang // '' );
     $lang =~ s/[^\w-]//g;
-    my $norm_lang = $LANG_ALIAS{$lang} || ( split /[_-]/, $lang )[0] || 'en';
+    my $norm_lang = $LANG_ALIAS{$lang} || ( split /[_-]/, $lang )[0] || 'gb';
 
     # Fast path: instance cache lookup (keyed by class + normalized language)
     my $cache_key = "${class}::${norm_lang}";
@@ -100,12 +106,12 @@ sub new {
 
 # -------------------------------------------------------
 # Load locale data from AmberDB::Locale::Lang::<lang>
-# Falls back to 'en' if requested locale not found.
+# Falls back to 'gb' if requested locale not found.
 # -------------------------------------------------------
 sub _load_locale {
     my ( $self, $lang ) = @_;
 
-    $lang ||= 'en';
+    $lang ||= 'gb';
     $self->{_lang} = $lang;
 
     my $locale_class = "AmberDB::Locale::Lang::$lang";
@@ -116,13 +122,13 @@ sub _load_locale {
     };
 
     unless ($loaded) {
-        if ( $lang ne 'en' ) {
+        if ( $lang ne 'gb' ) {
             unless ( $WARNED_LOCALES{$lang}++ ) {
-                cluck "AmberDB::Locale: locale '$lang' not found, falling back to 'en'\n";
+                cluck "AmberDB::Locale: locale '$lang' not found, falling back to 'gb'\n";
             }
-            $locale_class = 'AmberDB::Locale::Lang::en';
-            require AmberDB::Locale::Lang::en;
-            $self->{_lang} = 'en';
+            $locale_class = 'AmberDB::Locale::Lang::gb';
+            require AmberDB::Locale::Lang::gb;
+            $self->{_lang} = 'gb';
         }
     }
 
@@ -342,6 +348,11 @@ sub normalize_word {
     my ( $self, $word, $mode_write ) = @_;
     return '' unless defined $word && length($word);
 
+    # Fast in-memory cache check
+    if ( defined $self->{_cache}{nw}{$word} ) {
+        return $self->{_cache}{nw}{$word};
+    }
+
     $word = $self->utf_decode($word);
 
     my $is_write = ( $mode_write && ( $mode_write eq 'write' || $mode_write eq '1' ) ) ? 1 : 0;
@@ -373,7 +384,9 @@ sub normalize_word {
         push @parts, $w if length $w;
     }
 
-    return join( " ", @parts );
+    my $res = join( " ", @parts );
+    $self->{_cache}{nw}{$word} = $res;
+    return $res;
 }
 
 # -------------------------------------------------------
@@ -1294,11 +1307,11 @@ Creates and returns an C<AmberDB::Locale> instance configured for the specified 
   # 3. Positional string API
   my $lang = AmberDB::Locale->new('fr');
 
-  # 4. Default (falls back to English 'en')
+  # 4. Default (falls back to Global Base 'gb')
   my $lang = AmberDB::Locale->new();
 
-Supported language codes include C<"tr">, C<"en">, C<"de">, C<"fr">, C<"es">, C<"ru">, C<"az">, C<"ar">, C<"ja"> and common aliases (such as C<"turkish">, C<"tr_tr">, C<"english">, C<"german">, etc.).
-If an unsupported language is specified, a warning is issued and the instance falls back to C<"en">.
+Supported language codes include C<"gb"> (Global Base - default), C<"tr">, C<"en">, C<"de">, C<"fr">, C<"es">, C<"ru">, C<"az">, C<"ar">, C<"ja"> and common aliases (such as C<"global">, C<"turkish">, C<"tr_tr">, C<"english">, C<"german">, etc.).
+If an unsupported language is specified, a warning is issued and the instance falls back to C<"gb">.
 
 =head1 METHODS
 

@@ -19,7 +19,7 @@ AmberDB Tablo Sema Anatomisi (.table)
 
  ┌───────────────────────────────────────────────────────────────┐
  │ Tablo Baslik Nitelikleri (Meta-Flags)                         │
- │  - id_type: 'num' | 'ascii'    - auto_id: 1                   │
+ │  - use_simple: 0 | 1           - auto_id: 1                   │
  │  - keep_deleted: 1             - log_owner: 1                 │
  │  - use_cache: 2                - cache_ttl: 3600              │
  ├───────────────────────────────────────────────────────────────┤
@@ -42,13 +42,12 @@ AmberDB Tablo Sema Anatomisi (.table)
 
 ---
 
-## 2. Ornek Sema Dosyasi (`schema/catalog_products.table`)
+## 2. Ornek Sema Dosyasi (`schema/catalog_product.table`)
 
 ```perl
-# dbstore/schema/catalog_products.table
+# dbstore/schema/catalog_product.table
 {
     name         => "Urun Katalogu",
-    id_type      => "num",          # "num" (64-bit uint) veya "ascii" (max 8 bayt)
     auto_id      => 1,              # 1: Otomatik artan ID, 0: Manuel ID
     keep_deleted => 1,              # 1: Silinenleri .del dosyasina tasi (Cop kutusu)
     log_owner    => 1,              # 1: Kullanici degisiklik izini .aut'a kaydet
@@ -103,11 +102,11 @@ AmberDB'de sema degistirmek icin tablolari yeniden olusturmak veya migration scr
 
 ```perl
 # Calisma zamaninda tabloya yeni bir arama blogu ekleme
-my $schema = $adb->table_attr("catalog_products");
+my $schema = $adb->table_attr("catalog_product");
 $schema->{search_block} = [ 1, 2 ]; # Artik Kategori de tam metin aramada
 
 # Semayi canli olarak guncelle
-$adb->table_attr("catalog_products", $schema);
+$adb->table_attr("catalog_product", $schema);
 ```
 
 ---

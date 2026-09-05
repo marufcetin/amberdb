@@ -55,6 +55,13 @@ WriteMakefile(
                 'lib/AmberDB/Locale/Lang',
                 'lib/AmberDB/Index',
             ],
+            file => [
+                'lib/AmberDB/Base.pm',
+                'lib/AmberDB/Cache.pm',
+                'lib/AmberDB/Transact.pm',
+                'lib/AmberDB/Index.pm',
+                'lib/AmberDB/Locale/Currency.pm',
+            ],
             namespace => [
                 'AmberDB::Locale::Lang',
                 'AmberDB::Index',

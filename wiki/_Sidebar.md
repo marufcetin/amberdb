@@ -21,7 +21,7 @@
 - [File Structure (Extensions)](Concept-File-Structure)
 - [Repeat Blocks](Concept-Repeat-Blocks)
 - [Auto-Increment ID](Concept-Auto-ID)
-- [ASCII ID](Concept-ASCII-ID)
+- [String Keys & Simple Mode](Concept-ASCII-ID)
 - [Relational Records](Concept-Relational-Records)
 - [Record Anatomy](Concept-Record-Anatomy)
 - [JOIN-Free Architecture](Concept-JOIN-Free-Architecture)
@@ -77,6 +77,7 @@
 
 ### Transactions & Locks
 - [transact_start](Method-transact_start)
+- [transact_error](Method-transact_error)
 - [transact_end](Method-transact_end)
 - [transact_commit](Method-transact_commit)
 - [transact_rollback](Method-transact_rollback)
@@ -141,7 +142,7 @@
 - [no_backup](Flag-no_backup)
 - [jnktype](Flag-jnktype)
 - [keys_only](Flag-keys_only)
-- [id_type](Flag-id_type)
+- [use_simple](Flag-use_simple)
 - [language](Flag-language)
 
 ---

@@ -43,7 +43,7 @@ When modifying routing attributes such as `year`, `section`, or `language` via `
 
 ```perl
 # 1. Read existing schema attribute
-my $id_type = $adb->table_attr("catalog_product", "id_type");
+my $record_index = $adb->table_attr("catalog_product", "record_index");
 
 # 2. Dynamically enable soft-delete and adjust search blocks at runtime
 $adb->table_attr("catalog_product", {

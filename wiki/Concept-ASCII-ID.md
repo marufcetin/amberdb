@@ -1,100 +1,138 @@
-# Concept: ASCII ID Architecture and Usage
+# Concept: String Keys and Simple Table Mode (use_simple)
 
 [Turkce Dokumantasyon](TR-Concept-ASCII-ID) | [English Documentation](Concept-ASCII-ID)
 
 > **Category:** Core Concepts & Architecture  
-> **Subsystem:** Primary Key Architecture (`AmberDB::Base` & `AmberDB::Index`)  
+> **Subsystem:** Primary Key Architecture & Multi-Model Storage (`AmberDB` & `AmberDB::Base`)  
 > **Entry Type:** Primary Key Modeling & Design Guide
+
+---
+
+> [!NOTE]
+> **Deprecation Notice (v5.23.0):** In legacy versions of AmberDB, string keys were restricted to rigid 8-byte null-padded ASCII buffers (`pack("a8*", ...)` with `id_type => "ascii"`). In **v5.23.0**, this format was deprecated and replaced by the far more versatile **`use_simple => 1`** per-table architecture. Tables configured with `use_simple => 1` allow arbitrary string keys up to **255 bytes** (UUIDs, emails, slugs, session tokens) directly in Berkeley DB with zero indexing I/O overhead. Standard relational tables strictly enforce positive 64-bit integer IDs (`(Q>)*`).
 
 ---
 
 ## 1. Definition and Overview
 
-By default, AmberDB tables utilize 64-bit unsigned integer primary keys (`id_type => "num"`, packed via `Q*`). However, certain specialized domains require **alphanumeric identifiers, ISO country/region codes, license plates, or concatenated keys combining usernames and record tokens** as primary keys.
+By default, AmberDB relational tables utilize 64-bit unsigned integer primary keys (`1, 2, 3...`) packed into 8-byte binary indexes (`.inx`, `.srt`, `.fld`) via `(Q>)*`. This guarantees $O(1)$ zero-copy slicing for relational queries.
 
-For these architectures, AmberDB provides **`id_type => "ascii"`**. In ASCII ID mode, primary keys are packed into index files (`.inx`) as fixed **8-byte null-padded binary buffers (`a8*`)**.
+However, certain domain models require natural, alphanumeric, or globally unique identifiers:
+- **UUIDs and GUIDs** (e.g. `9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d`)
+- **Session and OAuth Tokens** (e.g. `sess_abc123xyz_token`)
+- **Email Addresses or Slugs** (e.g. `user@example.com`, `product-seo-slug`)
+- **Composite Codes** (e.g. `ORG_UK_1024`, `SKU-A984-XL`)
+
+For these tables, AmberDB provides **`use_simple => 1`** table mode, enabling a hybrid multi-model architecture where key-value string tables coexist seamlessly alongside indexed relational tables within the same database.
 
 ```text
-ASCII ID 8-Byte Fixed-Width Packaging (a8*)
+Hybrid Key Architecture in AmberDB
 
- Username / Key String            8-Byte Binary Buffer (.inx)
- "USR_101"                 ──>    [ U S R _ 1 0 1 \0 ]  (8 Bytes Fixed)
- "TR_3401"                 ──>    [ T R _ 3 4 0 1 \0 ]  (8 Bytes Fixed)
- "MARUF"                   ──>    [ M A R U F \0 \0 \0] (8 Bytes Fixed)
+ 1. Relational Tables (Default):
+    Primary Key: Positive 64-bit uint (1, 2, 3...)
+    Physical Storage: .db master + .inx packed binary index (Q>*)
+    Features: Match/Search/Facet/Sort indexing, Strict 2PL, RDBM foreign keys
+
+ 2. String Key Tables (use_simple => 1):
+    Primary Key: Arbitrary String (up to 255 bytes)
+    Physical Storage: .db master (Pure Berkeley DB Hash)
+    Features: Zero indexing overhead, keep_deleted (.del), Strict 2PL
 ```
 
 ---
 
-## 2. Why Choose ASCII Primary Keys?
+## 2. Advantages of String Keys via `use_simple => 1`
 
-### 1. Combining Usernames and Record Keys
-For user shopping carts, profile metadata, user settings, or session stores, constructing composite alphanumeric keys (e.g. `USR1001`, `ADM_99`, `US_CA01`) eliminates the need for redundant secondary lookups. Instead of querying by a separate foreign key via `field_fetch`, applications execute direct $O(1)$ lookups via `read_id("user_cart", "USR1001")`.
+### 1. Zero-Overhead Direct $O(1)$ Hash Lookups
+In `use_simple => 1` mode, the table operates directly against Berkeley DB (`DB_File`) hash buckets. Secondary index files (`.inx`, `.src`, `.fld`, `.fac`, `.srt`) are automatically suppressed, delivering maximum write throughput and zero index synchronization overhead.
 
-### 2. $O(1)$ Zero-Copy Substring Pagination
-Constraining ASCII IDs to 8 bytes is an intentional performance design. By maintaining a uniform 8-byte buffer in memory, the engine slices paginated windows (`LIMIT / OFFSET`) directly using low-level pointer arithmetic (`substr($buffer, $start * 8, $limit * 8)`) without deserializing variable-length string objects.
+### 2. Up to 255 Bytes Key Flexibility
+Unlike the legacy 8-byte ASCII limit (`a8`), `use_simple => 1` accepts arbitrary UTF-8 or ASCII string identifiers up to 255 bytes (excluding control characters `\t`, `\n`, `\0`, `\r`).
+
+### 3. Full Soft-Delete and Audit Support
+Tables with `use_simple => 1` retain essential enterprise features:
+- `keep_deleted => 1`: Soft-deleted records are preserved in `$table.del` for recovery or trash bin workflows.
+- Process-safe concurrency with OS-level `flock`.
 
 ---
 
-## 3. Schema Configuration and Constraints
+## 3. Schema Configuration and Runtime Setting
 
-Configured within the table schema file (`schema/*.table`):
-
+### Static Configuration (`schema/*.table`)
 ```perl
-# dbstore/schema/member_profiles.table
+# dbstore/schema/user_sessions.table
 {
-    name         => "Member Profiles",
-    id_type      => "ascii",        # "ascii" mode: Max 8-byte alphanumeric keys
-    auto_id      => 0,              # Application supplies explicit ASCII key
+    name         => "User Sessions",
+    use_simple   => 1,              # Enables string keys up to 255 bytes
+    keep_deleted => 1,              # Archive deleted sessions into .del
     
     fields => [
-        { id => "username", name => "User Code", type => "ascii" }, # [0] PK (Max 8 chars)
-        { id => "fullname", name => "Full Name", type => "text" },  # [1]
-        { id => "email",    name => "Email",     type => "text" },  # [2]
-        { id => "balance",  name => "Balance",   type => "num" },   # [3]
+        { id => "token",      name => "Session Token", type => "text" }, # [0] String Primary Key
+        { id => "user_id",    name => "User ID",       type => "num" },  # [1]
+        { id => "ip_address", name => "IP Address",    type => "text" }, # [2]
+        { id => "expires_at", name => "Expires At",    type => "num" },  # [3]
     ],
 }
 ```
 
-> [!IMPORTANT]
-> **Length & Character Boundaries:**
-> - In schema-driven mode, ASCII keys are strictly limited to **8 ASCII characters** (ASCII range 0-127). Longer strings are truncated to 8 bytes (`a8`).
-> - If your application requires longer string keys (such as 36-character UUIDs or custom token strings), use AmberDB's **Simple Mode (`simple => 1`)**, where key length is permitted up to **256 characters (max 255 bytes)**.
+### Dynamic Runtime Configuration (`table_attr`)
+You can enable simple mode on any table programmatically without modifying files:
+```perl
+$adb->table_attr("user_sessions", use_simple => 1, keep_deleted => 1);
+```
 
 ---
 
 ## 4. Practical Code Example
 
 ```perl
+use strict;
+use warnings;
 use AmberDB;
 
 my $adb = AmberDB->new(path => { dbase_dir => "./dbstore" });
 
-# 1. Insert user profile using composite alphanumeric key
-my @profile = (
-    "USR_101",              # [0] 8-Character ASCII Primary Key
-    "Michael Miller",       # [1] Full Name
-    "michael@example.com",  # [2] Email
-    2450.00,                # [3] Balance
+# 1. Configure user_sessions table for string keys
+$adb->table_attr("user_sessions", use_simple => 1, keep_deleted => 1);
+
+# 2. Insert record with a UUID string key
+my $session_token = "sess_f81d4fae-7dec-11d0-a765-00a0c91e6bf6";
+my @session_data = (
+    $session_token,             # [0] String PK (up to 255 bytes)
+    1042,                       # [1] User ID
+    "192.168.1.55",             # [2] IP Address
+    time() + 86400,             # [3] Expiration timestamp
 );
-$adb->table_attr("member_profiles", "id_type" => "ascii");
-$adb->insert_id("member_profiles", @profile);
+$adb->insert_id("user_sessions", @session_data);
 
-# 2. Instant O(1) fetch via ASCII key
-my @fetched = $adb->read_id("member_profiles", "USR_101");
-print "User: $fetched[1] | Balance: \$$fetched[3]\n";
+# 3. Direct O(1) fetch by string key
+my @session = $adb->read_id("user_sessions", $session_token);
+print "Session belongs to User: $session[1], Expires: $session[3]\n";
 
-# 3. $O(1) existence check
-if ($adb->exist_id("member_profiles", "USR_101")) {
-    print "User profile exists.\n";
+# 4. Instant O(1) existence check
+if ($adb->exist_id("user_sessions", $session_token)) {
+    print "Session is active.\n";
 }
+
+# 5. Soft delete (moved to .del archive)
+$adb->delete_id("user_sessions", $session_token);
 ```
 
 ---
 
-## 5. See Also & Related Topics
+## 5. Architectural Boundaries & Best Practices
+
+> [!WARNING]
+> - **RDBM Isolation:** Standard relational tables cannot declare foreign key constraints (`RDBM`) pointing to `use_simple` tables, because relational indexes rely on 64-bit numeric integers.
+> - **Global Simple Mode vs Per-Table:** You can run the entire database in simple mode via `AmberDB->new(simple => 1)`, or configure individual tables via `use_simple => 1` for a hybrid setup.
+
+---
+
+## 6. See Also & Related Topics
 
 - [Concept: Auto-Increment ID Generation](Concept-Auto-ID)
 - [Concept: 8-Byte Packed Binary Index](Concept-8-Byte-Packed-Binary-Index)
+- [Concept: Table Schema Flags](Concept-Schema-Flags)
 - [Concept: Simple Mode](Concept-Simple-Mode)
-- [Flag: id_type](Flag-id_type)
+- [Method: table_attr](Method-table_attr)
 - [Method: read_id](Method-read_id)

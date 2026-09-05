@@ -5,7 +5,7 @@ use warnings;
 use Carp qw(croak cluck);
 use File::Spec;
 
-our $VERSION = '5.23.0';
+our $VERSION = '5.24.0';
 my $CREATED = '2018-10-08';
 
 # Constructor
@@ -63,9 +63,7 @@ sub set_index {
 
     # 3. Create readall index
     if ( exists( $table_info->{record_index} ) ) {
-        # collect record IDs only
-        my @ids = map { $_->[0] } @records;
-        my $ok = $self->set_readall( $tableid, @ids );
+        my $ok = $self->set_readall( $tableid, @records );
     }
 
     # 4. Create search index
@@ -86,6 +84,11 @@ sub set_index {
     # 7. Create sort index.
     if ( exists( $table_info->{sort_block} ) ) {
         my $ok = $self->set_sort( $tableid, @records );
+    }
+
+    # 8. Create URL slug index
+    if ( exists( $table_info->{slug_block} ) ) {
+        my $ok = $self->set_rwlnkall( $tableid, @records );
     }
 
     return 1;
@@ -113,62 +116,84 @@ sub set_readall {
 
     # Read records from table if absent
     if ( !scalar @records ) {
-        @records = $adb->read_all($tableid, 0, 0, no_index => 1, keys_only => 1);
+        @records = $adb->read_all($tableid, 0, 0, no_index => 1);
     }
-    if ( $records[0] && ref $records[0] eq "ARRAY" ) {
-        $self->{say} .= "    - Invalid parameter for Records entries: ";
-        $self->{say} .= "Pass keys only as parameter.\n";
-        cluck "[DB_TOOL] Invalid parameter for set_readall: Pass keys only as parameter.\n";
-        return;
-    }
-
-    @records = grep /^\d+$/, @records;
     scalar @records or return;
-    @records = $adb->array_nodup(@records);
-    @records = $adb->db_sortid( $tableid, @records );
 
     my ( @active_records, @junk_records );
-    if ( $table_info->{use_junk} ) {
-        for my $rid (@records) {
-            my @rec = $adb->read_id($tableid, $rid);
-            if ( $adb->junk_rules($table_info, @rec) ) {
-                push @junk_records, $rid;
+    my $has_junk = $table_info->{use_junk} ? 1 : 0;
+
+    # Accept both full record arrayrefs [ $id, @data ] and scalar ID lists
+    if ( ref $records[0] eq "ARRAY" ) {
+        if ($has_junk) {
+            for my $rec (@records) {
+                my $rid = $rec->[0];
+                next unless defined $rid && $rid =~ /^\d+$/;
+                if ( $adb->junk_rules($table_info, @$rec) ) {
+                    push @junk_records, $rid;
+                }
+                else {
+                    push @active_records, $rid;
+                }
             }
-            else {
-                push @active_records, $rid;
+        }
+        else {
+            for my $rec (@records) {
+                my $rid = $rec->[0];
+                push @active_records, $rid if defined $rid && $rid =~ /^\d+$/;
             }
         }
     }
     else {
-        @active_records = @records;
+        my @clean_rids = grep { /^\d+$/ } @records;
+        if ($has_junk) {
+            for my $rid (@clean_rids) {
+                my @rec = $adb->read_id($tableid, $rid);
+                if ( $adb->junk_rules($table_info, @rec) ) {
+                    push @junk_records, $rid;
+                }
+                else {
+                    push @active_records, $rid;
+                }
+            }
+        }
+        else {
+            @active_records = @clean_rids;
+        }
     }
 
-    my $write_inx_file = sub {
-        my ( $recs_ref, $ext ) = @_;
-        my @list = @$recs_ref;
-        return unless @list;
-        my $cnt    = scalar @list;
-        my $i_path = "$table_path.$ext";
-        my $t_path = "$i_path.tmp";
+    # Deduplicate and sort numerically with native Perl
+    my %seen_act;
+    @active_records = sort { $a <=> $b } grep { !$seen_act{$_}++ } @active_records;
+    my %seen_junk;
+    @junk_records   = sort { $a <=> $b } grep { !$seen_junk{$_}++ } @junk_records;
 
-        my $cur_max = (sort { $b <=> $a } @list)[0] // 0;
-        my $old_lastid = $adb->table_lastid($tableid) // 0;
-        my $last_id = $cur_max > $old_lastid ? $cur_max : $old_lastid;
+    my $cur_max = 0;
+    if ( @active_records && $active_records[-1] > $cur_max ) {
+        $cur_max = $active_records[-1];
+    }
+    if ( @junk_records && $junk_records[-1] > $cur_max ) {
+        $cur_max = $junk_records[-1];
+    }
+    my $old_lastid = $adb->table_lastid($tableid) // 0;
+    my $last_id = $cur_max > $old_lastid ? $cur_max : $old_lastid;
 
-        if ( $adb->table_write($t_path) ) {
-            $adb->index_put( $t_path, "keys",   \@list, "ids" );
-            $adb->index_put( $t_path, "count",  $cnt,   "raw" );
-            $adb->index_put( $t_path, "lastid", $last_id, "raw" ) if defined $last_id;
-            $adb->table_close($t_path);
-            unlink($i_path);
-            rename( $t_path, $i_path );
-            $self->{say} .= "          * $table_path.$ext created ($cnt records)\n";
+    if ( $adb->table_write($tmp_path) ) {
+        my $cnt = scalar @active_records;
+        $adb->index_put( $tmp_path, "keys",   \@active_records, "ids" );
+        $adb->index_put( $tmp_path, "count",  $cnt, "raw" );
+        $adb->index_put( $tmp_path, "lastid", $last_id, "raw" ) if defined $last_id;
+
+        if ( $has_junk && @junk_records ) {
+            $adb->index_put( $tmp_path, "j:keys", \@junk_records, "ids" );
         }
-    };
 
-    $self->{say} .= "    - Readall records created: \n";
-    $write_inx_file->( \@active_records, 'inx' );
-    $write_inx_file->( \@junk_records, 'jinx' ) if $table_info->{use_junk} && @junk_records;
+        $adb->table_close($tmp_path);
+        unlink($index_path);
+        rename( $tmp_path, $index_path );
+        $self->{say} .= "    - Readall records created: \n";
+        $self->{say} .= "          * $table_path.inx created ($cnt active records)\n";
+    }
 
     return 1;
 }
@@ -192,6 +217,47 @@ sub set_search {
     }
     return unless scalar @records;
 
+    # 1. Identify RDBM blocks and prepare pre-fetch
+    my %rdbm_blocks; # field => { table => ..., display => ... }
+    for my $blk ( @{ $table_info->{search_block} } ) {
+        my ( $field, $src_table, $src_display ) =
+            ref($blk) eq 'ARRAY' ? ( $blk->[0], $blk->[1], $blk->[2] )
+                                 : ( $blk,       undef,     undef      );
+        if ( !$src_table ) {
+            ( $src_table, $src_display ) = $adb->rdbm_target( $table_info, $field );
+        }
+        if ( $src_table ) {
+            $src_display //= 1;
+            $rdbm_blocks{$field} = { table => $src_table, display => $src_display };
+        }
+    }
+
+    # 2. Collect unique foreign IDs across all records
+    my %string;
+    if ( %rdbm_blocks ) {
+        for my $rec (@records) {
+            for my $field ( keys %rdbm_blocks ) {
+                my $val = $rec->[$field];
+                next unless defined $val && $val ne '';
+                my $target_table = $rdbm_blocks{$field}->{table};
+                for my $id ( split /[,;]/, $val ) {
+                    $id =~ s/^\s+|\s+$//g;
+                    $string{$target_table}->{$id} = 1 if $id =~ /^\d+$/;
+                }
+            }
+        }
+    }
+
+    # 3. Batch pre-fetch foreign tables into in-memory lookup map
+    my %rdbm_recs; # table => { id => \@target_record }
+    for my $table ( keys %string ) {
+        my @ids = keys %{ $string{$table} };
+        next unless @ids;
+        my @target_recs = $adb->read_list( $table, \@ids );
+        $rdbm_recs{$table} = { map { $_->[0] => $_ } @target_recs };
+    }
+
+    # 4. Tokenize and index words
     my ( %search, %junk_search );
     $self->{say} .= "    - Search word kayitlari olusturuluyor: \n";
     foreach my $line (@records) {
@@ -200,7 +266,26 @@ sub set_search {
         foreach my $blk ( @{ $table_info->{search_block} } ) {
             my $b_idx = ref($blk) eq "ARRAY" ? $blk->[0] : $blk;
             $b_idx =~ /^\d+$/ or next;
-            my %recsearch = $adb->get_words( $fields[$b_idx], "write", $tableid );
+
+            my $val = $fields[$b_idx];
+            if ( my $rdbm_info = $rdbm_blocks{$b_idx} ) {
+                if ( defined $val && $val ne '' ) {
+                    my $table = $rdbm_info->{table};
+                    my $disp  = $rdbm_info->{display};
+                    my @parts;
+                    for my $id ( split /[,;]/, $val ) {
+                        $id =~ s/^\s+|\s+$//g;
+                        if ( my $rec = $rdbm_recs{$table}->{$id} ) {
+                            my $name = $rec->[$disp];
+                            push @parts, $name if defined $name && length($name);
+                        }
+                    }
+                    $val = join( ' ', @parts );
+                }
+            }
+
+            next unless defined $val && $val ne '';
+            my %recsearch = $adb->get_words( $val, "write", $tableid );
 
             foreach my $key ( keys %recsearch ) {
                 if ($is_junk) {
@@ -213,43 +298,47 @@ sub set_search {
         }
     }
 
-    # Helper sub to write search index file
-    my $write_search_file = sub {
-        my ( $src_map, $ext ) = @_;
-        foreach my $blk ( @{ $table_info->{search_block} } ) {
-            my $b_idx = ref($blk) eq "ARRAY" ? $blk->[0] : $blk;
-            $b_idx =~ /^\d+$/ or next;
-            my $file_path = "${table_path}_$b_idx.$ext";
-            my $tmp_path  = "$file_path.tmp";
+    my $file_path = "${table_path}.src";
+    my $tmp_path  = "$file_path.tmp";
 
-            unlink($tmp_path);
+    unlink($tmp_path);
 
-            if ( !$src_map->{$b_idx} || !scalar( keys %{ $src_map->{$b_idx} } ) ) {
-                unlink($file_path);
-                next;
-            }
-
-            if ( $src_map->{$b_idx} ) {
-                $adb->table_write($tmp_path)
-                  or do {
-                    cluck "[DB_TOOL] $tmp_path can't open.\n";
-                    next;
-                  };
-                foreach my $key ( keys %{ $src_map->{$b_idx} } ) {
-                    my @search_keys = $adb->array_nodup( @{ $src_map->{$b_idx}{$key} } );
-                    $adb->index_put( $tmp_path, $key, \@search_keys, "ids" );
-                }
-                $adb->table_close($tmp_path);
-
-                unlink($file_path);
-                rename( $tmp_path, $file_path );
-                $self->{say} .= "          * $file_path created.\n";
+    my %batch_put;
+    foreach my $blk ( @{ $table_info->{search_block} } ) {
+        my $b_idx = ref($blk) eq "ARRAY" ? $blk->[0] : $blk;
+        $b_idx =~ /^\d+$/ or next;
+        if ( $search{$b_idx} ) {
+            foreach my $key ( keys %{ $search{$b_idx} } ) {
+                my %seen;
+                my @search_keys = sort { $a <=> $b } grep { !$seen{$_}++ } @{ $search{$b_idx}{$key} };
+                $batch_put{"$b_idx:$key"} = \@search_keys;
             }
         }
-    };
+        if ( $table_info->{use_junk} && $junk_search{$b_idx} ) {
+            foreach my $key ( keys %{ $junk_search{$b_idx} } ) {
+                my %seen;
+                my @search_keys = sort { $a <=> $b } grep { !$seen{$_}++ } @{ $junk_search{$b_idx}{$key} };
+                $batch_put{"j:$b_idx:$key"} = \@search_keys;
+            }
+        }
+    }
 
-    $write_search_file->( \%search, 'src' );
-    $write_search_file->( \%junk_search, 'jsrc' ) if $table_info->{use_junk};
+    if ( %batch_put ) {
+        $adb->table_write($tmp_path)
+          or do {
+            cluck "[DB_TOOL] $tmp_path can't open.\n";
+            return;
+          };
+        $adb->index_put( $tmp_path, \%batch_put, "ids" );
+        $adb->table_close($tmp_path);
+
+        unlink($file_path);
+        rename( $tmp_path, $file_path );
+        $self->{say} .= "          * $file_path created.\n";
+    }
+    else {
+        unlink($file_path);
+    }
 
     return 1;
 }
@@ -262,88 +351,95 @@ sub set_fields {
     my ( $self, $tableid, @records ) = @_;
     my $adb = $self->{_adb} or return;
 
-    # table path must be built first to load schema.
     my $table_path = $adb->table_path($tableid);
     my $table_info = $adb->table_info($tableid);
     return unless exists( $table_info->{match_block} );
     return unless -e "$table_path.$adb->{db_ext}";
 
+    # Read records from table if absent
+    if ( !scalar @records ) {
+        @records = $adb->read_all($tableid, 0, 0, no_index => 1);
+    }
+    return unless scalar @records;
+
     my ( %fields, %junk_fields );
-    exists( $table_info->{match_block} ) or return;
 
-    foreach my $line ( @{ $table_info->{match_block} } ) {
-        my $unq_path = "${table_path}_$line.unq";
-        my ( $is_rdbm ) = $adb->rdbm_target( $table_info, $line );
+    my $unq_path = "${table_path}.unq";
+    my $unq_opened = 0;
+    if ( !$adb->{_db}->{$unq_path} ) {
+        $adb->table_write($unq_path);
+        $unq_opened = 1;
+    }
 
-        my $unq_opened = 0;
-        if ( !$is_rdbm ) {
-            $adb->table_write($unq_path);
-            $unq_opened = 1;
-        }
+    # Invert loops: outer loop @records (single pass), inner loop match_block
+    my @match_blks = grep { /^\d+$/ } @{ $table_info->{match_block} };
+    my $has_junk   = $table_info->{use_junk} ? 1 : 0;
 
-        foreach my $record (@records) {
-            my @fields_arr = @$record;
-            $fields_arr[0] or next;
+    foreach my $record (@records) {
+        my @fields_arr = @$record;
+        my $rid = $fields_arr[0];
+        next unless defined $rid && $rid ne '';
+        my $is_junk = $has_junk ? $adb->junk_rules( $table_info, @fields_arr ) : 0;
+
+        foreach my $line (@match_blks) {
             next unless defined $fields_arr[$line] && $fields_arr[$line] ne '';
-            my $is_junk = $table_info->{use_junk} ? $adb->junk_rules( $table_info, @fields_arr ) : 0;
-
             my @num_ids = $adb->field_to_list( $fields_arr[$line], 'write', $table_path, $table_info, $line );
             foreach my $nid (@num_ids) {
                 if ($is_junk) {
-                    push @{ $junk_fields{$line}{$nid} }, $fields_arr[0];
+                    push @{ $junk_fields{$line}{$nid} }, $rid;
                 }
                 else {
-                    push @{ $fields{$line}{$nid} }, $fields_arr[0];
+                    push @{ $fields{$line}{$nid} }, $rid;
                 }
             }
         }
+    }
 
-        if ($unq_opened) {
-            $adb->table_close($unq_path);
-        }
+    if ($unq_opened) {
+        $adb->table_close($unq_path);
     }
 
     $self->{say} .= "    - Fields fetch kayitlari olusturuluyor: \n";
 
-    # Helper sub to write field files
-    my $write_fld_file = sub {
-        my ( $fld_map, $ext ) = @_;
-        foreach my $line ( @{ $table_info->{match_block} } ) {
-            $line =~ /^\d+$/ or next;
-            my $file_path = "${table_path}_$line.$ext";
-            my $tmp_path  = "$file_path.tmp";
+    my $file_path = "${table_path}.fld";
+    my $tmp_path  = "$file_path.tmp";
 
-            unlink($tmp_path);
+    unlink($tmp_path);
 
-            if ( !$fld_map->{$line} || !scalar( keys %{ $fld_map->{$line} } ) ) {
-                unlink($file_path);
-                next;
-            }
-
-            if ( $fld_map->{$line} ) {
-                $adb->table_write($tmp_path)
-                  or do {
-                    cluck "[DB_TOOL] $tmp_path can't open for write.\n";
-                    next;
-                  };
-                foreach my $key ( keys %{ $fld_map->{$line} } ) {
-                    my @fields_keys =
-                      $adb->array_nodup( @{ $fld_map->{$line}{$key} } );
-                    $adb->index_put( $tmp_path, $key, \@fields_keys, "ids" );
-                }
-                $adb->table_close($tmp_path);
-                unlink($file_path);
-                rename( $tmp_path, $file_path );
-
-                $self->{say} .= "          * $file_path \n";
+    my %batch_put;
+    foreach my $line (@match_blks) {
+        if ( $fields{$line} ) {
+            foreach my $key ( keys %{ $fields{$line} } ) {
+                my %seen;
+                my @fields_keys = sort { $a <=> $b } grep { !$seen{$_}++ } @{ $fields{$line}{$key} };
+                $batch_put{"$line:$key"} = \@fields_keys;
             }
         }
-    };
+        if ( $has_junk && $junk_fields{$line} ) {
+            foreach my $key ( keys %{ $junk_fields{$line} } ) {
+                my %seen;
+                my @fields_keys = sort { $a <=> $b } grep { !$seen{$_}++ } @{ $junk_fields{$line}{$key} };
+                $batch_put{"j:$line:$key"} = \@fields_keys;
+            }
+        }
+    }
 
-    $write_fld_file->( \%fields, 'fld' );
-    $write_fld_file->( \%junk_fields, 'jfld' ) if $table_info->{use_junk};
+    if ( %batch_put ) {
+        $adb->table_write($tmp_path)
+          or do {
+            cluck "[DB_TOOL] $tmp_path can't open for write.\n";
+            return;
+          };
+        $adb->index_put( $tmp_path, \%batch_put, "ids" );
+        $adb->table_close($tmp_path);
+        unlink($file_path);
+        rename( $tmp_path, $file_path );
 
-    %fields = ();
+        $self->{say} .= "          * $file_path \n";
+    }
+    else {
+        unlink($file_path);
+    }
 
     return 1;
 }
@@ -357,14 +453,11 @@ sub set_filters {
     my ( $self, $tableid, @records ) = @_;
     my $adb = $self->{_adb} or return;
 
-    # table path must be built first to load schema.
     return unless $tableid;
     my $table_path = $adb->table_path($tableid);
     return unless -e "$table_path.$adb->{db_ext}";
 
     my $table_info = $adb->table_info($tableid);
-
-    # Both match_block and use_facet must be defined to create facet index
     return unless exists( $table_info->{match_block} );
     return unless exists( $table_info->{use_facet} );
 
@@ -390,6 +483,7 @@ sub set_filters {
     $self->{say} .= "    - Facet forward index olusturuluyor: \n";
 
     my @active_ids;
+    my %batch_facets;
 
     foreach my $record (@records) {
         my @fields = @$record;
@@ -397,7 +491,7 @@ sub set_filters {
         my @pairs;
         foreach my $blk (@fblocks) {
             $blk =~ /^\d+$/ or next;
-            next unless $fields[$blk];
+            next unless defined $fields[$blk] && $fields[$blk] ne '';
             my @vals;
             if    ( ref $fields[$blk] eq "ARRAY" ) { @vals = @{ $fields[$blk] } }
             elsif ( $fields[$blk] =~ /[,;]/ )      { @vals = split /\s*[,;]\s*/, $fields[$blk] }
@@ -407,7 +501,11 @@ sub set_filters {
         next unless @pairs;
         my $is_active = $adb->facet_rules( $table_info, @fields );
         push @active_ids, $fields[0] if $is_active && $has_active_rule;
-        $adb->index_put( $tmp_path, $fields[0], join( "\t", $is_active, @pairs ), "raw" );
+        $batch_facets{ $fields[0] } = join( "\t", $is_active, @pairs );
+    }
+
+    if ( %batch_facets ) {
+        $adb->index_put( $tmp_path, \%batch_facets, "raw" );
     }
 
     # "active" key: write all active IDs if facet_rules defined
@@ -453,16 +551,13 @@ sub set_rwlnkall {
         @records = grep { ref($_) eq 'ARRAY' } @records;
     }
 
-    # Delete old files.
-    my $slg0_path = "${table_path}_0.slg";
-    my $slg1_path = "${table_path}_1.slg";
-    my $tmp0_path = "$slg0_path.tmp";
-    my $tmp1_path = "$slg1_path.tmp";
+    # Rebuild unified slug file.
+    my $slg_path = "${table_path}.slg";
+    my $tmp_path = "$slg_path.tmp";
 
-    unlink($tmp0_path);
-    unlink($tmp1_path);
+    unlink($tmp_path);
 
-    my ( @slg0_records, @slg1_records );
+    my @slg_records;
     my %seen_links;
 
     @records = $adb->db_sortid( $tableid, @records );
@@ -473,40 +568,33 @@ sub set_rwlnkall {
             $rw_link .= "-$record->[0]";
         }
         $seen_links{$rw_link} = $record->[0];
-        push @slg0_records, [ $record->[0], $rw_link ];
-        push @slg1_records, [ $rw_link, $record->[0] ];
+        push @slg_records, [ "0:$record->[0]", $rw_link ];
+        push @slg_records, [ "1:$rw_link", $record->[0] ];
     }
 
-    $adb->table_write($tmp0_path)
-      or do {
-        cluck "[DB_TOOL] $tmp0_path can't be written.\n";
-        return 0;
-      };
-    $adb->recs_put( $tmp0_path, @slg0_records );
-    $adb->table_close($tmp0_path);
+    if ( @slg_records ) {
+        $adb->table_write($tmp_path)
+          or do {
+            cluck "[DB_TOOL] $tmp_path can't be written.\n";
+            return 0;
+          };
+        $adb->recs_put( $tmp_path, @slg_records );
+        $adb->table_close($tmp_path);
 
-    $adb->table_write($tmp1_path)
-      or do {
-        cluck "[DB_TOOL] $tmp1_path can't be written.\n";
-        return 0;
-      };
-    $adb->recs_put( $tmp1_path, @slg1_records );
-    $adb->table_close($tmp1_path);
+        unlink($slg_path);
+        rename( $tmp_path, $slg_path );
 
-    unlink($slg0_path);
-    unlink($slg1_path);
-
-    rename( $tmp0_path, $slg0_path );
-    rename( $tmp1_path, $slg1_path );
-
-    $self->{say} .= "    - Slug indexes are being created.: \n";
-    $self->{say} .= "          * $slg0_path \n";
-    $self->{say} .= "          * $slg1_path \n";
+        $self->{say} .= "    - Slug indexes are being created.: \n";
+        $self->{say} .= "          * $slg_path \n";
+    }
+    else {
+        unlink($slg_path);
+    }
 
     return 1;
 }
 
-# Rebuilds sort index (.srt).
+# Rebuilds sort index within .inx ($blk:keys).
 # my $ok = $tools->set_sort($tableid, @records);
 # ------------------------------------------------
 sub set_sort {
@@ -523,13 +611,11 @@ sub set_sort {
         @records = $adb->read_all( $tableid, 0, 0, no_index => 1 );
     }
 
+    my ( %keys_batch, %raw_batch );
     foreach my $cfg ( @{ $table_info->{sort_block} } ) {
         my ( $blk, $type, $len ) = ref($cfg) eq 'HASH'
             ? ( $cfg->{blk}, $cfg->{type}, $cfg->{len} // 8 )
             : ( $cfg, 'string', 8 );
-
-        my $sort_path = "${table_path}_$blk.srt";
-        my $tmp_srt   = "$sort_path.tmp";
 
         my %map;
         foreach my $rec (@records) {
@@ -543,20 +629,24 @@ sub set_sort {
               || ( $a <=> $b )
         } keys %map;
 
-        # Map file write (.srt) with bin_encode keys
-        $adb->table_write($tmp_srt);
-        $adb->index_put( $tmp_srt, "count", scalar(@sorted_ids), "raw" );
-        $adb->index_put( $tmp_srt, "keys",  \@sorted_ids, "ids" );
+        $keys_batch{"$blk:keys"} = \@sorted_ids;
         foreach my $k ( keys %map ) {
-            $adb->index_put( $tmp_srt, $k, $map{$k}, "raw" );
+            $raw_batch{"$blk:$k"} = $map{$k};
         }
-        $adb->table_close($tmp_srt);
-
-        unlink($sort_path);
-        rename( $tmp_srt, $sort_path );
     }
 
-    $self->{say} .= "    - Sort indexes created for table $tableid.\n";
+    if ( %keys_batch || %raw_batch ) {
+        my $inx_path = "${table_path}.inx";
+        if ( $adb->table_write($inx_path) ) {
+            $adb->index_put( $inx_path, \%keys_batch, "ids" ) if %keys_batch;
+            $adb->index_put( $inx_path, \%raw_batch,  "raw" ) if %raw_batch;
+            $adb->table_close($inx_path);
+        }
+    }
+
+    unlink("${table_path}.srt");
+
+    $self->{say} .= "    - Sort indexes created in ${table_path}.inx for table $tableid.\n";
     return 1;
 }
 
@@ -670,27 +760,28 @@ sub check_search {
         }
     }
 
-    foreach my $src ( @{ $table_info->{search_block} } ) {
-        $src =~ /^\d+$/ or next;
-
-        my $src_path = "${table_path}_$src.src";
-        next unless -e $src_path;
-        $adb->table_read($src_path) or next;
-        $adb->recs_scan(
-            $src_path,
-            sub {
-                my ( $word, $records ) = @_;
-                foreach my $rid ( $adb->db_decode($records) ) {
-                    if ( exists( $diff{recs}->{$src}->{$word}->{$rid} ) ) {
-                        delete( $diff{recs}->{$src}->{$word}->{$rid} );
-                    }
-                    else {
-                        $diff{inds}->{$src}->{$word}->{$rid} = 1;
+    my $unified_src = "${table_path}.src";
+    if ( -e $unified_src ) {
+        if ( $adb->table_read($unified_src) ) {
+            $adb->recs_scan(
+                $unified_src,
+                sub {
+                    my ( $k, $records ) = @_;
+                    my ( $src, $word ) = split( /:/, $k, 2 );
+                    return unless defined $src && defined $word;
+                    my ( undef, @rids ) = $adb->bin_decode($records);
+                    foreach my $rid (@rids) {
+                        if ( exists( $diff{recs}->{$src}->{$word}->{$rid} ) ) {
+                            delete( $diff{recs}->{$src}->{$word}->{$rid} );
+                        }
+                        else {
+                            $diff{inds}->{$src}->{$word}->{$rid} = 1;
+                        }
                     }
                 }
-            }
-        );
-        $adb->table_close($src_path);
+            );
+            $adb->table_close($unified_src);
+        }
     }
 
     return \%diff;
@@ -735,7 +826,7 @@ sub tie2csv {
     };
     foreach my $uid (@uids) {
         my @fields = $adb->db_decode( $data{$uid} );
-        my $record = $adb->db_encode( $uid, @fields );
+        my $record = $adb->_db_encode_legacy( $uid, @fields );
         print $fh "$record\n";
         $self->{say} .= "$i. $uid ID record converted.\n\n";
         $i++;
@@ -783,16 +874,24 @@ sub csv2tie {
         cluck "[DB_TOOL] Could not open $file_path for writing.\n";
         return;
     };
+    my @chunk;
     while ( my $record = <$FH> ) {
         chomp($record);
         $record =~ s/\r$//;
         my (@fields) = $adb->db_decode($record);
-        $adb->recs_put( $file_path, [@fields] );
+        push @chunk, [@fields];
+        if ( @chunk >= 2000 ) {
+            $adb->recs_put( $file_path, @chunk );
+            @chunk = ();
+        }
 
         # collect into list for indexing
         push @records, [@fields];
-        $self->{say} .= "$i. Record ID $fields[0] converted.\n\n";
+        $self->{say} .= "$i. Record ID $fields[0] converted.\n\n" if $i % 1000 == 0;
         $i++;
+    }
+    if ( @chunk ) {
+        $adb->recs_put( $file_path, @chunk );
     }
     close $FH;
     $adb->table_close($file_path);
@@ -856,7 +955,7 @@ sub vacuum {
         return;
     };
     foreach my $record (@records) {
-        my $new_record = $adb->db_encode(@$record);
+        my $new_record = $adb->_db_encode_legacy(@$record);
         print $FH "$new_record\n";
         $count->{csv1}++;
     }
@@ -870,12 +969,21 @@ sub vacuum {
         return;
     };
     $adb->table_write($tie_path);
+    my @chunk;
     while ( my $record = <$FH> ) {
         chomp($record);
         $record =~ s/\r$//;
         my @fields = $adb->db_decode($record);
-        my $ok     = $adb->recs_put( $tie_path, [@fields] );
-        $ok and $count->{tie2}++;
+        push @chunk, [@fields];
+        if ( @chunk >= 2000 ) {
+            my $ok = $adb->recs_put( $tie_path, @chunk );
+            $count->{tie2} += scalar @chunk if $ok;
+            @chunk = ();
+        }
+    }
+    if ( @chunk ) {
+        my $ok = $adb->recs_put( $tie_path, @chunk );
+        $count->{tie2} += scalar @chunk if $ok;
     }
     close $FH;
     $adb->table_close($tie_path);
@@ -965,6 +1073,484 @@ sub all_tables {
     }
 
     return \%all_tables;
+}
+
+# =====================================================================
+# TABLE MIGRATION & HISTORICAL FORMAT CONVERSION ENGINE
+# =====================================================================
+
+# ---------------------------------------------------------------------
+# _detect_record_format($record):
+# Returns format identifier:
+#   v5: 2026+ ABR Binary (\x00ABR\x05)
+#   v4: 2024-2026 AmberDB Text (ARRAY:, HASH:, &#38; etc.)
+#   v3: 2016-2024 Dbase::Base (<TAB0><TAB1><TAB2><TAB3>)
+#   v2: 2004-2016 DB::CSV / TieDB / DB::Tie (\T array separator)
+#   v1: 2003-2004 FlatDB (Plain \t with standard escapes)
+# ---------------------------------------------------------------------
+sub _detect_record_format {
+    my ( $self, $record ) = @_;
+    return 'v5' if !defined $record || $record eq '';
+
+    if ( length($record) >= 7 && substr( $record, 0, 4 ) eq "\x00ABR" ) {
+        return 'v5';
+    }
+    if ( $record =~ /(?:ARRAY:|HASH:|&#(?:38|61|124|92|30);)/ ) {
+        return 'v4';
+    }
+    if ( $record =~ /<TAB[0-9]+>/ ) {
+        return 'v3';
+    }
+    if ( $record =~ /\\T/ ) {
+        return 'v2';
+    }
+    return 'v1';
+}
+
+# ---------------------------------------------------------------------
+# decode_legacy_record($record, $expected_rid):
+# Decodes any record originating from 2003 through 2026 text formats
+# into Perl data structures (scalars, arrayrefs, hashrefs).
+# ---------------------------------------------------------------------
+sub decode_legacy_record {
+    my ( $self, $record, $expected_rid ) = @_;
+    return () unless defined $record && length($record);
+
+    # If already ABR binary, decode directly via AmberDB engine
+    my $adb = $self->{_adb};
+    if ( length($record) >= 7 && substr( $record, 0, 4 ) eq "\x00ABR" ) {
+        return $adb->db_decode($record);
+    }
+
+    $record =~ s/\R$//;
+
+    # 1. ERA 2019 - 2025: <TAB> Hierarchy (<TAB0>, <TAB1>, <TAB2>, <TAB3>)
+    if ( $record =~ /<TAB[0-9]+>/ ) {
+        my $white_decode = sub {
+            return map {
+                my $s = $_;
+                if ( defined $s ) {
+                    $s =~ s/\\(.)/$1 eq "t" ? "\t" : $1 eq "n" ? "\n" : $1 eq "r" ? "\r" : $1 eq "T" ? "\\T" : $1/eg;
+                }
+                $s;
+            } @_;
+        };
+
+        my $rid_prefix;
+        if ( $record =~ /^([a-zA-Z0-9_\-\.]+)(?:<TAB0>|\t)(.*)$/s ) {
+            my ( $candidate_rid, $rest ) = ( $1, $2 );
+            if ( !defined $expected_rid || $candidate_rid eq $expected_rid ) {
+                $rid_prefix = $candidate_rid;
+                $record     = $rest;
+            }
+        }
+
+        my @fields = $record =~ /<TAB0>/ ? split( /<TAB0>/, $record, -1 ) : split( /\t/, $record, -1 );
+        @fields = $white_decode->(@fields);
+
+        for my $f1 (@fields) {
+            if ( defined $f1 && $f1 =~ /<TAB1>/ ) {
+                my @sub1 = map { $_ eq '-' ? '' : $_ } split( /<TAB1>/, $f1, -1 );
+                @sub1 = $white_decode->(@sub1);
+                for my $f2 (@sub1) {
+                    if ( defined $f2 && $f2 =~ /<TAB2>/ ) {
+                        my @sub2 = map { $_ eq '-' ? '' : $_ } split( /<TAB2>/, $f2, -1 );
+                        @sub2 = $white_decode->(@sub2);
+                        for my $f3 (@sub2) {
+                            if ( defined $f3 && $f3 =~ /<TAB3>/ ) {
+                                my @sub3 = map { $_ eq '-' ? '' : $_ } split( /<TAB3>/, $f3, -1 );
+                                $f3 = [ $white_decode->(@sub3) ];
+                            }
+                        }
+                        $f2 = \@sub2;
+                    }
+                }
+                $f1 = \@sub1;
+            }
+        }
+
+        if ( defined $rid_prefix ) {
+            unshift @fields, $rid_prefix;
+        }
+        return @fields;
+    }
+
+    # 2. ERA 2026: HTML entities (&#38;, &#124;, &#61;) + ARRAY: / HASH:
+    if ( $record =~ /(?:ARRAY:|HASH:|&#(?:38|61|124|92|30);)/ ) {
+        my $unescape_chars = sub {
+            my ($str) = @_;
+            return "" unless defined $str;
+            $str =~ s/\\\\/\\/g;
+            $str =~ s/\\([nrt])/$1 eq 'n' ? "\n" : $1 eq 'r' ? "\r" : "\t"/eg;
+            $str =~ s/&#61;/=/g;
+            $str =~ s/&#124;/|/g;
+            $str =~ s/&#30;/\x1e/g;
+            $str =~ s/&#92;/\\/g;
+            $str =~ s/&#38;/&/g;
+            return $str;
+        };
+
+        my $decode_node;
+        $decode_node = sub {
+            my ($field) = @_;
+            return "" unless defined $field;
+
+            if ( $field =~ /^ARRAY:(.*)/s ) {
+                my $payload = $1;
+                return [] if $payload eq "";
+                return [ map { $decode_node->( $unescape_chars->($_) ) } split( /\|/, $payload, -1 ) ];
+            }
+            elsif ( $field =~ /^HASH:(.*)/s ) {
+                my $payload = $1;
+                my %h;
+                if ( $payload ne "" ) {
+                    for my $pair ( split( /\|/, $payload, -1 ) ) {
+                        my ( $k, $v ) = split( /=/, $pair, 2 );
+                        $h{ $unescape_chars->($k) } = $decode_node->( $unescape_chars->( $v // '' ) );
+                    }
+                }
+                return \%h;
+            }
+            elsif ( $field =~ /\\T/ ) {
+                return [ map { $unescape_chars->($_) } split( /\\T/, $field, -1 ) ];
+            }
+            else {
+                return $unescape_chars->($field);
+            }
+        };
+
+        my @raw = split( /\t/, $record, -1 );
+        if ( @raw == 1 && $raw[0] =~ /^(?:ARRAY|HASH):/ ) {
+            my $res = $decode_node->( $raw[0] );
+            return ($res);
+        }
+        return map { $decode_node->( $unescape_chars->($_) ) } @raw;
+    }
+
+    # 3. ERA 2004 - 2006 & 2003: \t root, \T array delimiter, standard escapes
+    my $unescape_basic = sub {
+        my ($s) = @_;
+        return "" unless defined $s;
+        $s =~ s/\\(.)/$1 eq "t" ? "\t" : $1 eq "n" ? "\n" : $1 eq "r" ? "\r" : $1 eq "T" ? "\\T" : $1 eq "\\" ? "\\" : $1/eg;
+        return $s;
+    };
+
+    my @raw_fields = split( /\t/, $record, -1 );
+    @raw_fields = map { $unescape_basic->($_) } @raw_fields;
+
+    for my $line (@raw_fields) {
+        if ( defined $line && $line =~ /\\T/ ) {
+            my @parts = split( /\\T/, $line, -1 );
+            @parts = map { $unescape_basic->($_) } @parts;
+            $line = \@parts;
+        }
+    }
+
+    return @raw_fields;
+}
+
+# Helper to binary copy a file safely without external modules
+sub _copy_file {
+    my ( $self, $src, $dst ) = @_;
+    return 0 unless -e $src;
+    open my $in, '<:raw', $src or return 0;
+    open my $out, '>:raw', $dst or do { close $in; return 0; };
+    my $buf;
+    while ( read( $in, $buf, 65536 ) ) {
+        print $out $buf;
+    }
+    close $in;
+    close $out;
+    return 1;
+}
+
+# ---------------------------------------------------------------------
+# update_table($tableid, %options)
+# Scans an entire table record-by-record, detects any legacy formats (2003-2026),
+# creates a timestamped backup with detected version, and rewrites the table
+# cleanly using $adb->insert_list to migrate all records to ABR v1.
+# Preserves authoritative data files (.unq, .del, .aut, .cnt).
+# ---------------------------------------------------------------------
+sub update_table {
+    my ( $self, $tableid, %opts ) = @_;
+    my $adb = $self->{_adb} or return;
+    $tableid or return;
+
+    my $table_path = $adb->table_path($tableid);
+    my $ext        = $adb->{db_ext} || "db";
+    my $file_path  = "$table_path.$ext";
+
+    # Use exist_table to verify primary table existence
+    return { status => 'not_found', table => $tableid }
+      unless $adb->exist_table( $tableid );
+
+    # 1. Scan all raw records from .db file
+    my %raw_records;
+    $adb->recs_scan( $file_path, sub {
+        my ( $k, $v ) = @_;
+        $raw_records{$k} = $v;
+    } );
+    $adb->table_close($file_path);
+
+    my $total = scalar keys %raw_records;
+    my $already_current = 0;
+    my $legacy_count    = 0;
+    my %format_counts;
+
+    for my $k ( keys %raw_records ) {
+        my $v = $raw_records{$k};
+        my $fmt = $self->_detect_record_format($v);
+        $format_counts{$fmt}++;
+        if ( $fmt eq 'v5' ) {
+            $already_current++;
+        }
+        else {
+            $legacy_count++;
+        }
+    }
+
+    # Check companion data files using exist_table()
+    my $has_del  = $adb->exist_table( $tableid, 'del' );
+    my $del_file = "$table_path.del";
+    my %raw_del;
+    my $del_legacy_count = 0;
+    if ($has_del) {
+        $adb->recs_scan( $del_file, sub {
+            my ( $k, $v ) = @_;
+            $raw_del{$k} = $v;
+        } );
+        $adb->table_close($del_file);
+        for my $k ( keys %raw_del ) {
+            my $fmt = $self->_detect_record_format( $raw_del{$k} );
+            $del_legacy_count++ if $fmt ne 'v5';
+        }
+    }
+
+    my $has_aut  = $adb->exist_table( $tableid, 'aut' );
+    my $aut_file = "$table_path.aut";
+    my %raw_aut;
+    my $aut_legacy_count = 0;
+    if ($has_aut) {
+        $adb->recs_scan( $aut_file, sub {
+            my ( $k, $v ) = @_;
+            $raw_aut{$k} = $v;
+        } );
+        $adb->table_close($aut_file);
+        for my $k ( keys %raw_aut ) {
+            my $fmt = $self->_detect_record_format( $raw_aut{$k} );
+            $aut_legacy_count++ if $fmt ne 'v5';
+        }
+    }
+
+    my $has_cnt  = $adb->exist_table( $tableid, 'cnt' );
+    my $cnt_file = "$table_path.cnt";
+
+    my $has_unq  = $adb->exist_table( $tableid, 'unq' );
+    my $unq_file = "$table_path.unq";
+
+    # If completely up to date across all data files, skip migration
+    if ( $legacy_count == 0 && $del_legacy_count == 0 && $aut_legacy_count == 0 && !$opts{force} ) {
+        $self->{say} .= "Table '$tableid' is already up to date in ABR v1 format ($already_current records).\n";
+        return {
+            status          => 'already_current',
+            table           => $tableid,
+            total           => $total,
+            updated         => 0,
+            already_current => $already_current,
+            has_del         => $has_del ? 1 : 0,
+            has_aut         => $has_aut ? 1 : 0,
+            has_cnt         => $has_cnt ? 1 : 0,
+            has_unq         => $has_unq ? 1 : 0,
+        };
+    }
+
+    # 2. Determine dominant legacy format
+    my $dom_ver = 'v4';
+    my $max_c   = -1;
+    for my $v (qw(v4 v3 v2 v1)) {
+        if ( ( $format_counts{$v} // 0 ) > $max_c ) {
+            $max_c   = $format_counts{$v} // 0;
+            $dom_ver = $v;
+        }
+    }
+
+    # 3. Format modification timestamp: YYYY-MMDD
+    my @mtime_parts = localtime( ( stat($file_path) )[9] || time() );
+    my $mtime_str   = sprintf( "%04d-%02d%02d", $mtime_parts[5] + 1900, $mtime_parts[4] + 1, $mtime_parts[3] );
+
+    my $backup_base = "$table_path-$dom_ver-$mtime_str";
+    my $backup_file = "$backup_base.$ext";
+    my $counter     = 1;
+    while ( -e $backup_file ) {
+        $backup_file = "$backup_base-$counter.$ext";
+        $counter++;
+    }
+
+    # 4. Decode all records record-by-record
+    my @sorted_keys = $adb->db_sortid( $tableid, keys %raw_records );
+    my @decoded_records;
+    for my $k (@sorted_keys) {
+        my $v = $raw_records{$k};
+        my @fields;
+        if ( defined $v && length($v) >= 7 && substr( $v, 0, 4 ) eq "\x00ABR" ) {
+            @fields = $adb->db_decode($v);
+        }
+        else {
+            @fields = $self->decode_legacy_record( $v, $k );
+        }
+        push @decoded_records, [ $k, @fields ];
+    }
+
+    # 5. Backup the old table file
+    rename( $file_path, $backup_file ) or do {
+        cluck "[DB_TOOL] Could not backup $file_path to $backup_file: $!\n";
+        return { status => 'error', table => $tableid, error => "Backup failed: $!" };
+    };
+
+    # 6. Clean up old DERIVED index files so insert_list rebuilds clean new indexes.
+    # Includes standard indexes, slug, legacy .srt, and Tier B junk indexes (.jinx, .jfld, .jsrc).
+    # CRITICAL: .unq is an authoritative unique/synonym mapping table that CANNOT
+    # be derived from the base table alone! It MUST NEVER be unlinked.
+    # Similarly, .del, .aut, .cnt are authoritative data files and kept intact.
+    for my $iext (qw(inx src fld fac slg srt jinx jfld jsrc)) {
+        my $idx_f = "$table_path.$iext";
+        unlink $idx_f if -e $idx_f;
+    }
+    # Clear cached table attributes and state
+    $adb->table_close($file_path);
+    $adb->set_cache( $tableid, 'keys', undef );
+    $adb->set_cache( $tableid, 'count', undef );
+
+    # 7. Write new table using insert_list (official modern batch writer & indexer)
+    my $insert_res = {};
+    if (@decoded_records) {
+        $insert_res = $adb->insert_list( $tableid, @decoded_records );
+    }
+    else {
+        $adb->table_write($file_path);
+        $adb->table_close($file_path);
+    }
+
+    # 8. Migrate companion .del archive file if present
+    my $del_backup_file;
+    my $del_migrated = 0;
+    if ($has_del && %raw_del) {
+        $del_backup_file = "$backup_base.del";
+        my $del_cnt = 1;
+        while ( -e $del_backup_file ) {
+            $del_backup_file = "$backup_base-$del_cnt.del";
+            $del_cnt++;
+        }
+        rename( $del_file, $del_backup_file );
+
+        my @archive_records;
+        for my $dk ( sort keys %raw_del ) {
+            my $dv = $raw_del{$dk};
+            my @df = $self->decode_legacy_record( $dv, $dk );
+            my $new_v = $adb->db_encode(@df);
+            push @archive_records, [ $dk, $new_v ];
+            $del_migrated++;
+        }
+        if (@archive_records) {
+            $adb->table_write($del_file);
+            $adb->recs_put( $del_file, @archive_records );
+            $adb->table_close($del_file);
+        }
+    }
+
+    # 9. Migrate companion .aut audit log file if present
+    my $aut_backup_file;
+    my $aut_migrated = 0;
+    if ($has_aut && %raw_aut) {
+        $aut_backup_file = "$backup_base.aut";
+        my $aut_cnt = 1;
+        while ( -e $aut_backup_file ) {
+            $aut_backup_file = "$backup_base-$aut_cnt.aut";
+            $aut_cnt++;
+        }
+        rename( $aut_file, $aut_backup_file );
+
+        my @archive_aut;
+        for my $ak ( sort keys %raw_aut ) {
+            my $av = $raw_aut{$ak};
+            my @af = ( defined $av && length($av) >= 7 && substr( $av, 0, 4 ) eq "\x00ABR" )
+              ? $adb->db_decode($av)
+              : $self->decode_legacy_record( $av, $ak );
+            my $new_av = $adb->db_encode(@af);
+            push @archive_aut, [ $ak, $new_av ];
+            $aut_migrated++;
+        }
+        if (@archive_aut) {
+            $adb->table_write($aut_file);
+            $adb->recs_put( $aut_file, @archive_aut );
+            $adb->table_close($aut_file);
+        }
+    }
+
+    # 10. Preserve companion .unq (synonym / unique mapping table)
+    # .unq is authoritative and CANNOT be regenerated. We snapshot it to backup,
+    # and keep the live .unq file fully intact.
+    my $unq_backup_file;
+    if ($has_unq) {
+        $unq_backup_file = "$backup_base.unq";
+        my $unq_cnt = 1;
+        while ( -e $unq_backup_file ) {
+            $unq_backup_file = "$backup_base-$unq_cnt.unq";
+            $unq_cnt++;
+        }
+        $self->_copy_file( $unq_file, $unq_backup_file );
+    }
+
+    # 11. Preserve companion .cnt (read counter) file
+    my $cnt_backup_file;
+    if ($has_cnt) {
+        $cnt_backup_file = "$backup_base.cnt";
+        my $cnt_cnt = 1;
+        while ( -e $cnt_backup_file ) {
+            $cnt_backup_file = "$backup_base-$cnt_cnt.cnt";
+            $cnt_cnt++;
+        }
+        $self->_copy_file( $cnt_file, $cnt_backup_file );
+    }
+
+    $self->{say} .= "Table '$tableid' updated to ABR v1: $total records migrated ($legacy_count converted, backup: $backup_file).\n";
+
+    return {
+        status          => 'updated',
+        table           => $tableid,
+        total           => $total,
+        updated         => $legacy_count,
+        already_current => $already_current,
+        dominant_format => $dom_ver,
+        backup_file     => $backup_file,
+        del_migrated    => $del_migrated,
+        del_backup      => $del_backup_file,
+        aut_migrated    => $aut_migrated,
+        aut_backup      => $aut_backup_file,
+        has_unq         => $has_unq ? 1 : 0,
+        unq_backup      => $unq_backup_file,
+        has_cnt         => $has_cnt ? 1 : 0,
+        cnt_backup      => $cnt_backup_file,
+    };
+}
+
+# ---------------------------------------------------------------------
+# update_all(%options)
+# Iterates through all discovered tables and runs update_table on each.
+# ---------------------------------------------------------------------
+sub update_all {
+    my ( $self, %opts ) = @_;
+    my $adb = $self->{_adb} or return;
+
+    my @tables = $self->all_tables();
+    my @results;
+
+    foreach my $table (@tables) {
+        my $res = $self->update_table( $table, %opts );
+        push @results, $res if $res;
+    }
+
+    return wantarray ? @results : \@results;
 }
 
 # my $ok = $tools->table_exist("tableid");
@@ -1172,7 +1758,7 @@ sub convert_tables {
         my $ok = $self->set_index($tableid);
         if ($ok) {
             $converted{$tableid} = 1;
-            $self->{say} .= "  -> Rebuilt packed binary indexes (.inx, .fld, .src, .srt) for $tableid\n";
+            $self->{say} .= "  -> Rebuilt packed binary indexes (.inx, .fld, .src) for $tableid\n";
         }
     }
 
@@ -1339,8 +1925,8 @@ sub dump {
             }
         }
 
-        # D. Collect Authoritative String Dictionaries (_*.unq)
-        my @unq_files = glob "${tpath}_*.unq";
+        # D. Collect Authoritative String Dictionary (.unq)
+        my @unq_files = -e "${tpath}.unq" ? ("${tpath}.unq") : ();
         foreach my $fpath (@unq_files) {
             next unless -e $fpath;
             open my $dfh, "<:raw", $fpath or next;
@@ -1576,14 +2162,14 @@ AmberDB::Tools - Database maintenance, CLI reindexing, and bulk conversion tools
   # 2. Restore database archive with integrity validation and reindexing
   my $result  = $tools->restore(file => "backup.amberdb", force => 1);
 
-  # 3. Rebuild all indexes for a single table (.inx, .src, .fld, .fac, .srt)
+  # 3. Rebuild all indexes for a single table (.inx, .src, .fld, .fac)
   $tools->set_index("catalog_product");
 
   # 4. Rebuild only specific index components
   $tools->set_search("catalog_product");  # Rebuild full-text search index
   $tools->set_fields("catalog_product");  # Rebuild field exact match index
   $tools->set_filters("catalog_product"); # Rebuild facet forward filter index
-  $tools->set_sort("catalog_product");    # Rebuild binary sort index
+  $tools->set_sort("catalog_product");    # Rebuild binary pre-sorted sequences in .inx
 
   # 5. Batch reindex / convert all tables in database directory
   my $report = $tools->convert_tables();
@@ -1618,7 +2204,7 @@ Options:
 
 =head2 restore(%options)
 
-Restores a C<.amberdb> archive into the target database. Validates archive integrity via SHA-256 checksums in C<manifest.json>, extracts schemas and data files, and deterministically reconstructs all binary indexes (C<.inx>, C<.src>, C<.fld>, C<.fac>, C<.srt>) via C<set_index>.
+Restores a C<.amberdb> archive into the target database. Validates archive integrity via SHA-256 checksums in C<manifest.json>, extracts schemas and data files, and deterministically reconstructs all binary indexes (C<.inx>, C<.src>, C<.fld>, C<.fac>) via C<set_index>.
 
 Options:
 =over 4
@@ -1635,10 +2221,10 @@ Options:
 Rebuilds all secondary and primary indexes for C<$table_id> based on its schema definition:
 =over 4
 =item * Primary key index (C<.inx>) via C<set_readall>
-=item * Full-text search inverted indexes (C<_${blk}.src>) via C<set_search>
-=item * Inverted field match indexes (C<_${blk}.fld>) via C<set_fields>
-=item * Columnar facet filter forward indexes (C<_${blk}.fac>) via C<set_filters>
-=item * Monotonic binary pre-sorted record indexes (C<_${blk}.srt>) via C<set_sort>
+=item * Full-text search inverted indexes (C<.src>) via C<set_search>
+=item * Inverted field match indexes (C<.fld>) via C<set_fields>
+=item * Columnar facet filter forward indexes (C<.fac>) via C<set_filters>
+=item * Monotonic binary pre-sorted record indexes (within C<.inx>) via C<set_sort>
 =back
 
 If C<@records> is omitted, reads all records from the base table automatically.
@@ -1653,25 +2239,25 @@ Rebuilds the primary C<.inx> index file, populating C<keys> (compact binary pack
 
 =head2 set_search($table_id, [@records])
 
-Scans records, tokenizes text according to schema C<search_block>, and builds inverted keyword index files (C<_${blk}.src>).
+Scans records, tokenizes text according to schema C<search_block>, and builds inverted keyword index file (C<.src>).
 
   $tools->set_search("catalog_product");
 
 =head2 set_fields($table_id, [@records])
 
-Builds inverted exact match index files (C<_${blk}.fld>) for fields specified in schema C<match_block>.
+Builds inverted exact match index file (C<.fld>) for fields specified in schema C<match_block>.
 
   $tools->set_fields("catalog_product");
 
 =head2 set_filters($table_id, [@records])
 
-Builds columnar facet forward index files (C<_${blk}.fac>) and bidirectional string dictionaries (C<_${blk}.unq>) for blocks configured in schema C<facet_block>.
+Builds columnar facet forward index files (C<.fac>) and bidirectional string dictionary (C<.unq>) for blocks configured in schema C<facet_block>.
 
   $tools->set_filters("catalog_product");
 
 =head2 set_sort($table_id, [@records])
 
-Builds monotonic binary pre-sorted index files (C<_${blk}.srt>) according to schema C<sort_block>.
+Builds monotonic binary pre-sorted index sequences within C<.inx> (C<$blk:keys>) according to schema C<sort_block>.
 
   $tools->set_sort("catalog_product");
 

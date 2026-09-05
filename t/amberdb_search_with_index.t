@@ -29,7 +29,7 @@ my $adb = AmberDB->new(
 # SUBTEST 1: search_block tanımı ile search anahtarlarının (.src) oluşumu
 # ==============================================================================
 subtest '1. search_block Schema & Index Key File Generation' => sub {
-    plan tests => 10;
+    plan tests => 8;
 
     my $tbl = 'catalog_indexed';
     my $table_info = {
@@ -59,31 +59,27 @@ subtest '1. search_block Schema & Index Key File Generation' => sub {
     }
 
     my $table_path = $adb->table_path($tbl);
-    my $src2_path  = "${table_path}_2.src";
-    my $src3_path  = "${table_path}_3.src";
-    my $nosrc_path = "${table_path}_1.src";
+    my $src_path   = "${table_path}.src";
 
-    # Verify that .src index files exist for defined search blocks
-    ok( -e $src2_path, "Index file ${tbl}_2.src created on disk for title block" );
-    ok( -e $src3_path, "Index file ${tbl}_3.src created on disk for description block" );
-    ok( !-e $nosrc_path, "Non-search block (blk 1) does NOT have .src index file" );
+    # Verify that unified .src index file exists for defined search blocks
+    ok( -e $src_path, "Unified index file ${tbl}.src created on disk" );
 
     # Verify index keys and mapped record IDs inside .src index file
-    my ( $st2_kulaklik, @ids2_kulaklik ) = $adb->index_get( $src2_path, 'kulaklik' );
+    my ( $st2_kulaklik, @ids2_kulaklik ) = $adb->index_get( $src_path, '2:kulaklik' );
     is_deeply( [ sort { $a <=> $b } @ids2_kulaklik ], [ 1, 2, 5, 6 ],
-        "Index key 'kulaklik' in block 2 correctly maps to IDs 1, 2, 5, 6" );
+        "Index key '2:kulaklik' in unified .src correctly maps to IDs 1, 2, 5, 6" );
 
-    my ( $st2_sony, @ids2_sony ) = $adb->index_get( $src2_path, 'sony' );
+    my ( $st2_sony, @ids2_sony ) = $adb->index_get( $src_path, '2:sony' );
     is_deeply( [ sort { $a <=> $b } @ids2_sony ], [ 1, 4 ],
-        "Index key 'sony' in block 2 correctly maps to IDs 1, 4" );
+        "Index key '2:sony' in unified .src correctly maps to IDs 1, 4" );
 
-    my ( $st3_stereo, @ids3_stereo ) = $adb->index_get( $src3_path, 'stereo' );
+    my ( $st3_stereo, @ids3_stereo ) = $adb->index_get( $src_path, '3:stereo' );
     is_deeply( [ sort { $a <=> $b } @ids3_stereo ], [ 1, 4, 6 ],
-        "Index key 'stereo' in block 3 correctly maps to IDs 1, 4, 6" );
+        "Index key '3:stereo' in unified .src correctly maps to IDs 1, 4, 6" );
 
-    my ( $st3_bluetooth, @ids3_bluetooth ) = $adb->index_get( $src3_path, 'bluetooth' );
+    my ( $st3_bluetooth, @ids3_bluetooth ) = $adb->index_get( $src_path, '3:bluetooth' );
     is_deeply( [ sort { $a <=> $b } @ids3_bluetooth ], [ 1, 5 ],
-        "Index key 'bluetooth' in block 3 maps to IDs 1, 5" );
+        "Index key '3:bluetooth' in unified .src maps to IDs 1, 5" );
 
     # Basic search verification using search_table
     my @res_kulaklik = $adb->search_table( $tbl, 'kulaklık' );
@@ -104,8 +100,7 @@ subtest '2. insert_id, modify_id, delete_id Lifecycle & Search Verification' => 
 
     my $tbl = 'catalog_indexed';
     my $table_path = $adb->table_path($tbl);
-    my $src2_path  = "${table_path}_2.src";
-    my $src3_path  = "${table_path}_3.src";
+    my $src_path   = "${table_path}.src";
 
     # --- A) INSERT NEW RECORD ---
     # Insert new record 101
@@ -127,7 +122,7 @@ subtest '2. insert_id, modify_id, delete_id Lifecycle & Search Verification' => 
     is( scalar @res_mekanik, 1, "search_table finds 1 record for 'mekanik'" );
 
     # Verify ID 101 is in .src index files
-    my ( undef, @ids_klavye ) = $adb->index_get( $src3_path, 'klavye' );
+    my ( undef, @ids_klavye ) = $adb->index_get( $src_path, '3:klavye' );
     ok( ( grep { $_ == 101 } @ids_klavye ), "ID 101 present in block 3 .src index for 'klavye'" );
 
     # --- B) MODIFY RECORD ---
@@ -555,6 +550,25 @@ subtest '8. Dynamic Schema Modification at Runtime (table_attr)' => sub {
     # Searching barcode "8690001" matches Record 1
     my @s_barcode = $adb->search_table( $tbl, '8690001' );
     is( scalar @s_barcode, 1, "Barcode search '8690001' matches record 1" );
+};
+
+subtest '11. read_search with bin_crop and cross_block' => sub {
+    plan tests => 3;
+
+    my $tbl = 'test_rs_' . int( rand(100000) );
+    $adb->table_attr( $tbl, { record_index => 1, search_block => [ 1, 2 ] } );
+    $adb->insert_id( $tbl, 1, 'Inception Christopher Nolan', 'Sci-Fi Action 2010' );
+    $adb->insert_id( $tbl, 2, 'The Dark Knight', 'Action Batman 2008' );
+    $adb->insert_id( $tbl, 3, 'Interstellar', 'Sci-Fi Space 2014' );
+
+    my @res_b1 = $adb->read_search( $tbl, [ 1 ], 'Inception Nolan' );
+    is_deeply( \@res_b1, [ 1 ], 'read_search per-block matches record 1' );
+
+    my @res_cross = $adb->read_search( $tbl, [ 1, 2 ], 'Inception 2010', cross_block => 1 );
+    is_deeply( \@res_cross, [ 1 ], 'read_search cross-block matches record 1 across blocks 1 & 2' );
+
+    my @res_none = $adb->read_search( $tbl, [ 1, 2 ], 'NonExistentWord' );
+    is_deeply( \@res_none, [], 'read_search with no match returns empty' );
 };
 
 done_testing();

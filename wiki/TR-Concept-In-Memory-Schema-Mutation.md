@@ -42,8 +42,8 @@ Fiziksel Sema Dosyasi (schema/catalog_product.table)
 ## 3. Pratik Kod Ornegi
 
 ```perl
-# 1. Mevcut bir sema ozelligini sorgulama
-my $id_tipi = $adb->table_attr("catalog_product", "id_type");
+# 1. Mevcut sema niteligini oku
+my $record_index = $adb->table_attr("catalog_product", "record_index");
 
 # 2. Calisma aninda yumusak silmeyi acip arama bloklarini genisletme
 $adb->table_attr("catalog_product", {

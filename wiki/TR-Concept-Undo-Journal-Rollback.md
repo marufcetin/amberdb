@@ -63,7 +63,7 @@ eval {
     $adb->transact_end();
 };
 if ($@) {
-    # LIFO rollback mekanizmasi A Hesabinin bakiyesini eski haline geri dondurur
+    # Beklenmeyen bir hata olusursa transact_rollback ile islemi geri sar
     $adb->transact_rollback();
     warn "Transfer iptal edildi: $@\n";
 }
@@ -75,6 +75,8 @@ if ($@) {
 
 - [Kavram: Strict 2PL Kilitleri](TR-Concept-Strict-2PL-Locking)
 - [Metot: transact_start](TR-Method-transact_start)
+- [Metot: transact_error](TR-Method-transact_error)
+- [Metot: transact_end](TR-Method-transact_end)
 - [Metot: transact_rollback](TR-Method-transact_rollback)
 - [Metot: transact_recover](TR-Method-transact_recover)
 - [Dosya: .txn (Islem Gunlugu)](TR-File-txn)

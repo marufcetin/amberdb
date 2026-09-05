@@ -85,20 +85,20 @@ subtest "2. Native Database Archive Dump (.amberdb)" => sub {
     print $dbfh "{\n\tname => \"Product Catalog Group\",\n\ttype => 0,\n\tyear => 0,\n\tsection => 0,\n}\n";
     close $dbfh;
 
-    open my $tblfh, ">", "$schema_dir/catalog_products.table" or die "Cannot create catalog_products.table: $!";
-    print $tblfh "{\n\tname         => \"catalog_products\",\n\trecord_index => 1,\n\tsearch_block => [ 1, 2 ],\n\tmatch_block  => [ 2 ],\n}\n";
+    open my $tblfh, ">", "$schema_dir/catalog_product.table" or die "Cannot create catalog_product.table: $!";
+    print $tblfh "{\n\tname         => \"catalog_product\",\n\trecord_index => 1,\n\tsearch_block => [ 1, 2 ],\n\tmatch_block  => [ 2 ],\n}\n";
     close $tblfh;
 
     open my $ordfh, ">", "$schema_dir/orders.table" or die "Cannot create orders.table: $!";
     print $ordfh "{\n\tname         => \"orders\",\n\trecord_index => 1,\n}\n";
     close $ordfh;
 
-    $adb->insert_id( 'catalog_products', undef, 'Laptop Pro', 'Electronics', 15000 );
-    $adb->insert_id( 'catalog_products', undef, 'Desk Lamp', 'Furniture', 350 );
-    $adb->insert_id( 'catalog_products', undef, 'Office Chair', 'Furniture', 1200 );
+    $adb->insert_id( 'catalog_product', undef, 'Laptop Pro', 'Electronics', 15000 );
+    $adb->insert_id( 'catalog_product', undef, 'Desk Lamp', 'Furniture', 350 );
+    $adb->insert_id( 'catalog_product', undef, 'Office Chair', 'Furniture', 1200 );
 
     # Create a unique/dictionary index (.unq) for block 2
-    $adb->insert_strs( 'catalog_products', 2, [ 10, 'Electronics' ], [ 20, 'Furniture' ] );
+    $adb->insert_strs( 'catalog_product', 2, [ 10, 'Electronics' ], [ 20, 'Furniture' ] );
 
     $adb->insert_id( 'orders', undef, 'Alice', 15350 );
     $adb->insert_id( 'orders', undef, 'Bob', 1200 );
@@ -117,8 +117,8 @@ subtest "2. Native Database Archive Dump (.amberdb)" => sub {
     is( $manifest->{format}, 'AmberDB Archive', "Manifest format is 'AmberDB Archive'" );
     is( $manifest->{format_version}, 1, "Format version is 1" );
     is( $manifest->{dbases}->{catalog}, 'schema/catalog.dbase', "Manifest records catalog.dbase" );
-    ok( exists $manifest->{tables}->{catalog_products}, "Manifest contains catalog_products table metadata" );
-    is( $manifest->{tables}->{catalog_products}->{records}, 3, "Manifest records 3 records for catalog_products" );
+    ok( exists $manifest->{tables}->{catalog_product}, "Manifest contains catalog_product table metadata" );
+    is( $manifest->{tables}->{catalog_product}->{records}, 3, "Manifest records 3 records for catalog_product" );
 };
 
 # =========================================================================
@@ -134,9 +134,9 @@ subtest "3. Archive Package Inspection & Integrity" => sub {
     my @files = $tar->list_files();
     ok( grep { $_ eq 'manifest.json' } @files, "Archive contains manifest.json" );
     ok( grep { $_ eq 'schema/catalog.dbase' } @files, "Archive contains schema/catalog.dbase" );
-    ok( grep { $_ eq 'schema/catalog_products.table' } @files, "Archive contains schema/catalog_products.table" );
-    ok( grep { $_ eq 'tables/catalog_products.db' } @files, "Archive contains tables/catalog_products.db" );
-    ok( grep { $_ eq 'tables/catalog_products_2.unq' } @files, "Archive contains tables/catalog_products_2.unq" );
+    ok( grep { $_ eq 'schema/catalog_product.table' } @files, "Archive contains schema/catalog_product.table" );
+    ok( grep { $_ eq 'tables/catalog_product.db' } @files, "Archive contains tables/catalog_product.db" );
+    ok( grep { $_ eq 'tables/catalog_product.unq' } @files, "Archive contains tables/catalog_product.unq" );
 
     # Verify that derived index files are NOT packaged in the archive
     my @inx_files = grep { /\.inx$|\.src$|\.fac$|\.fld$|\.srt$/ } @files;
@@ -145,7 +145,7 @@ subtest "3. Archive Package Inspection & Integrity" => sub {
     # Validate embedded manifest checksum
     my $manifest_content = $tar->get_content('manifest.json');
     my $manifest = JSON::PP::decode_json($manifest_content);
-    my $sha = $manifest->{tables}->{catalog_products}->{sha256}->{'tables/catalog_products.db'};
+    my $sha = $manifest->{tables}->{catalog_product}->{sha256}->{'tables/catalog_product.db'};
     ok( defined $sha && length($sha) == 64, "Manifest contains valid 64-character SHA-256 hash" );
 };
 
@@ -181,28 +181,28 @@ subtest "4. Database Restore and Index Reconstruction" => sub {
     # 4.4 Verify .dbase, .table, and .unq files were restored
     my $stage_schema_dir = $stage_adb->path('schema_dir') || "$stagedir/schema";
     ok( -e "$stage_schema_dir/catalog.dbase", "catalog.dbase restored to schema directory" );
-    ok( -e "$stagedir/tables/catalog_products_2.unq", "catalog_products_2.unq restored to tables directory" );
+    ok( -e "$stagedir/tables/catalog_product.unq", "catalog_product.unq restored to tables directory" );
 
     my $restored_dbase = $stage_adb->dbase_info('catalog');
     ok( defined $restored_dbase, "catalog dbase_info loaded" );
     is( $restored_dbase->{name}, 'Product Catalog Group', "dbase name matches original" );
 
-    my $restored_schema = $stage_adb->table_info('catalog_products');
-    ok( defined $restored_schema, "catalog_products schema restored" );
-    is( $restored_schema->{name}, 'catalog_products', "Schema name is 'catalog_products'" );
+    my $restored_schema = $stage_adb->table_info('catalog_product');
+    ok( defined $restored_schema, "catalog_product schema restored" );
+    is( $restored_schema->{name}, 'catalog_product', "Schema name is 'catalog_product'" );
 
     # 4.5 Verify record count and read_id
-    is( scalar( $stage_adb->table_keys('catalog_products') ), 3, "catalog_products table count is 3" );
-    my @rec1 = $stage_adb->read_id( 'catalog_products', 1 );
+    is( scalar( $stage_adb->table_keys('catalog_product') ), 3, "catalog_product table count is 3" );
+    my @rec1 = $stage_adb->read_id( 'catalog_product', 1 );
     is( $rec1[1], 'Laptop Pro', "Record 1 name is 'Laptop Pro'" );
     is( $rec1[2], 'Electronics', "Record 1 category is 'Electronics'" );
 
     # 4.6 Verify match index (.fld) was reconstructed and works
-    my @matched = $stage_adb->field_fetch( 'catalog_products', 2, 'Furniture' );
+    my @matched = $stage_adb->field_fetch( 'catalog_product', 2, 'Furniture' );
     is( scalar(@matched), 2, "field_fetch('Furniture') returns 2 records after restore" );
 
     # 4.7 Verify full-text search index (.src) was reconstructed and works
-    my @search_results = $stage_adb->search_table( 'catalog_products', 'Laptop' );
+    my @search_results = $stage_adb->search_table( 'catalog_product', 'Laptop' );
     is( scalar(@search_results), 1, "search_table('Laptop') returns 1 result" );
     is( $search_results[0]->[0], 1, "search_table returned record ID 1" );
     is( $search_results[0]->[1], 'Laptop Pro', "search_table returned matching product name" );

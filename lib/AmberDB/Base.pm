@@ -6,6 +6,7 @@ use Encode qw(is_utf8 encode decode);
 use Carp qw(croak cluck);
 use parent qw(AmberDB::Locale AmberDB::Array);
 
+our $VERSION = '5.24.0';
 my $CREATED = '2014-12-20';
 
 # ------------------------------------------------
@@ -19,6 +20,120 @@ sub new {
     return $self;
 }
 
+# =====================================================================
+# RECORD ENCODING / DECODING — ABR v1 (Amber Binary Record)
+# Native Pure Perl Binary Format with Zero CPAN Dependencies
+# Format Specification:
+#   Header:      \x00 A B R \x01  (5 bytes: NUL + Magic "ABR" + Version 1)
+#   Mode:        1 byte (0x00 = multiple fields, 0x01 = single root reference)
+#   Payload:
+#     Mode 0x00: 2 bytes unsigned short "n" (field count) + field nodes
+#     Mode 0x01: single root node
+#   Node Types (1 byte tag):
+#     0x00 -> UNDEF
+#     0x01 -> SCALAR_RAW  (4-byte "N" length + raw octets, numbers/ASCII/binary)
+#     0x02 -> SCALAR_UTF8 (4-byte "N" length + UTF-8 octets, decoded with utf8::decode)
+#     0x03 -> ARRAY       (2-byte "n" count + child nodes)
+#     0x04 -> HASH        (2-byte "n" pair count + 2-byte "n" key len + UTF-8 key + child value node)
+# =====================================================================
+
+sub _abr_encode_node {
+    my ( $self, $node, $depth ) = @_;
+    die "AmberDB ABR: Max nesting depth exceeded (>32)\n" if ( $depth // 0 ) > 32;
+
+    if ( !defined $node ) {
+        return "\x00";
+    }
+
+    my $ref = ref($node);
+    if ( !$ref ) {
+        my $is_utf8 = utf8::is_utf8($node);
+        my $bytes   = "$node";
+        utf8::encode($bytes) if $is_utf8;
+        return ( $is_utf8 ? "\x02" : "\x01" ) . pack( "N", length($bytes) ) . $bytes;
+    }
+    elsif ( $ref eq 'ARRAY' ) {
+        my $cnt = scalar @$node;
+        my $out = "\x03" . pack( "n", $cnt );
+        for my $item (@$node) {
+            $out .= $self->_abr_encode_node( $item, ( $depth // 0 ) + 1 );
+        }
+        return $out;
+    }
+    elsif ( $ref eq 'HASH' ) {
+        my @keys = sort keys %$node;
+        my $cnt  = scalar @keys;
+        my $out  = "\x04" . pack( "n", $cnt );
+        for my $k (@keys) {
+            my $k_bytes = "$k";
+            my $k_utf8  = utf8::is_utf8($k_bytes);
+            utf8::encode($k_bytes) if $k_utf8;
+            $out .= pack( "n", length($k_bytes) ) . $k_bytes;
+            $out .= $self->_abr_encode_node( $node->{$k}, ( $depth // 0 ) + 1 );
+        }
+        return $out;
+    }
+    else {
+        my $str = "$node";
+        return "\x01" . pack( "N", length($str) ) . $str;
+    }
+}
+
+sub _abr_decode_node {
+    my ( $self, $dref, $pref, $depth ) = @_;
+    die "AmberDB ABR: Max nesting depth exceeded (>32)\n" if ( $depth // 0 ) > 32;
+
+    return undef if $$pref >= length($$dref);
+    my $tag = substr( $$dref, $$pref++, 1 );
+    return undef if !defined $tag || $tag eq "\x00";
+
+    if ( $tag eq "\x01" || $tag eq "\x02" ) {
+        # SCALAR_RAW / SCALAR_UTF8
+        return undef if $$pref + 4 > length($$dref);
+        my $len = unpack( "N", substr( $$dref, $$pref, 4 ) );
+        $$pref += 4;
+        return undef unless defined $len;
+        return undef if $$pref + $len > length($$dref);
+        my $val = substr( $$dref, $$pref, $len );
+        $$pref += $len;
+        utf8::decode($val) if $tag eq "\x02";
+        return $val;
+    }
+    elsif ( $tag eq "\x03" ) {
+        # ARRAY
+        return undef if $$pref + 2 > length($$dref);
+        my $cnt = unpack( "n", substr( $$dref, $$pref, 2 ) );
+        $$pref += 2;
+        return undef unless defined $cnt;
+        my @arr;
+        for ( 1 .. $cnt ) {
+            push @arr, $self->_abr_decode_node( $dref, $pref, ( $depth // 0 ) + 1 );
+        }
+        return \@arr;
+    }
+    elsif ( $tag eq "\x04" ) {
+        # HASH
+        return undef if $$pref + 2 > length($$dref);
+        my $cnt = unpack( "n", substr( $$dref, $$pref, 2 ) );
+        $$pref += 2;
+        return undef unless defined $cnt;
+        my %h;
+        for ( 1 .. $cnt ) {
+            return undef if $$pref + 2 > length($$dref);
+            my $klen = unpack( "n", substr( $$dref, $$pref, 2 ) );
+            $$pref += 2;
+            return undef unless defined $klen;
+            return undef if $$pref + $klen > length($$dref);
+            my $k = substr( $$dref, $$pref, $klen );
+            $$pref += $klen;
+            utf8::decode($k);
+            $h{$k} = $self->_abr_decode_node( $dref, $pref, ( $depth // 0 ) + 1 );
+        }
+        return \%h;
+    }
+    return undef;
+}
+
 # my $record  = $adb->db_encode(@fields);
 # my $record  = $adb->db_encode(\%hash_data);
 # ------------------------------------------------
@@ -26,42 +141,54 @@ sub db_encode {
     my ( $self, @fields ) = @_;
     return unless @fields;
 
-    my $encode_node;
-    $encode_node = sub {
-        my ($node) = @_;
-
-        if ( ref($node) eq "ARRAY" ) {
-            my @escaped = map { ref($_) ? $encode_node->($_) : $self->char_escape($_) } @$node;
-            return "ARRAY:" . join( "|", @escaped );
-        }
-        elsif ( ref($node) eq "HASH" ) {
-            my @escaped_pairs;
-            foreach my $k ( sort keys %$node ) {
-                my $safe_k = $self->char_escape($k);
-                my $safe_v = ref( $node->{$k} ) ? $encode_node->( $node->{$k} ) : $self->char_escape( $node->{$k} );
-                push @escaped_pairs, "$safe_k=$safe_v";
-            }
-            return "HASH:" . join( "|", @escaped_pairs );
-        }
-        else {
-            return $self->char_escape($node);
-        }
-    };
-
     # ROOT CHECK: If single item passed and it is a reference
     if ( @fields == 1 && ref( $fields[0] ) ) {
-        return $encode_node->( $fields[0] );
+        return "\x00ABR\x05\x01" . $self->_abr_encode_node( $fields[0], 0 );
     }
 
-    # Process each item in root directory list and join with TAB
-    my @encoded = map { ref($_) ? $encode_node->($_) : $self->char_escape($_) } @fields;
-    return join( "\t", @encoded );
+    my $out = "\x00ABR\x05\x00" . pack( "n", scalar @fields );
+    for my $f (@fields) {
+        $out .= $self->_abr_encode_node( $f, 0 );
+    }
+    return $out;
 }
 
 # my @fields   = $adb->db_decode($record);
 # my $hash_ref = $adb->db_decode($record);
 # ------------------------------------------------
 sub db_decode {
+    my ( $self, $record ) = @_;
+    return unless defined $record && length $record;
+
+    # ABR Binary Check (5-byte magic signature \x00ABR\x05 or \x00ABR\x01)
+    if ( length($record) >= 7 && substr( $record, 0, 4 ) eq "\x00ABR" && ( substr( $record, 4, 1 ) eq "\x05" || substr( $record, 4, 1 ) eq "\x01" ) ) {
+        my $mode = substr( $record, 5, 1 );
+        my $pos  = 6;
+
+        if ( $mode eq "\x01" ) {
+            # Single root reference
+            return $self->_abr_decode_node( \$record, \$pos, 0 );
+        }
+        elsif ( $mode eq "\x00" ) {
+            # Multiple fields
+            my $fcnt = unpack( "n", substr( $record, $pos, 2 ) );
+            $pos += 2;
+            my @fields;
+            for ( 1 .. $fcnt ) {
+                push @fields, $self->_abr_decode_node( \$record, \$pos, 0 );
+            }
+            return wantarray ? @fields : ( @fields == 1 ? $fields[0] : \@fields );
+        }
+    }
+
+    # TRANSPARENT FALLBACK: Legacy Text Format Decoding
+    return $self->_db_decode_legacy($record);
+}
+
+# ------------------------------------------------
+# _db_decode_legacy: Fallback decoder for historical text-based records
+# ------------------------------------------------
+sub _db_decode_legacy {
     my ( $self, $record ) = @_;
     return unless defined $record && length $record;
 
@@ -93,6 +220,9 @@ sub db_decode {
             }
             return \%hash;
         }
+        elsif ( $field =~ /\\T/ ) {
+            return [ map { $self->char_unescape($_) } split( /\\T/, $field ) ];
+        }
         else {
             return $self->char_unescape($field);
         }
@@ -101,6 +231,43 @@ sub db_decode {
     my @raw_fields = split /\t/, $record;
     my @res = map { $decode_node->($_) } @raw_fields;
     return wantarray ? @res : ( @res == 1 ? $res[0] : \@res );
+}
+
+# ------------------------------------------------
+# _db_encode_legacy: Legacy text encoder for CSV exports and text-mode pipelines
+# ------------------------------------------------
+sub _db_encode_legacy {
+    my ( $self, @fields ) = @_;
+    return unless @fields;
+
+    my $encode_node;
+    $encode_node = sub {
+        my ($node) = @_;
+
+        if ( ref($node) eq "ARRAY" ) {
+            my @escaped = map { ref($_) ? $encode_node->($_) : $self->char_escape($_) } @$node;
+            return "ARRAY:" . join( "|", @escaped );
+        }
+        elsif ( ref($node) eq "HASH" ) {
+            my @escaped_pairs;
+            foreach my $k ( sort keys %$node ) {
+                my $safe_k = $self->char_escape($k);
+                my $safe_v = ref( $node->{$k} ) ? $encode_node->( $node->{$k} ) : $self->char_escape( $node->{$k} );
+                push @escaped_pairs, "$safe_k=$safe_v";
+            }
+            return "HASH:" . join( "|", @escaped_pairs );
+        }
+        else {
+            return $self->char_escape($node);
+        }
+    };
+
+    if ( @fields == 1 && ref( $fields[0] ) ) {
+        return $encode_node->( $fields[0] );
+    }
+
+    my @encoded = map { ref($_) ? $encode_node->($_) : $self->char_escape($_) } @fields;
+    return join( "\t", @encoded );
 }
 
 # ------------------------------------------------
@@ -194,41 +361,141 @@ sub get_words {
 
     $string or return;
 
-    $string = $self->utf_decode($string);
-
     if ( ref($string) eq 'ARRAY' ) {
         $string = join " ", @$string;
     }
 
     my $is_write = ( $action && ( $action eq "write" || $action eq "1" ) ) ? 1 : 0;
-    my ( $minchar, %jump, %words );
 
-    # Get stop_word and min_char settings if table provided
-    if ( $table ) {
-        my $table_info = $self->table_info($table);
-        if ( $table_info->{stop_word} ) {
-            my $stop_word = $table_info->{stop_word};
-            $stop_word = $self->to_ascii($stop_word);
-            $stop_word = $self->trim_space($stop_word);
-            $stop_word = lc($stop_word);
-            %jump      = map { $_ => 1 } split /\s+/, $stop_word;
+    # 1. En basta kelimeleri split et
+    my @tokens = split /\s+/, $string;
+    return () unless @tokens;
+
+    my %words;
+    my ( $minchar, %jump, $has_meta );
+
+    foreach my $str (@tokens) {
+        next unless length $str;
+
+        # 2. Kelime bazinda cache kontrolu: $self->get_cache('gw', $rawword) => islenmis
+        my $str_val = $self->get_cache( 'gw', $str );
+
+        if ( !defined $str_val ) {
+            # Cache'in altina alinan minchar ve stop_word ayarlari
+            if ( !$has_meta ) {
+                if ( $table ) {
+                    my $table_info = $self->table_info($table);
+                    if ( $table_info->{stop_word} ) {
+                        my $stop_word = $table_info->{stop_word};
+                        $stop_word = $self->to_ascii($stop_word);
+                        $stop_word = $self->trim_space($stop_word);
+                        $stop_word = lc($stop_word);
+                        %jump      = map { $_ => 1 } split /\s+/, $stop_word;
+                    }
+                    $minchar = $table_info->{min_char} || 2;
+                }
+                else {
+                    $minchar = 2;
+                }
+                $has_meta = 1;
+            }
+
+            # Eger kelime minchar'dan kisa ise bosluk olarak cachele
+            if ( $minchar && length($str) < $minchar ) {
+                $self->set_cache( 'gw', $str, '' );
+                next;
+            }
+
+            $str_val = $self->normalize_word( $str, $is_write );
+
+            # mincharlari islerken onlari da bosluk olarak cachele
+            my @sub;
+            foreach my $w ( split /\s+/, $str_val ) {
+                next unless length $w;
+                if ( $minchar && length($w) < $minchar ) {
+                    $self->set_cache( 'gw', $w, '' );
+                    next;
+                }
+                push @sub, $w;
+            }
+            $str_val = join( " ", @sub );
+            $self->set_cache( 'gw', $str, $str_val );
         }
-        $minchar = $table_info->{min_char} || 2;
-    }
 
-    foreach my $str ( split /\s+/, $string ) {
-        next if !$str;
-        my $str_val = $self->normalize_word( $str, $is_write );
+        next unless length $str_val;
+
+        if ( $table && !$has_meta ) {
+            my $table_info = $self->table_info($table);
+            if ( $table_info->{stop_word} ) {
+                my $stop_word = $table_info->{stop_word};
+                $stop_word = $self->to_ascii($stop_word);
+                $stop_word = $self->trim_space($stop_word);
+                $stop_word = lc($stop_word);
+                %jump      = map { $_ => 1 } split /\s+/, $stop_word;
+            }
+            $has_meta = 1;
+        }
 
         foreach my $w ( split /\s+/, $str_val ) {
-            next if !$w;
-            next if ( $minchar && length($w) < $minchar );
-            next if $jump{$w};
+            next unless length $w;
+            if ( $jump{$w} ) {
+                $self->set_cache( 'gw', $w, '' );
+                $self->set_cache( 'gw', $str, '' ) if $str eq $w;
+                next;
+            }
             $words{$w} = $w;
         }
     }
 
     return %words;
+}
+
+# ============================================================================
+# In-Memory L1 Process RAM Cache ($self->{_cache})
+# ============================================================================
+
+# Gets value or group from in-memory L1 cache:
+#   my $val  = $adb->get_cache( $group, $key );
+#   my $hash = $adb->get_cache( $group );
+# ------------------------------------------------
+sub get_cache {
+    my ( $self, $group, $key ) = @_;
+    return unless defined $group && $group ne '';
+    return defined $key ? $self->{_cache}{$group}{$key} : $self->{_cache}{$group};
+}
+
+# Sets, updates, or deletes value/group in in-memory L1 cache:
+# Set:
+#   $adb->set_cache( $group, $key, $val );
+# Delete key:
+#   $adb->set_cache( $group, $key );          # or undef val
+# Delete entire group / table:
+#   $adb->set_cache( $group );
+# Reset all in-memory cache:
+#   $adb->set_cache();
+# ------------------------------------------------
+sub set_cache {
+    my ( $self, $group, $key, $val ) = @_;
+
+    # Reset all cache if called without arguments
+    if ( !defined $group || $group eq '' ) {
+        %{ $self->{_cache} } = () if $self->{_cache};
+        return 1;
+    }
+
+    # If key is omitted, delete entire group / table
+    if ( !defined $key || $key eq '' ) {
+        delete $self->{_cache}{$group};
+        return 1;
+    }
+
+    # If val is omitted or undef, delete key
+    if ( !defined $val ) {
+        delete $self->{_cache}{$group}{$key};
+        return 1;
+    }
+
+    return $self->{_cache}{$group}{$key} = $val;
 }
 
 # Normalizes and validates field values according to schema block definitions prior to encoding/writing.
@@ -1243,6 +1510,341 @@ sub bin_decode {
     return ( $total, @ids );
 }
 
+# $adb->bin_crop( \@group1, \@group2, ... )
+# $adb->bin_crop( { mode => 'and|or', start => 0, limit => 20, sort => 'asc|desc' }, \@group1, \@group2, ... )
+# $adb->bin_crop( 'and|or', \@group1, \@group2, ... )
+# Intersects or unions multiple binary ID buffer groups using Shortest-First Candidate Pruning.
+# Returns an array of surviving/combined record IDs.
+sub bin_crop {
+    my $self = shift;
+
+    return () unless @_;
+
+    # 1. Parse optional %opts / $mode parameter
+    my %opts;
+    if ( ref( $_[0] ) eq 'HASH' ) {
+        %opts = %{ shift @_ };
+    }
+    elsif ( defined $_[0] && !ref( $_[0] ) && $_[0] =~ /^(and|or)$/i ) {
+        $opts{mode} = lc( shift @_ );
+    }
+
+    my $mode  = lc( $opts{mode}  // 'and' );
+    my $start = $opts{start}     // 0;
+    my $limit = $opts{limit}     // 0;
+    my @groups = @_;
+
+    return () unless @groups;
+
+    # Collect valid raw buffers for each group
+    my @stats;
+    for my $g (@groups) {
+        next unless defined $g;
+        my @raws = ref($g) eq 'ARRAY' ? @$g : ($g);
+        my $total_len = 0;
+        my @valid_raws;
+        for my $raw (@raws) {
+            if ( defined $raw && length($raw) >= 8 ) {
+                $total_len += length($raw);
+                push @valid_raws, $raw;
+            }
+        }
+        # In AND mode: if any group has 0 matches, intersection is empty!
+        if ( $mode eq 'and' && !@valid_raws ) {
+            return ();
+        }
+        next unless @valid_raws;
+
+        push @stats, {
+            count => int( $total_len / 8 ),
+            raws  => \@valid_raws,
+        };
+    }
+
+    return () unless @stats;
+
+    my @result_ids;
+
+    # -------------------------------------------------------------------------
+    # OR MODE: Union across all groups
+    # -------------------------------------------------------------------------
+    if ( $mode eq 'or' ) {
+        if ( @stats == 1 && @{ $stats[0]{raws} } == 1 ) {
+            my ( undef, @ids ) = $self->bin_decode( $stats[0]{raws}[0] );
+            @result_ids = @ids;
+        }
+        else {
+            my %seen;
+            for my $st (@stats) {
+                for my $raw ( @{ $st->{raws} } ) {
+                    my ( undef, @ids ) = $self->bin_decode($raw);
+                    $seen{$_} = 1 for @ids;
+                }
+            }
+            @result_ids = keys %seen;
+        }
+    }
+    # -------------------------------------------------------------------------
+    # AND MODE: Shortest-First Candidate Pruning with Binary Index Leaping
+    # -------------------------------------------------------------------------
+    else {
+        # If only 1 group, simply decode and return unique IDs
+        if ( @stats == 1 ) {
+            if ( @{ $stats[0]{raws} } == 1 ) {
+                my ( undef, @ids ) = $self->bin_decode( $stats[0]{raws}[0] );
+                @result_ids = @ids;
+            }
+            else {
+                my %seen;
+                for my $raw ( @{ $stats[0]{raws} } ) {
+                    my ( undef, @ids ) = $self->bin_decode($raw);
+                    $seen{$_} = 1 for @ids;
+                }
+                @result_ids = keys %seen;
+            }
+        }
+        else {
+            # Sort groups ascending by count (Shortest Group First)
+            @stats = sort { $a->{count} <=> $b->{count} } @stats;
+
+            # Base candidate map from the smallest group
+            my $first = shift @stats;
+            my %candidate_map;
+            for my $raw ( @{ $first->{raws} } ) {
+                my ( undef, @ids ) = $self->bin_decode($raw);
+                $candidate_map{$_} = 1 for @ids;
+            }
+
+            # Adaptive Candidate Pruning: choose between unpack-hash probe and binary index leaping
+            for my $st (@stats) {
+                last unless %candidate_map;
+                my %survivors;
+                my $c_count = scalar keys %candidate_map;
+
+                for my $raw ( @{ $st->{raws} } ) {
+                    my $buf_count = int( length($raw) / 8 );
+
+                    if ( $buf_count <= $c_count ) {
+                        # Buffer is smaller: unpack IDs and check candidate hash in O(buf_count)
+                        my @b_ids = unpack( "Q>*", $raw );
+                        for my $bid (@b_ids) {
+                            $survivors{$bid} = 1 if $candidate_map{$bid};
+                        }
+                    }
+                    else {
+                        # Candidates are fewer: probe sorted 8-byte aligned buffer via O(log N) binary search
+                        # Guaranteed zero byte-alignment collisions and instant sub-millisecond pruning
+                        for my $cid ( keys %candidate_map ) {
+                            next if $survivors{$cid};
+                            my $target_bytes = pack( "Q>", $cid );
+                            my ( $low, $high ) = ( 0, $buf_count - 1 );
+                            while ( $low <= $high ) {
+                                my $mid = int( ( $low + $high ) / 2 );
+                                my $mid_bytes = substr( $raw, $mid * 8, 8 );
+                                if ( $mid_bytes eq $target_bytes ) {
+                                    $survivors{$cid} = 1;
+                                    last;
+                                }
+                                elsif ( $mid_bytes lt $target_bytes ) {
+                                    $low = $mid + 1;
+                                }
+                                else {
+                                    $high = $mid - 1;
+                                }
+                            }
+                        }
+                    }
+                }
+                %candidate_map = %survivors;
+            }
+            @result_ids = keys %candidate_map;
+        }
+    }
+
+    # -------------------------------------------------------------------------
+    # OPTIONAL SORT & PAGINATION (start / limit)
+    # -------------------------------------------------------------------------
+    if ( $opts{sort} && $opts{sort} =~ /^(asc|desc)$/i ) {
+        my $s = lc( $opts{sort} );
+        @result_ids = ( $s eq 'desc' )
+            ? sort { $b <=> $a } @result_ids
+            : sort { $a <=> $b } @result_ids;
+    }
+
+    if ( $limit && $limit > 0 ) {
+        my $total = scalar @result_ids;
+        if ( $start >= $total ) {
+            return ();
+        }
+        my $end = $start + $limit;
+        $end = $total if $end > $total;
+        @result_ids = @result_ids[ $start .. ( $end - 1 ) ];
+    }
+
+    return @result_ids;
+}
+
+# $updated_buf = $adb->bin_add($buffer, $rids)
+# Adds one or more record IDs (ARRAY ref or scalar) into 8-byte packed binary buffer.
+# Guarantees no duplicates: skips IDs already present in $buffer.
+# Appends new packed IDs directly with zero decode/encode overhead.
+# ------------------------------------------------
+sub bin_add {
+    my ( $self, $buffer, $new_rids ) = @_;
+
+    return $buffer // '' unless defined $new_rids;
+
+    my @ids = ref($new_rids) eq 'ARRAY' ? @$new_rids : ($new_rids);
+    return $buffer // '' unless @ids;
+
+    $buffer //= '';
+
+    # Fast path when existing buffer is empty
+    if ( length($buffer) < 8 ) {
+        my %seen;
+        my @valid = grep { defined && /^\d+$/ && !$seen{$_}++ } @ids;
+        return @valid ? pack( "(Q>)*", @valid ) : '';
+    }
+
+    my %seen_in_input;
+    for my $id (@ids) {
+        next unless defined $id && $id =~ /^\d+$/;
+        next if $seen_in_input{$id}++;
+
+        my $target_bytes = pack( "Q>", $id );
+        my $pos = index( $buffer, $target_bytes );
+        while ( $pos != -1 && ( $pos % 8 != 0 ) ) {
+            $pos = index( $buffer, $target_bytes, $pos + 1 );
+        }
+        if ( $pos == -1 ) {
+            $buffer .= $target_bytes;
+        }
+    }
+
+    return $buffer;
+}
+
+# $updated_buf = $adb->bin_punch($buffer, $del_rids)
+# Removes one or more record IDs (ARRAY ref or scalar) from 8-byte packed binary buffer.
+# Uses O(log N) binary search on sorted portions + 8-byte aligned index() fallback.
+# Modifies buffer via substr with zero decode/unpack overhead.
+# ------------------------------------------------
+sub bin_punch {
+    my ( $self, $buffer, $del_rids ) = @_;
+
+    return '' unless defined $buffer && length($buffer) >= 8;
+    return $buffer unless defined $del_rids;
+
+    my @del_list = ref($del_rids) eq 'ARRAY' ? @$del_rids : ($del_rids);
+    return $buffer unless @del_list;
+
+    # Filter numeric IDs; sort descending to optimize deletion from sorted sequences
+    my @sorted_del = sort { $b <=> $a } grep { defined && /^\d+$/ } @del_list;
+    return $buffer unless @sorted_del;
+
+    for my $del_id (@sorted_del) {
+        my $len = length($buffer);
+        last if $len < 8;
+
+        my $target_bytes = pack( "Q>", $del_id );
+        my ( $low, $high ) = ( 0, int( $len / 8 ) - 1 );
+        my $found = 0;
+
+        # 1. Fast O(log N) binary search for sorted buffers
+        while ( $low <= $high ) {
+            my $mid = int( ( $low + $high ) / 2 );
+            my $mid_bytes = substr( $buffer, $mid * 8, 8 );
+            if ( $mid_bytes eq $target_bytes ) {
+                substr( $buffer, $mid * 8, 8, "" );
+                $found = 1;
+                last;
+            }
+            elsif ( $mid_bytes lt $target_bytes ) {
+                $low = $mid + 1;
+            }
+            else {
+                $high = $mid - 1;
+            }
+        }
+
+        # 2. Fallback: linear index() scan with 8-byte boundary alignment
+        if ( !$found ) {
+            my $pos = index( $buffer, $target_bytes );
+            while ( $pos >= 0 ) {
+                if ( $pos % 8 == 0 ) {
+                    substr( $buffer, $pos, 8, "" );
+                    $pos = index( $buffer, $target_bytes, $pos );
+                }
+                else {
+                    $pos = index( $buffer, $target_bytes, $pos + 1 );
+                }
+            }
+        }
+    }
+
+    return $buffer;
+}
+
+# $found = $adb->bin_find($buffer, $rid)
+# Returns 1 if $rid exists in 8-byte binary buffer, 0 otherwise.
+# ------------------------------------------------
+sub bin_find {
+    my ( $self, $buffer, $rid ) = @_;
+
+    return 0 unless defined $buffer && length($buffer) >= 8 && defined $rid && $rid =~ /^\d+$/;
+
+    my $target_bytes = pack( "Q>", $rid );
+    my $len = length($buffer);
+    my ( $low, $high ) = ( 0, int( $len / 8 ) - 1 );
+
+    # Try bsearch
+    while ( $low <= $high ) {
+        my $mid = int( ( $low + $high ) / 2 );
+        my $mid_bytes = substr( $buffer, $mid * 8, 8 );
+        if ( $mid_bytes eq $target_bytes ) {
+            return 1;
+        }
+        elsif ( $mid_bytes lt $target_bytes ) {
+            $low = $mid + 1;
+        }
+        else {
+            $high = $mid - 1;
+        }
+    }
+
+    # Fallback aligned index()
+    my $pos = index( $buffer, $target_bytes );
+    while ( $pos != -1 && ( $pos % 8 != 0 ) ) {
+        $pos = index( $buffer, $target_bytes, $pos + 1 );
+    }
+
+    return ( $pos != -1 ) ? 1 : 0;
+}
+
+# $sorted_buf = $adb->bin_sort($buffer)
+# Sorts 8-byte big-endian binary buffer in ascending order.
+# Big-endian byte order guarantees binary collation (cmp) == numeric order (<=>).
+# Executes entirely at C level via unpack('(a8)*') with zero numeric conversion.
+# ------------------------------------------------
+sub bin_sort {
+    my ( $self, $buffer ) = @_;
+
+    return '' unless defined $buffer && length($buffer) >= 8;
+    return $buffer if length($buffer) == 8;
+
+    return join( '', sort unpack( "(a8)*", $buffer ) );
+}
+
+# $count = $adb->bin_count($buffer)
+# Returns record count in 8-byte binary buffer.
+# ------------------------------------------------
+sub bin_count {
+    my ( $self, $buffer ) = @_;
+
+    return 0 unless defined $buffer && length($buffer) >= 8;
+    return int( length($buffer) / 8 );
+}
+
 1;
 
 
@@ -1266,8 +1868,8 @@ AmberDB::Base - Core serialization, schema resolution, binary packing, file lock
   my $table_path = $adb->table_path("catalog_product");
 
   # 3. Compact 8-Byte Binary Index Packing
-  my $binary_blob = $adb->bin_encode([ 101, 102, 103 ], "num");
-  my ($total_cnt, @ids) = $adb->bin_decode($binary_blob, 0, 20, "asc", "num");
+  my $binary_blob = $adb->bin_encode([ 101, 102, 103 ]);
+  my ($total_cnt, @ids) = $adb->bin_decode($binary_blob, 0, 20, "asc");
 
   # 4. Table & Record File Locking
   $adb->flock_open("orders_cart", "write", $record_id);
@@ -1351,6 +1953,36 @@ Decodes an 8-byte binary buffer (64-bit uint) using O(1) C<substr> byte-offset s
 =back
 
   my ($total, @page_ids) = $adb->bin_decode($packed_buffer, 0, 20, 'desc');
+
+=head2 bin_add($binary_buffer, \@new_record_ids)
+
+Appends new record IDs into an 8-byte packed binary buffer (C<QE<gt>>) with automatic deduplication. If IDs already exist in the buffer, they are skipped. Operates directly on the binary string without unpacking.
+
+  my $updated_buf = $adb->bin_add($packed_buffer, [ 104, 105 ]);
+
+=head2 bin_punch($binary_buffer, \@del_record_ids)
+
+Removes specified record IDs from an 8-byte packed binary buffer in-place using O(log N) binary search and 8-byte aligned C<substr> splicing without unpacking the buffer into memory.
+
+  my $updated_buf = $adb->bin_punch($packed_buffer, [ 101, 102 ]);
+
+=head2 bin_find($binary_buffer, $record_id)
+
+Fast O(1) / O(log N) existence check of a record ID within an 8-byte packed binary buffer without decoding the buffer. Returns 1 if present, 0 otherwise.
+
+  my $exists = $adb->bin_find($packed_buffer, 101);
+
+=head2 bin_sort($binary_buffer)
+
+Sorts an 8-byte Big-Endian binary buffer in ascending order entirely at the C-level (C<unpack('(a8)*')>). Because Big-Endian byte order exactly matches unsigned integer numerical comparison, this requires zero numeric conversions.
+
+  my $sorted_buf = $adb->bin_sort($packed_buffer);
+
+=head2 bin_count($binary_buffer)
+
+Returns the total record count in an 8-byte packed binary buffer in O(1) time.
+
+  my $count = $adb->bin_count($packed_buffer);
 
 =head2 table_info($table_id)
 

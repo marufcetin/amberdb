@@ -24,7 +24,7 @@ my $val = $adb->table_attr($table_id, $attribute_key);
 my $meta = $adb->table_attr($table_id);
 
 # 3. Key-Value setter (supports method chaining)
-$adb->table_attr($table_id, keep_deleted => 1, id_type => "ascii");
+$adb->table_attr($table_id, keep_deleted => 1, use_simple => 1);
 
 # 4. Hashref setter
 $adb->table_attr($table_id, { search_block => [ 1, 4, 8 ], use_cache => 2 });

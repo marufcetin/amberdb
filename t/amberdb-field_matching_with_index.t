@@ -28,7 +28,7 @@ my $adb = AmberDB->new(
 # SUBTEST 1: match_block Schema & Index Key File (.fld) Generation
 # ==============================================================================
 subtest '1. match_block Schema & Index Key File (.fld) Generation' => sub {
-    plan tests => 10;
+    plan tests => 8;
 
     my $tbl = 'catalog_fld_idx';
     my $table_info = {
@@ -56,44 +56,39 @@ subtest '1. match_block Schema & Index Key File (.fld) Generation' => sub {
     }
 
     my $table_path = $adb->table_path($tbl);
-    my $fld4_path  = "${table_path}_4.fld";
-    my $unq4_path  = "${table_path}_4.unq";
-    my $fld6_path  = "${table_path}_6.fld";
-    my $unq6_path  = "${table_path}_6.unq";
-    my $fld1_path  = "${table_path}_1.fld";
+    my $fld_path   = "${table_path}.fld";
+    my $unq_path   = "${table_path}.unq";
 
-    # Verify .fld and .unq index files exist on disk for defined match blocks
-    ok( -e $fld4_path, "Index file ${tbl}_4.fld created for Category block" );
-    ok( -e $unq4_path, "Dictionary file ${tbl}_4.unq created for Category block" );
-    ok( -e $fld6_path, "Index file ${tbl}_6.fld created for Brand block" );
-    ok( -e $unq6_path, "Dictionary file ${tbl}_6.unq created for Brand block" );
-    ok( !-e $fld1_path, "Non-match block (blk 1) does NOT have .fld file" );
+    # Verify unified .fld and .unq index files exist on disk for defined match blocks
+    ok( -e $fld_path, "Unified index file ${tbl}.fld created" );
+    ok( -e $unq_path, "Unified dictionary file ${tbl}.unq created for match blocks" );
+    ok( !-e "${table_path}_4.unq", "No legacy per-block _4.unq created" );
 
-    # Verify .fld posting lists directly using field_to_list key resolution
+    # Verify .fld posting lists directly using composite keys
     my ($k_cat10) = $adb->field_to_list( '10', 'read', $table_path, $table_info, 4 );
-    my ( undef, @ids_cat10 ) = $adb->index_get( $fld4_path, $k_cat10 );
+    my ( undef, @ids_cat10 ) = $adb->index_get( $fld_path, "4:$k_cat10" );
     is_deeply( [ sort { $a <=> $b } @ids_cat10 ], [ 1, 2, 5, 6 ],
-        "Category '10' (key $k_cat10) in block 4 index maps to IDs 1, 2, 5, 6" );
+        "Category '10' (key 4:$k_cat10) in unified .fld maps to IDs 1, 2, 5, 6" );
 
     my ($k_cat20) = $adb->field_to_list( '20', 'read', $table_path, $table_info, 4 );
-    my ( undef, @ids_cat20 ) = $adb->index_get( $fld4_path, $k_cat20 );
+    my ( undef, @ids_cat20 ) = $adb->index_get( $fld_path, "4:$k_cat20" );
     is_deeply( [ sort { $a <=> $b } @ids_cat20 ], [ 1, 3, 4 ],
-        "Category '20' (key $k_cat20) in block 4 index maps to IDs 1, 3, 4" );
+        "Category '20' (key 4:$k_cat20) in unified .fld maps to IDs 1, 3, 4" );
 
     my ($k_brand12) = $adb->field_to_list( '12', 'read', $table_path, $table_info, 6 );
-    my ( undef, @ids_brand12 ) = $adb->index_get( $fld6_path, $k_brand12 );
+    my ( undef, @ids_brand12 ) = $adb->index_get( $fld_path, "6:$k_brand12" );
     is_deeply( [ sort { $a <=> $b } @ids_brand12 ], [ 1, 2, 4 ],
-        "Brand '12' (key $k_brand12) in block 6 index maps to IDs 1, 2, 4" );
+        "Brand '12' (key 6:$k_brand12) in unified .fld maps to IDs 1, 2, 4" );
 
     my ($k_brand14) = $adb->field_to_list( '14', 'read', $table_path, $table_info, 6 );
-    my ( undef, @ids_brand14 ) = $adb->index_get( $fld6_path, $k_brand14 );
+    my ( undef, @ids_brand14 ) = $adb->index_get( $fld_path, "6:$k_brand14" );
     is_deeply( [ sort { $a <=> $b } @ids_brand14 ], [ 3, 6 ],
-        "Brand '14' (key $k_brand14) in block 6 index maps to IDs 3, 6" );
+        "Brand '14' (key 6:$k_brand14) in unified .fld maps to IDs 3, 6" );
 
     my ($k_brand16) = $adb->field_to_list( '16', 'read', $table_path, $table_info, 6 );
-    my ( undef, @ids_brand16 ) = $adb->index_get( $fld6_path, $k_brand16 );
+    my ( undef, @ids_brand16 ) = $adb->index_get( $fld_path, "6:$k_brand16" );
     is_deeply( [ sort { $a <=> $b } @ids_brand16 ], [ 5 ],
-        "Brand '16' (key $k_brand16) in block 6 index maps to ID 5" );
+        "Brand '16' (key 6:$k_brand16) in unified .fld maps to ID 5" );
 };
 
 # ==============================================================================
@@ -343,6 +338,26 @@ subtest '7. CRUD Lifecycle & Bulk Operations with field_fetch' => sub {
 
     my @f_del_cat70 = $adb->field_fetch( $tbl, 2, '70' );
     is( scalar @f_del_cat70, 0, "delete_list: Cat 70 has 0 records remaining" );
+};
+
+subtest '9. read_field single and multiple values' => sub {
+    plan tests => 3;
+
+    my $tbl = 'test_rf_' . int( rand(100000) );
+    $adb->table_attr( $tbl, { record_index => 1, match_block => [2] } );
+    $adb->insert_id( $tbl, 1, 'A1', '10' );
+    $adb->insert_id( $tbl, 2, 'A2', '20' );
+    $adb->insert_id( $tbl, 3, 'A3', '10' );
+    $adb->insert_id( $tbl, 4, 'A4', '30' );
+
+    my @single = $adb->read_field( $tbl, 2, '10' );
+    is_deeply( [ sort { $a <=> $b } @single ], [ 1, 3 ], 'read_field single value' );
+
+    my @multi = $adb->read_field( $tbl, 2, [ '10', '20' ] );
+    is_deeply( [ sort { $a <=> $b } @multi ], [ 1, 2, 3 ], 'read_field multiple values via bin_crop' );
+
+    my @keys = $adb->read_field( $tbl, 2 );
+    is_deeply( [ sort { $a <=> $b } @keys ], [ '10', '20', '30' ], 'read_field without values returns all index keys' );
 };
 
 done_testing();

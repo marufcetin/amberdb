@@ -10,14 +10,19 @@
 
 ## 1. Definition and Overview
 
-`transact_end()` concludes the active transaction. If any underlying database errors occurred during execution, it automatically triggers `transact_rollback()` to perform a LIFO rollback. If no errors occurred, it invokes `transact_commit()` to flush and sync changes to disk, unlinks the active `.txn` journal, and atomically releases all Strict 2PL locks.
+`transact_end()` concludes the active transaction. If no errors occurred during execution, it commits changes via `transact_commit()`, deletes the `.txn` journal, releases all Strict 2PL locks, and returns `{ status => "commit" }`.
+
+If an underlying database error occurred or if `transact_error()` was called to abort the transaction, the rollback status is returned as `{ status => "rollback" }`.
 
 ---
 
 ## 2. Syntax and Signature
 
 ```perl
-$adb->transact_end();
+my $txn = $adb->transact_end();
+if ($txn->{status} eq 'commit') {
+    # Transaction succeeded
+}
 ```
 
 ---
@@ -27,7 +32,7 @@ $adb->transact_end();
 ```perl
 $adb->transact_start();
 $adb->insert_id("payments", 0, $order_id, 150.00, "CONFIRMED");
-$adb->transact_end();
+my $result = $adb->transact_end();
 ```
 
 ---
@@ -35,5 +40,6 @@ $adb->transact_end();
 ## 4. See Also
 
 - [Method: transact_start](Method-transact_start)
+- [Method: transact_error](Method-transact_error)
 - [Method: transact_rollback](Method-transact_rollback)
 - [Method: transact_commit](Method-transact_commit)

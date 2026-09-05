@@ -20,7 +20,7 @@ Global bayraklar tum veritabani oturumunu etkilerken, tablo sema bayraklari **ta
 
 | Bayrak Adi | Veri Tipi | Varsayilan | Aciklama |
 | :--- | :--- | :--- | :--- |
-| **`id_type`** | `string` | `"num"` | Birincil anahtar tipi: `"num"` (64-bit tam sayi, `Q*`) veya `"ascii"` (maks 8 bayt, `a8*`). |
+| **`use_simple`** | `boolean` | `0` | `1`: 255 bayta kadar serbest metin anahtarlara (UUID, slug vb.) izin veren basit anahtar-değer modunu açar; `.inx` ikili indeksi üretilmez. |
 | **`auto_id`** | `boolean` | `1` | `1`: `insert_id` sirasinda otomatik artan ID tahsis edilir. `0`: ID uygulama tarafindan acikca saglanmalidir. |
 | **`keep_deleted`**| `boolean` | `0` | `1`: Silinen kayitlar fiziksel olarak yok edilmek yerine `.del` cop kutusu tablosuna tasinir. |
 | **`log_owner`** | `boolean` | `0` | `1`: Kayit ekleme ve degisikliklerinde kullanici, zaman ve eski deger `.aut` denetim gunlugune yazilir. |
@@ -44,7 +44,7 @@ Global bayraklar tum veritabani oturumunu etkilerken, tablo sema bayraklari **ta
 ```text
 Sema Bayraklarinin Dosya Uretim Haritasi
 
- id_type / auto_id  ───────────────> .inx (8-Byte Paketli Birincil Indeks)
+ auto_id            ───────────────> .inx (8-Byte Paketli Birincil Indeks - Q>*)
  match_block        ───────────────> .fld (Birebir Eslesme Indeksi)
  search_block       ───────────────> .src (Tam Metin Arama Indeksi)
  facet_block        ───────────────> .fac & .unq (Facet Bitset & Sozluk Indeksi)

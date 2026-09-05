@@ -11,7 +11,7 @@ This wiki is organized as an **encyclopedic reference dictionary**. Each method,
 ## Quick Navigation
 
 - **Getting Started & Guides:** [What is AmberDB?](Guide-What-is-AmberDB) | [How to Install AmberDB](Guide-Installation) | [How to Use AmberDB](Guide-Usage-Quickstart) | [Core CRUD Operations](Guide-CRUD-Operations)
-- **Core Concepts:** [Berkeley DB Engine](Concept-Berkeley-DB) | [Table Schema](Concept-Table-Schema) | [Global Flags](Concept-Global-Flags) | [Table Schema Flags](Concept-Schema-Flags) | [Directory Structure](Concept-Directory-Structure) | [File Structure](Concept-File-Structure) | [Repeat Blocks](Concept-Repeat-Blocks) | [Auto-Increment ID](Concept-Auto-ID) | [ASCII ID](Concept-ASCII-ID) | [Relational Records](Concept-Relational-Records) | [Record Anatomy](Concept-Record-Anatomy) | [JOIN-Free Architecture](Concept-JOIN-Free-Architecture) | [Strict 2PL Locking](Concept-Strict-2PL-Locking)
+- **Core Concepts:** [Berkeley DB Engine](Concept-Berkeley-DB) | [Table Schema](Concept-Table-Schema) | [Global Flags](Concept-Global-Flags) | [Table Schema Flags](Concept-Schema-Flags) | [Directory Structure](Concept-Directory-Structure) | [File Structure](Concept-File-Structure) | [Repeat Blocks](Concept-Repeat-Blocks) | [Auto-Increment ID](Concept-Auto-ID) | [String Keys & Simple Mode](Concept-ASCII-ID) | [Relational Records](Concept-Relational-Records) | [Record Anatomy](Concept-Record-Anatomy) | [JOIN-Free Architecture](Concept-JOIN-Free-Architecture) | [Strict 2PL Locking](Concept-Strict-2PL-Locking)
 - **Essential Methods:** [new](Method-new) | [config](Method-config) | [insert_id](Method-insert_id) | [read_id](Method-read_id) | [read_all](Method-read_all) | [modify_id](Method-modify_id) | [delete_id](Method-delete_id) | [field_fetch](Method-field_fetch) | [search_table](Method-search_table) | [facet_menu](Method-facet_menu) | [transact_start](Method-transact_start) | [flock_open](Method-flock_open)
 - **Top Flags:** [log_owner](Flag-log_owner) | [use_counter](Flag-use_counter) | [use_junk](Flag-use_junk) | [keep_deleted](Flag-keep_deleted) | [auto_id](Flag-auto_id) | [buffer_write](Flag-buffer_write) | [simple](Flag-simple) | [jnktype](Flag-jnktype) | [keys_only](Flag-keys_only)
 - **File Types:** [.db](File-db) | [.table](File-table) | [.inx](File-inx) | [.fld](File-fld) | [.src](File-src) | [.fac](File-fac) | [.srt](File-srt) | [.slg](File-slg) | [.txn](File-txn) | [.amberdb](File-amberdb) | [.csv](File-csv)
@@ -22,14 +22,14 @@ This wiki is organized as an **encyclopedic reference dictionary**. Each method,
 
 | Letter | Entries |
 | :--- | :--- |
-| **A** | [array_compare](Method-array_compare) · [array_filter](Method-array_filter) · [array_pick](Method-array_pick) · [array_punch](Method-array_punch) · [array_shuffle](Method-array_shuffle) · [array_size](Method-array_size) · [array_sort](Method-array_sort) · [array_sublist](Method-array_sublist) · [array_substr](Method-array_substr) · [array_substrno](Method-array_substrno) · [ASCII ID](Concept-ASCII-ID) · [auto_id (Flag)](Flag-auto_id) · [Auto-Increment ID (Concept)](Concept-Auto-ID) |
+| **A** | [array_compare](Method-array_compare) · [array_filter](Method-array_filter) · [array_pick](Method-array_pick) · [array_punch](Method-array_punch) · [array_shuffle](Method-array_shuffle) · [array_size](Method-array_size) · [array_sort](Method-array_sort) · [array_sublist](Method-array_sublist) · [array_substr](Method-array_substr) · [array_substrno](Method-array_substrno) · [ASCII / String Keys](Concept-ASCII-ID) · [auto_id (Flag)](Flag-auto_id) · [Auto-Increment ID (Concept)](Concept-Auto-ID) |
 | **B** | [Berkeley DB Engine](Concept-Berkeley-DB) · [buffer_delete](Method-buffer_delete) · [buffer_read](Method-buffer_read) · [buffer_write](Method-buffer_write) · [buffer_write (Flag)](Flag-buffer_write) |
 | **C** | [cache_delete](Method-cache_delete) · [cache_ensure](Method-cache_ensure) · [cache_preload](Method-cache_preload) · [cache_read](Method-cache_read) · [cache_setup](Method-cache_setup) · [cache_write](Method-cache_write) · [check_table](Method-check_table) · [config](Method-config) · [convert_tables](Method-convert_tables) · [CRUD Operations Guide](Guide-CRUD-Operations) |
 | **D** | [Data Model](Concept-Record-Anatomy) · [deep_copy](Method-deep_copy) · [delete_id](Method-delete_id) · [delete_list](Method-delete_list) · [Directory Structure](Concept-Directory-Structure) · [Disaster Recovery](Concept-2-Pillar-Disaster-Recovery) · [Disjunctive Faceting](Concept-Disjunctive-Faceting) · [dump](Method-dump) |
 | **E** | [exist_id](Method-exist_id) · [exist_list](Method-exist_list) · [exist_table](Method-exist_table) |
 | **F** | [facet_menu](Method-facet_menu) · [facet_rules](Method-facet_rules) · [field_allfltkeys](Method-field_allfltkeys) · [field_fetch](Method-field_fetch) · [field_filter](Method-field_filter) · [field_fltkeys](Method-field_fltkeys) · [File Structure (Extensions)](Concept-File-Structure) · [flock_close](Method-flock_close) · [flock_open](Method-flock_open) |
 | **G** | [Global Flags](Concept-Global-Flags) |
-| **I** | [id_type (Flag)](Flag-id_type) · [In-Memory Schema Mutation](Concept-In-Memory-Schema-Mutation) · [insert_id](Method-insert_id) · [insert_list](Method-insert_list) · [Installation Guide](Guide-Installation) · [inverse_matrix](Method-inverse_matrix) |
+| **I** | [In-Memory Schema Mutation](Concept-In-Memory-Schema-Mutation) · [insert_id](Method-insert_id) · [insert_list](Method-insert_list) · [Installation Guide](Guide-Installation) · [inverse_matrix](Method-inverse_matrix) |
 | **J** | [JOIN-Free Architecture](Concept-JOIN-Free-Architecture) · [jnktype (Flag)](Flag-jnktype) · [Junk Tier Indexing](Concept-Tiered-Junk-Indexing) |
 | **K** | [keep_deleted (Flag)](Flag-keep_deleted) · [keys_only (Flag)](Flag-keys_only) |
 | **L** | [language (Flag)](Flag-language) · [locale_format_currency](Method-locale_format_currency) · [locale_format_date](Method-locale_format_date) · [locale_lc](Method-locale_lc) · [locale_num2text](Method-locale_num2text) · [locale_sort](Method-locale_sort) · [locale_to_ascii](Method-locale_to_ascii) · [locale_uc](Method-locale_uc) · [log_owner (Flag)](Flag-log_owner) |
@@ -38,8 +38,8 @@ This wiki is organized as an **encyclopedic reference dictionary**. Each method,
 | **P** | [Packed Binary Index](Concept-8-Byte-Packed-Binary-Index) · [Phonetic Accent Search](Concept-Phonetic-Accent-Search) |
 | **R** | [RAM-Disk Acceleration](Concept-RAM-Disk-Acceleration) · [read_all](Method-read_all) · [read_id](Method-read_id) · [read_list](Method-read_list) · [recs_del](Method-recs_del) · [recs_get](Method-recs_get) · [recs_put](Method-recs_put) · [recs_scan](Method-recs_scan) · [Relational Records](Concept-Relational-Records) · [Repeat Blocks](Concept-Repeat-Blocks) · [restore](Method-restore) |
 | **S** | [search_table](Method-search_table) · [set_datadir](Method-set_datadir) · [set_fields](Method-set_fields) · [set_filters](Method-set_filters) · [set_index](Method-set_index) · [set_readall](Method-set_readall) · [set_search](Method-set_search) · [set_sort](Method-set_sort) · [simple (Flag)](Flag-simple) · [Simple Mode](Concept-Simple-Mode) · [slug_fetch](Method-slug_fetch) · [slug_read](Method-slug_read) · [Strict 2PL Locking](Concept-Strict-2PL-Locking) |
-| **T** | [Table Schema](Concept-Table-Schema) · [Table Schema Flags](Concept-Schema-Flags) · [table_attr](Method-table_attr) · [table_close](Method-table_close) · [table_count](Method-table_count) · [table_create](Method-table_create) · [table_keys](Method-table_keys) · [table_lastid](Method-table_lastid) · [table_read](Method-table_read) · [table_write](Method-table_write) · [transact_commit](Method-transact_commit) · [transact_end](Method-transact_end) · [transact_recover](Method-transact_recover) · [transact_rollback](Method-transact_rollback) · [transact_start](Method-transact_start) |
-| **U** | [Undo Journal Rollback](Concept-Undo-Journal-Rollback) · [Usage Quickstart Guide](Guide-Usage-Quickstart) · [use_counter (Flag)](Flag-use_counter) · [use_junk (Flag)](Flag-use_junk) |
+| **T** | [Table Schema](Concept-Table-Schema) · [Table Schema Flags](Concept-Schema-Flags) · [table_attr](Method-table_attr) · [table_close](Method-table_close) · [table_count](Method-table_count) · [table_create](Method-table_create) · [table_keys](Method-table_keys) · [table_lastid](Method-table_lastid) · [table_read](Method-table_read) · [table_write](Method-table_write) · [transact_commit](Method-transact_commit) · [transact_end](Method-transact_end) · [transact_error](Method-transact_error) · [transact_recover](Method-transact_recover) · [transact_rollback](Method-transact_rollback) · [transact_start](Method-transact_start) |
+| **U** | [Undo Journal Rollback](Concept-Undo-Journal-Rollback) · [Usage Quickstart Guide](Guide-Usage-Quickstart) · [use_counter (Flag)](Flag-use_counter) · [use_junk (Flag)](Flag-use_junk) · [use_simple (Flag)](Flag-use_simple) |
 | **V** | [vacuum_table](Method-vacuum_table) |
 | **W** | [What is AmberDB? Guide](Guide-What-is-AmberDB) |
 
@@ -54,10 +54,10 @@ AmberDB Architecture
     Secondary Derived Indexes: .inx, .fld, .src, .fac, .srt, .slg
  Schema Layer (.table, .dbase, in-memory table_attr)
  Concurrency & ACID (Strict 2PL, OS flock, Undo-Journal .txn)
- Indexing Subsystem (8-byte packed Q*/a8*, columnar bitsets, accent normalizer)
+ Indexing Subsystem (8-byte packed Q>*, columnar bitsets, accent normalizer)
  Tiered Storage Subsystem (.jnk cold tier, single-pass hybrid queries)
  Cache Subsystem (RAM-disk tmpfs/ImDisk mirroring, disk buffers)
- Multilingual Engine (AmberDB::Locale: 9 languages, UCA collation, num2text)
+ Multilingual Engine (AmberDB::Locale: 10 languages with Global Base default, UCA collation, num2text)
 ```
 
 ### 0. Getting Started & Guides
@@ -75,7 +75,7 @@ AmberDB Architecture
 - [File Structure & Extensions](Concept-File-Structure)
 - [Repeating Extensible Blocks (Repeat Blocks)](Concept-Repeat-Blocks)
 - [Auto-Increment ID Allocation](Concept-Auto-ID)
-- [ASCII ID Architecture & Usage](Concept-ASCII-ID)
+- [String Keys & Simple Mode (use_simple)](Concept-ASCII-ID)
 - [Relational Records & Foreign Keys](Concept-Relational-Records)
 - [Record Anatomy & 0-Index ID Rule](Concept-Record-Anatomy)
 - [JOIN-Free Extensible Block Architecture](Concept-JOIN-Free-Architecture)
@@ -125,9 +125,10 @@ AmberDB Architecture
 
 ### 4. Transaction Safety and Concurrency Methods
 - [transact_start](Method-transact_start) — Begins multi-table ACID transaction
-- [transact_end](Method-transact_end) — Concludes transaction with auto-rollback on error
-- [transact_commit](Method-transact_commit) — Flushes journal and commits changes
-- [transact_rollback](Method-transact_rollback) — Reverts transaction in LIFO order
+- [transact_error](Method-transact_error) — Logs error and triggers immediate LIFO rollback
+- [transact_end](Method-transact_end) — Concludes transaction (commits if clean)
+- [transact_commit](Method-transact_commit) — (Internal) Commits active transaction
+- [transact_rollback](Method-transact_rollback) — (Internal) Reverts transaction in LIFO order
 - [transact_recover](Method-transact_recover) — Recovers orphaned .txn journals on startup
 - [flock_open](Method-flock_open) — Acquires table or record-level lock
 - [flock_close](Method-flock_close) — Releases table or record-level lock
@@ -181,7 +182,7 @@ AmberDB Architecture
 - [no_backup](Flag-no_backup) — Disables continuous CSV WAL logging
 - [jnktype](Flag-jnktype) — Tier query selection ('A', 'B', 'AB', 'BA')
 - [keys_only](Flag-keys_only) — Memory-efficient scalar ID pipeline
-- [id_type](Flag-id_type) — ID format specification ('numeric' or 'ascii')
+- [use_simple](Flag-use_simple) — Key-value string key mode (up to 255 bytes)
 - [language](Flag-language) — Active locale engine language code
 
 ### 9. Physical File Formats and Directory Layout

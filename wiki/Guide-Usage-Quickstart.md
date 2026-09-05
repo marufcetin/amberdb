@@ -52,7 +52,7 @@ my @new_product = (
     { bluetooth => "5.2", anc => 1 },       # [7] Specifications (Hash reference)
 );
 
-my $product_id = $new_product[0] = $adb->insert_id("catalog_products", @new_product);
+my $product_id = $new_product[0] = $adb->insert_id("catalog_product", @new_product);
 print "1. Product inserted successfully! Allocated ID: $product_id\n";
 
 
@@ -60,7 +60,7 @@ print "1. Product inserted successfully! Allocated ID: $product_id\n";
 # STEP 2: READ SINGLE RECORD (read_id)
 # =========================================================================
 # The 0th index of the returned array is guaranteed to be the authoritative record ID:
-my @fetched = $adb->read_id("catalog_products", $product_id);
+my @fetched = $adb->read_id("catalog_product", $product_id);
 
 print "2. Fetched Product: $fetched[1] | Brand: $fetched[4] | Price: \$$fetched[3]\n";
 print "   Colors: " . join(", ", @{ $fetched[6] }) . "\n";
@@ -72,7 +72,7 @@ print "   Colors: " . join(", ", @{ $fetched[6] }) . "\n";
 # Modify price and status:
 $fetched[3] = 349.99;   # Discounted promotional price
 $fetched[5] = 1;        # Active
-$adb->modify_id("catalog_products", @fetched);
+$adb->modify_id("catalog_product", @fetched);
 print "3. Product price updated successfully.\n";
 
 
@@ -82,7 +82,7 @@ print "3. Product price updated successfully.\n";
 # Full-text search with locale normalization and accent resilience:
 # (Note: when limit > 0, the first element is the $total_count integer)
 my ($total, @results) = $adb->search_table(
-    "catalog_products",
+    "catalog_product",
     "wireless headphone",
     start => 0,
     limit => 10,
@@ -97,7 +97,7 @@ for my $item (@results) {
 # =========================================================================
 # STEP 5: MULTI-BLOCK FIELD FILTERING (field_filter)
 # =========================================================================
-my $filter_result = $adb->field_filter("catalog_products", {
+my $filter_result = $adb->field_filter("catalog_product", {
     type   => "and",
     filter => {
         2 => "Electronics", # Match category in Block 2
@@ -114,7 +114,7 @@ print "5. Filter Results: " . $filter_result->{count} . " products matched.\n";
 # =========================================================================
 # STEP 6: COLUMNAR FACET FILTER NAVIGATION (facet_menu)
 # =========================================================================
-my $menu = $adb->facet_menu("catalog_products");
+my $menu = $adb->facet_menu("catalog_product");
 # $menu contains aggregated multi-dimensional counts for categories and attributes
 
 
@@ -124,22 +124,22 @@ my $menu = $adb->facet_menu("catalog_products");
 # Multi-table atomic checkout and inventory reservation:
 $adb->transact_start();
 
-my @stock_item = $adb->read_id("catalog_products", $product_id);
+my @stock_item = $adb->read_id("catalog_product", $product_id);
 if ($stock_item[5] == 1) {
     # Commit transaction cleanly
-    $adb->transact_commit();
+    $adb->transact_end();
     print "7. ACID transaction committed successfully.\n";
 } else {
-    # Rollback changes automatically upon condition failure
+    # Operational condition (insufficient stock): Roll back transaction directly
     $adb->transact_rollback();
-    print "7. Transaction rolled back.\n";
+    print "7. Insufficient stock, transaction rolled back.\n";
 }
 
 
 # =========================================================================
 # STEP 8: DELETE RECORD (delete_id)
 # =========================================================================
-$adb->delete_id("catalog_products", $product_id);
+$adb->delete_id("catalog_product", $product_id);
 print "8. Product deleted successfully.\n";
 ```
 

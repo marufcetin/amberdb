@@ -52,7 +52,7 @@ my @yeni_urun = (
     { bluetooth => "5.2", anc => 1 },       # [7] Teknik Detaylar (Hash-ref)
 );
 
-my $urun_id = $yeni_urun[0] = $adb->insert_id("catalog_products", @yeni_urun);
+my $urun_id = $yeni_urun[0] = $adb->insert_id("catalog_product", @yeni_urun);
 print "1. Urun basariyla eklendi! Uretilen ID: $urun_id\n";
 
 
@@ -60,7 +60,7 @@ print "1. Urun basariyla eklendi! Uretilen ID: $urun_id\n";
 # ADIM 2: TEKIL KAYIT OKUMA (read_id)
 # =========================================================================
 # read_id ile okunan dizinin 0. indisi daima kaydin gercek ID'sidir:
-my @okunan = $adb->read_id("catalog_products", $urun_id);
+my @okunan = $adb->read_id("catalog_product", $urun_id);
 
 print "2. Okunan Urun: $okunan[1] | Marka: $okunan[4] | Fiyat: $okunan[3] TL\n";
 print "   Renkler: " . join(", ", @{ $okunan[6] }) . "\n";
@@ -72,7 +72,7 @@ print "   Renkler: " . join(", ", @{ $okunan[6] }) . "\n";
 # Fiyati ve durumu guncelleyelim:
 $okunan[3] = 11899.00;   # Indirimli yeni fiyat
 $okunan[5] = 1;          # Aktif
-$adb->modify_id("catalog_products", @okunan);
+$adb->modify_id("catalog_product", @okunan);
 print "3. Urun fiyati basariyla guncellendi.\n";
 
 
@@ -82,7 +82,7 @@ print "3. Urun fiyati basariyla guncellendi.\n";
 # Turkce karakter ve fonetik toleransli tam metin arama:
 # (Not: limit > 0 oldugunda ilk eleman $toplam_eslesen tamsayisidir)
 my ($toplam, @sonuclar) = $adb->search_table(
-    "catalog_products",
+    "catalog_product",
     "kablosuz kulaklik",
     start => 0,
     limit => 10,
@@ -97,7 +97,7 @@ for my $u (@sonuclar) {
 # =========================================================================
 # ADIM 5: COKLU BLOK VE ALAN FILTRELEME (field_filter)
 # =========================================================================
-my $filtre_sonuc = $adb->field_filter("catalog_products", {
+my $filtre_sonuc = $adb->field_filter("catalog_product", {
     type   => "and",
     filter => {
         2 => "Elektronik", # 2. blok kategoride "Elektronik" olanlar
@@ -114,7 +114,7 @@ print "5. Filtre Sonucu: " . $filtre_sonuc->{count} . " urun listelendi.\n";
 # =========================================================================
 # ADIM 6: COK BOYUTLU KATEGORI VE FACET MENUSU (facet_menu)
 # =========================================================================
-my $menu = $adb->facet_menu("catalog_products");
+my $menu = $adb->facet_menu("catalog_product");
 # $menu icinde kategoriler, markalar ve ozel niteliklerin sayimlari yer alir
 
 
@@ -124,22 +124,22 @@ my $menu = $adb->facet_menu("catalog_products");
 # Stok dusme ve siparis olusturma gibi kritik islemlerde transaction:
 $adb->transact_start();
 
-my @stok_urun = $adb->read_id("catalog_products", $urun_id);
+my @stok_urun = $adb->read_id("catalog_product", $urun_id);
 if ($stok_urun[5] == 1) {
     # Islemi basariyla kesinlestir
-    $adb->transact_commit();
-    print "7. ACID Islemi basariyla kesinlestirildi.\n";
+    $adb->transact_end();
+    print "7. ACID Islemi basariyla tamamlandi.\n";
 } else {
-    # Bir sorun varsa geri al
+    # Operasyonel durum (stok yetersiz): Islemi dogrudan geri al
     $adb->transact_rollback();
-    print "7. Islem geri alindi (Rollback).\n";
+    print "7. Stok yetersiz, islem geri alindi (Rollback).\n";
 }
 
 
 # =========================================================================
 # ADIM 8: KAYDI SILME (delete_id)
 # =========================================================================
-$adb->delete_id("catalog_products", $urun_id);
+$adb->delete_id("catalog_product", $urun_id);
 print "8. Urun basariyla silindi.\n";
 ```
 

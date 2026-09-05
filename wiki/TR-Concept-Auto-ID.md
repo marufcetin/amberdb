@@ -12,7 +12,7 @@
 
 AmberDB, kayitlarin benzersiz kimliklendirilmesi icin **64-bit Otomatik Artan Tam Sayi (Auto-Increment ID)** mekanizmasina sahiptir.
 
-Bir tabloda `auto_id => 1` (varsayilan) ve `id_type => "num"` tanimli oldugunda, `insert_id` cagrilarinda 0. indiste `0`, `undef` veya bos string (`""`) gecilmesi motorun o tablo icin siradaki en buyuk benzersiz tam sayiyi atomik olarak tahsis etmesini saglar.
+Bir tabloda `auto_id => 1` (varsayilan) tanimli oldugunda, `insert_id` cagrilarinda 0. indiste `0`, `undef` veya bos string (`""`) gecilmesi motorun o tablo icin siradaki en buyuk benzersiz tam sayiyi atomik olarak tahsis etmesini saglar.
 
 ```text
 Otomatik ID Tahsis Mimarisi
@@ -87,7 +87,7 @@ Eger harici bir sistemden gelen mevcut bir ID'yi kullanmak isterseniz:
 
 ## 4. Iliskili Maddeler ve Bakiniz
 
-- [Kavram: ASCII ID Mimarisi](TR-Concept-ASCII-ID)
+- [Kavram: Metin Anahtarlar ve Basit Tablo Modu](TR-Concept-ASCII-ID)
 - [Kavram: Kayit Anatomisi](TR-Concept-Record-Anatomy)
 - [Kavram: 8-Byte Paketli Binary Indeks](TR-Concept-8-Byte-Packed-Binary-Index)
 - [Metot: insert_id](TR-Method-insert_id)

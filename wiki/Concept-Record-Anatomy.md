@@ -30,7 +30,7 @@ Contiguous Record Array (@record)
 
 ### Index 0: Primary Key ID
 - **Auto-Generation:** When inserting a new record via `insert_id($table, 0, ...)`, passing `0`, `undef`, or `""` at index 0 signals the engine to allocate an auto-incrementing 64-bit integer ID.
-- **Explicit ID:** Applications can specify fixed unique IDs (integer or ASCII, depending on `id_type`).
+- **Explicit ID:** Applications can specify fixed unique IDs (positive 64-bit integers for standard relational tables, or arbitrary strings up to 255 bytes for `use_simple => 1` tables).
 - **Return Guarantee:** All read operations (`read_id`, `read_all`, `field_fetch`, `search_table`) guarantee that the returned record list's 0th index is the authoritative record ID.
 
 ### Index 1 to N: Extensible Data Blocks

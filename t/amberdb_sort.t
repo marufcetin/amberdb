@@ -119,9 +119,9 @@ SCHEMA
     $adb->insert_id( 'products', 103, 'Monitor', 300,  '2026-01-03 12:00:00' );
     $adb->insert_id( 'products', 104, 'Keyboard', 75,  '2026-01-04 13:00:00' );
 
-    # Verify .srt file exists for block 2 (price)
+    # Verify sort index exists in .inx and no separate .srt is created
     my $table_path = $adb->table_path('products');
-    ok( -e "${table_path}_2.srt", 'Price sort map file (.srt) created' );
+    ok( scalar($adb->index_get( "${table_path}.inx", "2:keys" )) && ! -e "${table_path}.srt", 'Sort keys (2:keys) created in .inx (no separate .srt)' );
 
     # 2. Query default sort (sondan başa / desc): sort => { blk => 2 }
     my @recs_default = $adb->read_all( 'products', sort => { blk => 2 } );
@@ -362,7 +362,7 @@ SCHEMA
     my $tools = AmberDB::Tools->new($adb);
     my $converted = $tools->convert_tables();
     ok( $converted->{products}, 'convert_tables processed products table' );
-    ok( -e File::Spec->catfile( $temp_dir, 'products_1.fld' ) || -e File::Spec->catfile( $temp_dir, 'tables', 'products_1.fld' ), 'products_1.fld re-created with binary payload' );
+    ok( -e File::Spec->catfile( $temp_dir, 'products.fld' ) || -e File::Spec->catfile( $temp_dir, 'tables', 'products.fld' ) || -e File::Spec->catfile( $temp_dir, 'products_1.fld' ), 'products.fld re-created with binary payload' );
 };
 
 done_testing();

@@ -30,7 +30,7 @@ AmberDB Butunlesik NoSQL Mimarisi
  │  └─────────────────┘ └─────────────────┘ └─────────────────┘ │
  │  ┌─────────────────┐ ┌─────────────────┐ ┌────────────────┐  │
  │  │ AmberDB::Cache  │ │ AmberDB::Locale │ │AmberDB::Tools  │  │
- │  │ RAM-Disk (tmpfs)│ │ 9 Dil, Aksan/UCA│ │ Reindex/Vacuum │  │
+ │  │ RAM-Disk (tmpfs)│ │10 Dil, Aksan/UCA│ │ Reindex/Vacuum │  │
  │  └─────────────────┘ └─────────────────┘ └────────────────┘  │
  └──────────────────────────────────────────────────────────────┘
                      |
@@ -53,7 +53,7 @@ AmberDB hicbir harici agir CPAN bagimliligina ihtiyac duymaksizin kendi icinde m
 | **`AmberDB::Index`** | 8-byte paketli binary indeksler (`.inx`), ters eslesme (`.fld`), tam metin arama (`.src`), facet filtreleme (`.fac`) ve on-siralanmis (`.srt`) indekslerin uretimi ve esitlenmesi. |
 | **`AmberDB::Transact`** | ACID islem yonetimi, disk tabanli undo-journal gunlukleri (`.txn`), Strict 2PL cok surecli kilitler ve otomatik cokme kurtarmasi (`transact_recover`). |
 | **`AmberDB::Cache`** | Isletim sistemi duzeyinde RAM-Disk (`tmpfs` / `ImDisk`) paylasimli bellek onbellegi (`.cache`), TTL kontrolleri ve bellek ici ayna yonetimi. |
-| **`AmberDB::Locale`** | 9 dilde (`tr`, `en`, `de`, `fr`, `es`, `ja`, `ru`, `ar`, `az`) dil duyarlı buyuk/kucuk harf donusumu, fonetik yumusama, aksan acilimi ve Unicode Collation (UCA) siralamasi. |
+| **`AmberDB::Locale`** | 10 dilde (`gb` [varsayilan Global Base], `tr`, `en`, `de`, `fr`, `es`, `ja`, `ru`, `ar`, `az`) dil duyarlı buyuk/kucuk harf donusumu, fonetik yumusama, aksan acilimi ve Unicode Collation (UCA) siralamasi. |
 | **`AmberDB::Array`** | Yuksek hizli dizi manipule yardimcilari (sirali karsilastirma, tekrarsiz fark alma, dilimleme, crop). |
 | **`AmberDB::String`** | Metin guvenligi, HTML temizleme, ASCII normalizasyonu ve URL slug uretimi. |
 | **`AmberDB::Date`** | Tarih/saat hesaplamalari, epoch donusumleri ve yerel tarih bicimlendirme. |
@@ -67,7 +67,7 @@ AmberDB hicbir harici agir CPAN bagimliligina ihtiyac duymaksizin kendi icinde m
 Iliskisel veritabanlarinda coklu tablolari birbirine baglayan pahali `JOIN` sorgulari yerine, hiyerarsik ve genisleyebilir döküman bloklari kullanilir. Bir kaydin icinde alt satirlar (siparis kalemleri, ozellikler) yatay bloklar halinde saklanir ve motor tarafindan otomatik indekslenir.
 
 ### 2. 8-Byte Paketli Binary Indeksleme
-Birincil (`.inx`) ve ikincil indeksler 8-byte paketli binary tamponlar (`Q*` / `a8*`) olarak saklanir. Bu sayede bellek tuketimi minimuma iner ve milyonlarca kayit iceren listelerde sayfalama (`LIMIT / OFFSET`) $O(1)$ `substr` dilimlemesiyle mikrosaniyeler icinde gerceklesir.
+Birincil (`.inx`) ve ikincil indeksler 8-byte paketli binary tamponlar (`(Q>)*`) olarak saklanir. Bu sayede bellek tuketimi minimuma iner ve milyonlarca kayit iceren listelerde sayfalama (`LIMIT / OFFSET`) $O(1)$ `substr` dilimlemesiyle mikrosaniyeler icinde gerceklesir (serbest metin anahtarlar icin `use_simple => 1` modu sunulur).
 
 ### 3. Strict 2PL ACID Islemleri ve Undo-Journal
 Cok tablolu operasyonlar, disk tabanli geri alma gunlukleri (`.txn`) ve katı iki asamali kilitleme (Strict 2PL) protokolü ile guvenceye alinir. Surec aniden cokse veya elektrik kesilse dahi yetim gunlukler bir sonraki erisimde LIFO sirasiyla otomatik geri alinir.

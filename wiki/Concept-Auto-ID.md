@@ -12,7 +12,7 @@
 
 AmberDB features an atomic **64-Bit Auto-Incrementing Primary Key ID** engine.
 
-When a table is configured with `auto_id => 1` (the default) and `id_type => "num"`, passing `0`, `undef`, or `""` at index 0 during `insert_id` instructs the engine to allocate the next monotonic 64-bit integer ID for that table.
+When a table is configured with `auto_id => 1` (the default), passing `0`, `undef`, or `""` at index 0 during `insert_id` instructs the engine to allocate the next monotonic 64-bit integer ID for that table.
 
 ```text
 Auto-Increment ID Allocation Pipeline
@@ -87,7 +87,7 @@ If your dataset utilizes pre-existing external identifiers (e.g. from an externa
 
 ## 4. See Also & Related Topics
 
-- [Concept: ASCII ID Architecture](Concept-ASCII-ID)
+- [Concept: String Keys & Simple Mode](Concept-ASCII-ID)
 - [Concept: Record Anatomy](Concept-Record-Anatomy)
 - [Concept: 8-Byte Packed Binary Index](Concept-8-Byte-Packed-Binary-Index)
 - [Method: insert_id](Method-insert_id)

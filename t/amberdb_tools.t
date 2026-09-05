@@ -48,9 +48,9 @@ subtest '1. Table creation, population & set_index' => sub {
 
     my $table_path = $adb->table_path('catalog_product');
     ok( -e "$table_path.inx", "Readall index .inx generated" );
-    ok( -e "${table_path}_1.src", "Search index .src generated" );
-    ok( -e "${table_path}_2.fld", "Match field index .fld generated" );
-    ok( -e "${table_path}_3.srt", "Sort index .srt generated" );
+    ok( -e "$table_path.src", "Search index .src generated" );
+    ok( -e "$table_path.fld", "Match field index .fld generated" );
+    ok( scalar($adb->index_get("$table_path.inx", "3:keys")), "Sort index 3:keys generated in .inx" );
 };
 
 # ---------------------------------------------------------------------------

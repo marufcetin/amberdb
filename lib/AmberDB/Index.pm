@@ -4,6 +4,8 @@ use 5.016;
 use warnings;
 use Carp qw(croak cluck);
 
+our $VERSION = '5.24.0';
+
 # =====================================================================
 # OPERATOR AND FIELD RESOLUTION HELPERS (Shared across Index modules)
 # =====================================================================
@@ -136,10 +138,10 @@ sub field_to_list {
             }
             elsif ( defined $target_blk ) {
                 my $target_table_path = $self->table_path($target_table);
-                my $target_unq        = "${target_table_path}_${target_blk}.unq";
+                my $target_unq        = "${target_table_path}.unq";
                 my $nid;
                 if ( -e $target_unq || $self->{_db}->{$target_unq} ) {
-                    ($nid) = $self->index_get( $target_unq, "s:$item", 'raw' );
+                    ($nid) = $self->index_get( $target_unq, "$target_blk:s:$item", 'raw' );
                 }
                 if ( !defined $nid || $nid eq '' ) {
                     if ( $mode eq 'write' ) {
@@ -155,9 +157,9 @@ sub field_to_list {
                                 $self->table_write($target_unq);
                                 $t_unq_opened = 1;
                             }
-                            $self->index_put( $target_unq, "s:$item", $new_target_rid, 'raw' );
-                            $self->index_put( $target_unq, "n:$new_target_rid", $item, 'raw' );
-                            $self->index_put( $target_unq, 'lastid', $new_target_rid, 'raw' );
+                            $self->index_put( $target_unq, "$target_blk:s:$item", $new_target_rid, 'raw' );
+                            $self->index_put( $target_unq, "$target_blk:n:$new_target_rid", $item, 'raw' );
+                            $self->index_put( $target_unq, "$target_blk:lastid", $new_target_rid, 'raw' );
                             if ($t_unq_opened) {
                                 $self->table_close($target_unq);
                             }
@@ -172,41 +174,49 @@ sub field_to_list {
     }
 
     # Non-rdbm (text/string) field handling via .unq
-    my $unq_path = "${table_path}_$blk.unq";
+    my $unq_path = "${table_path}.unq";
     my @result;
 
     if ( $mode eq 'write' ) {
         my $unq_opened = 0;
         my $lastid;
 
-        # Open .unq for write only if not already open by caller
-        if ( !$self->{_db}->{$unq_path} ) {
-            $self->table_write($unq_path);
-            $unq_opened = 1;
-        }
-
-        # Cache lastid once before iterating items
-        if ( -e $unq_path || $self->{_db}->{$unq_path} ) {
-            ($lastid) = $self->index_get( $unq_path, 'lastid', 'raw' );
-        }
-        $lastid //= 0;
-
         foreach my $item (@list) {
-            my ($nid) = $self->index_get( $unq_path, "s:$item", 'raw' );
+            # Q> 8-byte unsigned integer check (0 to 18446744073709551615)
+            if ( $item =~ /^\d+$/ && ( length($item) < 20 || ( length($item) == 20 && $item le '18446744073709551615' ) ) ) {
+                push @result, $item;
+                next;
+            }
+
+            # Non-numeric text string: register into .unq dictionary
+            if ( !$unq_opened && !$self->{_db}->{$unq_path} ) {
+                $self->table_write($unq_path);
+                $unq_opened = 1;
+            }
+
+            # Cache lastid once before iterating items
+            if ( !defined $lastid ) {
+                if ( -e $unq_path || $self->{_db}->{$unq_path} ) {
+                    ($lastid) = $self->index_get( $unq_path, "$blk:lastid", 'raw' );
+                }
+                $lastid //= 0;
+            }
+
+            my ($nid) = $self->index_get( $unq_path, "$blk:s:$item", 'raw' );
 
             if ( !defined $nid || $nid eq '' ) {
                 $lastid++;
                 $nid = $lastid;
-                $self->index_put( $unq_path, "s:$item", $nid, 'raw' );
-                $self->index_put( $unq_path, "n:$nid", $item, 'raw' );
-                $self->index_put( $unq_path, 'lastid', $lastid, 'raw' );
+                $self->index_put( $unq_path, "$blk:s:$item", $nid, 'raw' );
+                $self->index_put( $unq_path, "$blk:n:$nid", $item, 'raw' );
+                $self->index_put( $unq_path, "$blk:lastid", $lastid, 'raw' );
             }
             else {
                 # Ensure reverse mapping exists
-                my ($rev) = $self->index_get( $unq_path, "n:$nid", 'raw' );
+                my ($rev) = $self->index_get( $unq_path, "$blk:n:$nid", 'raw' );
                 if ( !defined $rev || $rev eq '' ) {
-                    $self->index_put( $unq_path, "n:$nid", $item, 'raw' );
-                    $self->index_put( $unq_path, "s:$item", $nid, 'raw' );
+                    $self->index_put( $unq_path, "$blk:n:$nid", $item, 'raw' );
+                    $self->index_put( $unq_path, "$blk:s:$item", $nid, 'raw' );
                 }
             }
             push @result, $nid if defined $nid && $nid ne '';
@@ -219,24 +229,24 @@ sub field_to_list {
     elsif ( $mode eq 'read' ) {
         my $unq_opened = 0;
 
-        # Open .unq for read only if exists and not already open by caller
-        if ( ( -e $unq_path || $self->{_db}->{$unq_path} ) && !$self->{_db}->{$unq_path} ) {
-            $self->table_read($unq_path);
-            $unq_opened = 1;
-        }
-
         foreach my $item (@list) {
+            # Q> 8-byte unsigned integer check
+            if ( $item =~ /^\d+$/ && ( length($item) < 20 || ( length($item) == 20 && $item le '18446744073709551615' ) ) ) {
+                push @result, $item;
+                next;
+            }
+
+            # Non-numeric text string: resolve ID from .unq dictionary
+            if ( !$unq_opened && ( -e $unq_path || $self->{_db}->{$unq_path} ) && !$self->{_db}->{$unq_path} ) {
+                $self->table_read($unq_path);
+                $unq_opened = 1;
+            }
+
             if ( -e $unq_path || $self->{_db}->{$unq_path} ) {
-                my ($nid) = $self->index_get( $unq_path, "s:$item", 'raw' );
+                my ($nid) = $self->index_get( $unq_path, "$blk:s:$item", 'raw' );
                 if ( defined $nid && $nid ne '' ) {
                     push @result, $nid;
                 }
-                elsif ( $item =~ /^\d+$/ ) {
-                    push @result, $item;
-                }
-            }
-            elsif ( $item =~ /^\d+$/ ) {
-                push @result, $item;
             }
         }
 
@@ -256,8 +266,20 @@ sub field_to_list {
 sub rdbm_target {
     my ( $self, $table_info, $blk ) = @_;
     return unless ref($table_info) eq 'HASH' && $table_info->{blocks};
-    return unless defined $blk && exists $table_info->{blocks}->[$blk];
-    my $b_def = $table_info->{blocks}->[$blk];
+    return unless defined $blk;
+
+    my $b_def;
+    if ( ref( $table_info->{blocks} ) eq 'ARRAY' ) {
+        return unless exists $table_info->{blocks}->[$blk];
+        $b_def = $table_info->{blocks}->[$blk];
+    }
+    elsif ( ref( $table_info->{blocks} ) eq 'HASH' ) {
+        return unless exists $table_info->{blocks}->{$blk};
+        $b_def = $table_info->{blocks}->{$blk};
+    }
+    else {
+        return;
+    }
     return unless ref($b_def) eq 'HASH' && defined $b_def->{rdbm} && $b_def->{rdbm} ne '';
     my ( $t, $b );
     if ( ref( $b_def->{rdbm} ) eq 'HASH' ) {
@@ -317,10 +339,10 @@ sub unique_check {
         my $val = $fields->[$i];
         next unless defined $val && $val ne '';
 
-        my $unq_path = "${table_path}_${blk_idx}.unq";
+        my $unq_path = "${table_path}.unq";
         next unless -e $unq_path || $self->{_db}->{$unq_path};
 
-        my ($existing_rid) = $self->index_get( $unq_path, "s:$val", 'raw' );
+        my ($existing_rid) = $self->index_get( $unq_path, "$blk_idx:s:$val", 'raw' );
 
         if ( defined $existing_rid && $existing_rid ne '' && ( !defined $rid || $existing_rid ne $rid ) ) {
             my $b_name = $b->{name} || $b->{id} || "Block $blk_idx";
@@ -331,7 +353,7 @@ sub unique_check {
 }
 
 # $adb->unique_add( $table_path, $table_info, \@records );
-# Registers unique fields into ${table_path}_${blk}.unq.
+# Registers unique fields into ${table_path}.unq.
 # ------------------------------------------------
 sub unique_add {
     my ( $self, $table_path, $table_info, $records ) = @_;
@@ -339,35 +361,39 @@ sub unique_add {
     return unless ref($records) eq 'ARRAY' && @$records;
 
     my @blocks = @{ $table_info->{blocks} };
-    for ( my $blk = 1 ; $blk < @blocks ; $blk++ ) {
-        my $b = $blocks[$blk];
-        next unless ref($b) eq 'HASH' && defined $b->{valid} && $b->{valid} =~ /unique/i;
+    my @unq_blks = grep { ref($blocks[$_]) eq 'HASH' && defined $blocks[$_]->{valid} && $blocks[$_]->{valid} =~ /unique/i } ( 1 .. $#blocks );
+    return unless @unq_blks;
 
-        my $unq_path = "${table_path}_${blk}.unq";
-        my $unq_opened = 0;
-        if ( !$self->{_db}->{$unq_path} ) {
-            $self->table_write($unq_path);
-            $unq_opened = 1;
-        }
-
+    my %batch_put;
+    for my $blk (@unq_blks) {
         foreach my $rec (@$records) {
             my $rid = $rec->[0];
             my $val = $rec->[$blk];
             next unless defined $val && $val ne '';
 
-            $self->index_put( $unq_path, "s:$val", $rid, 'raw' );
-            $self->index_put( $unq_path, "n:$rid", $val, 'raw' );
-            $self->index_put( $unq_path, 'lastid', $rid, 'raw' );
+            $batch_put{"$blk:s:$val"} = $rid;
+            $batch_put{"$blk:n:$rid"} = $val;
+            $batch_put{"$blk:lastid"} = $rid;
         }
+    }
+    return unless %batch_put;
 
-        if ($unq_opened) {
-            $self->table_close($unq_path);
-        }
+    my $unq_path = "${table_path}.unq";
+    my $unq_opened = 0;
+    if ( !$self->{_db}->{$unq_path} ) {
+        $self->table_write($unq_path);
+        $unq_opened = 1;
+    }
+
+    $self->index_put( $unq_path, \%batch_put, 'raw' );
+
+    if ($unq_opened) {
+        $self->table_close($unq_path);
     }
 }
 
 # $adb->unique_del( $table_path, $table_info, \@records );
-# Removes entries from ${table_path}_${blk}.unq upon record deletion.
+# Removes entries from ${table_path}.unq upon record deletion.
 # ------------------------------------------------
 sub unique_del {
     my ( $self, $table_path, $table_info, $records ) = @_;
@@ -375,36 +401,39 @@ sub unique_del {
     return unless ref($records) eq 'ARRAY' && @$records;
 
     my @blocks = @{ $table_info->{blocks} };
-    for ( my $blk = 1 ; $blk < @blocks ; $blk++ ) {
-        my $b = $blocks[$blk];
-        next unless ref($b) eq 'HASH' && defined $b->{valid} && $b->{valid} =~ /unique/i;
+    my @unq_blks = grep { ref($blocks[$_]) eq 'HASH' && defined $blocks[$_]->{valid} && $blocks[$_]->{valid} =~ /unique/i } ( 1 .. $#blocks );
+    return unless @unq_blks;
 
-        my $unq_path = "${table_path}_${blk}.unq";
-        next unless -e $unq_path || $self->{_db}->{$unq_path};
+    my $unq_path = "${table_path}.unq";
+    return unless -e $unq_path || $self->{_db}->{$unq_path};
 
-        my $unq_opened = 0;
-        if ( !$self->{_db}->{$unq_path} ) {
-            $self->table_write($unq_path);
-            $unq_opened = 1;
-        }
-
+    my @batch_del;
+    for my $blk (@unq_blks) {
         foreach my $rec (@$records) {
             my $rid = $rec->[0];
             my $val = $rec->[$blk];
             next unless defined $val && $val ne '';
 
-            $self->index_del( $unq_path, "s:$val" );
-            $self->index_del( $unq_path, "n:$rid" );
+            push @batch_del, "$blk:s:$val", "$blk:n:$rid";
         }
+    }
+    return unless @batch_del;
 
-        if ($unq_opened) {
-            $self->table_close($unq_path);
-        }
+    my $unq_opened = 0;
+    if ( !$self->{_db}->{$unq_path} ) {
+        $self->table_write($unq_path);
+        $unq_opened = 1;
+    }
+
+    $self->index_del( $unq_path, \@batch_del );
+
+    if ($unq_opened) {
+        $self->table_close($unq_path);
     }
 }
 
 # $adb->unique_modify( $table_path, $table_info, \@pairs );
-# Updates ${table_path}_${blk}.unq when unique field values change.
+# Updates ${table_path}.unq when unique field values change.
 # ------------------------------------------------
 sub unique_modify {
     my ( $self, $table_path, $table_info, $pairs ) = @_;
@@ -412,17 +441,11 @@ sub unique_modify {
     return unless ref($pairs) eq 'ARRAY' && @$pairs;
 
     my @blocks = @{ $table_info->{blocks} };
-    for ( my $blk = 1 ; $blk < @blocks ; $blk++ ) {
-        my $b = $blocks[$blk];
-        next unless ref($b) eq 'HASH' && defined $b->{valid} && $b->{valid} =~ /unique/i;
+    my @unq_blks = grep { ref($blocks[$_]) eq 'HASH' && defined $blocks[$_]->{valid} && $blocks[$_]->{valid} =~ /unique/i } ( 1 .. $#blocks );
+    return unless @unq_blks;
 
-        my $unq_path = "${table_path}_${blk}.unq";
-        my $unq_opened = 0;
-        if ( !$self->{_db}->{$unq_path} ) {
-            $self->table_write($unq_path);
-            $unq_opened = 1;
-        }
-
+    my ( %batch_put, @batch_del );
+    for my $blk (@unq_blks) {
         foreach my $pair (@$pairs) {
             my ( $rid, $old_rec, $new_rec ) = @$pair;
             my $ov = $old_rec->[$blk] // '';
@@ -430,18 +453,29 @@ sub unique_modify {
             next if $ov eq $nv;
 
             if ( $ov ne '' ) {
-                $self->index_del( $unq_path, "s:$ov" );
+                push @batch_del, "$blk:s:$ov";
             }
             if ( $nv ne '' ) {
-                $self->index_put( $unq_path, "s:$nv", $rid, 'raw' );
-                $self->index_put( $unq_path, "n:$rid", $nv, 'raw' );
-                $self->index_put( $unq_path, 'lastid', $rid, 'raw' );
+                $batch_put{"$blk:s:$nv"} = $rid;
+                $batch_put{"$blk:n:$rid"} = $nv;
+                $batch_put{"$blk:lastid"} = $rid;
             }
         }
+    }
+    return unless %batch_put || @batch_del;
 
-        if ($unq_opened) {
-            $self->table_close($unq_path);
-        }
+    my $unq_path = "${table_path}.unq";
+    my $unq_opened = 0;
+    if ( !$self->{_db}->{$unq_path} ) {
+        $self->table_write($unq_path);
+        $unq_opened = 1;
+    }
+
+    $self->index_del( $unq_path, \@batch_del ) if @batch_del;
+    $self->index_put( $unq_path, \%batch_put, 'raw' ) if %batch_put;
+
+    if ($unq_opened) {
+        $self->table_close($unq_path);
     }
 }
 
@@ -459,43 +493,42 @@ sub match_add {
     return unless ref($records) eq 'ARRAY' && @$records;
 
     my %acc;
+    my $unq_path = "${table_path}.unq";
+    my $unq_opened = 0;
+    if ( !$self->{_db}->{$unq_path} ) {
+        $self->table_write($unq_path);
+        $unq_opened = 1;
+    }
 
     foreach my $blk ( @{ $table_info->{match_block} } ) {
-        my $unq_path = "${table_path}_$blk.unq";
-        my ( $is_rdbm ) = $self->rdbm_target( $table_info, $blk );
-
-        # Batch open .unq for write to optimize multiple records
-        my $unq_opened = 0;
-        if ( !$is_rdbm ) {
-            $self->table_write($unq_path);
-            $unq_opened = 1;
-        }
-
         foreach my $rec (@$records) {
             my $rid = $rec->[0];
             next unless defined $rec->[$blk] && $rec->[$blk] ne '';
             my @ids = $self->field_to_list( $rec->[$blk], 'write', $table_path, $table_info, $blk );
-            push @{ $acc{$blk}{$_} }, $rid for @ids;
-        }
-
-        if ($unq_opened) {
-            $self->table_close($unq_path);
+            push @{ $acc{"$blk:$_"} }, $rid for @ids;
         }
     }
 
-    foreach my $blk ( keys %acc ) {
-        my $field_path = "${table_path}_$blk.fld";
-        $self->table_write($field_path) or do {
-            $self->transact_error( $field_path, "can't open" );
-            next;
-        };
-        foreach my $val ( keys %{ $acc{$blk} } ) {
-            my ( undef, @existing ) = $self->index_get( $field_path, $val );
-            my @recs = $self->array_nodup( @existing, @{ $acc{$blk}{$val} } );
-            $self->index_put( $field_path, $val, \@recs, "ids" );
-        }
-        $self->table_close($field_path);
+    if ($unq_opened) {
+        $self->table_close($unq_path);
     }
+
+    return unless %acc;
+    my $field_path = "${table_path}.fld";
+    $self->table_write($field_path) or do {
+        $self->transact_error( $field_path, "can't open" );
+        return;
+    };
+    my @all_vals = keys %acc;
+    my $existing_map = $self->index_get( $field_path, \@all_vals, 'raw' );
+
+    my %batch_put;
+    foreach my $k (@all_vals) {
+        my $raw_buf = $existing_map->{$k} // '';
+        $batch_put{$k} = $self->bin_add( $raw_buf, $acc{$k} );
+    }
+    $self->index_put( $field_path, \%batch_put, "bin" );
+    $self->table_close($field_path);
 }
 
 sub match_del {
@@ -506,48 +539,49 @@ sub match_del {
     return unless ref($records) eq 'ARRAY' && @$records;
 
     my %acc;
+    my $unq_path = "${table_path}.unq";
+    my $unq_opened = 0;
+    if ( -e $unq_path && !$self->{_db}->{$unq_path} ) {
+        $self->table_read($unq_path);
+        $unq_opened = 1;
+    }
 
     foreach my $blk ( @{ $table_info->{match_block} } ) {
-        my $unq_path = "${table_path}_$blk.unq";
-        my ( $is_rdbm ) = $self->rdbm_target( $table_info, $blk );
-
-        my $unq_opened = 0;
-        if ( !$is_rdbm && -e $unq_path ) {
-            $self->table_read($unq_path);
-            $unq_opened = 1;
-        }
-
         foreach my $rec (@$records) {
             my $rid = $rec->[0];
             next unless defined $rec->[$blk] && $rec->[$blk] ne '';
             my @ids = $self->field_to_list( $rec->[$blk], 'read', $table_path, $table_info, $blk );
-            push @{ $acc{$blk}{$_} }, $rid for @ids;
-        }
-
-        if ($unq_opened) {
-            $self->table_close($unq_path);
+            push @{ $acc{"$blk:$_"} }, $rid for @ids;
         }
     }
 
-    foreach my $blk ( keys %acc ) {
-        my $field_path = "${table_path}_$blk.fld";
-        next unless -e $field_path;
-        $self->table_write($field_path) or do {
-            $self->transact_error( $field_path, "can't open" );
-            next;
-        };
-        foreach my $val ( keys %{ $acc{$blk} } ) {
-            my ( undef, @existing ) = $self->index_get( $field_path, $val );
-            my $keys = $self->array_punch( \@existing, $acc{$blk}{$val} );
-            if (@$keys) {
-                $self->index_put( $field_path, $val, $keys, "ids" );
-            }
-            else {
-                $self->index_del( $field_path, $val );
-            }
-        }
-        $self->table_close($field_path);
+    if ($unq_opened) {
+        $self->table_close($unq_path);
     }
+
+    return unless %acc;
+    my $field_path = "${table_path}.fld";
+    return unless -e $field_path;
+    $self->table_write($field_path) or do {
+        $self->transact_error( $field_path, "can't open" );
+        return;
+    };
+    my @all_vals = keys %acc;
+    my $existing_map = $self->index_get( $field_path, \@all_vals, 'raw' );
+    my ( %batch_put, @batch_del );
+    foreach my $k (@all_vals) {
+        my $raw_buf = $existing_map->{$k} // '';
+        my $updated = $self->bin_punch( $raw_buf, $acc{$k} );
+        if ( length($updated) >= 8 ) {
+            $batch_put{$k} = $updated;
+        }
+        else {
+            push @batch_del, $k;
+        }
+    }
+    $self->index_put( $field_path, \%batch_put, "bin" ) if %batch_put;
+    $self->index_del( $field_path, \@batch_del ) if @batch_del;
+    $self->table_close($field_path);
 }
 
 sub match_modify {
@@ -558,17 +592,14 @@ sub match_modify {
     return unless ref($pairs) eq 'ARRAY' && @$pairs;
 
     my ( %del_acc, %add_acc );
+    my $unq_path = "${table_path}.unq";
+    my $unq_opened = 0;
+    if ( !$self->{_db}->{$unq_path} ) {
+        $self->table_write($unq_path);
+        $unq_opened = 1;
+    }
 
     foreach my $blk ( @{ $table_info->{match_block} } ) {
-        my $unq_path = "${table_path}_$blk.unq";
-        my ( $is_rdbm ) = $self->rdbm_target( $table_info, $blk );
-
-        my $unq_opened = 0;
-        if ( !$is_rdbm ) {
-            $self->table_write($unq_path);
-            $unq_opened = 1;
-        }
-
         foreach my $pair (@$pairs) {
             my ( $rid, $old_rec, $new_rec ) = @$pair;
             my $ov = $old_rec->[$blk] // '';
@@ -580,45 +611,49 @@ sub match_modify {
 
             # Only remove from values that were removed
             foreach my $v ( keys %old_vals ) {
-                push @{ $del_acc{$blk}{$v} }, $rid unless $new_vals{$v};
+                push @{ $del_acc{"$blk:$v"} }, $rid unless $new_vals{$v};
             }
             # Only add to values that are newly added
             foreach my $v ( keys %new_vals ) {
-                push @{ $add_acc{$blk}{$v} }, $rid unless $old_vals{$v};
+                push @{ $add_acc{"$blk:$v"} }, $rid unless $old_vals{$v};
             }
-        }
-
-        if ($unq_opened) {
-            $self->table_close($unq_path);
         }
     }
 
-    my %all_blks = map { $_ => 1 } ( keys %del_acc, keys %add_acc );
-    foreach my $blk ( keys %all_blks ) {
-        my $field_path = "${table_path}_$blk.fld";
-        $self->table_write($field_path) or do {
-            $self->transact_error( $field_path, "can't open" );
-            next;
-        };
-        my %all_vals = map { $_ => 1 } ( keys %{ $del_acc{$blk} }, keys %{ $add_acc{$blk} } );
-        foreach my $val ( keys %all_vals ) {
-            my ( undef, @recs ) = $self->index_get( $field_path, $val );
-            if ( $del_acc{$blk}{$val} ) {
-                my $k = $self->array_punch( \@recs, $del_acc{$blk}{$val} );
-                @recs = @$k;
-            }
-            if ( $add_acc{$blk}{$val} ) {
-                @recs = $self->array_nodup( @recs, @{ $add_acc{$blk}{$val} } );
-            }
-            if (@recs) {
-                $self->index_put( $field_path, $val, \@recs, "ids" );
-            }
-            else {
-                $self->index_del( $field_path, $val );
-            }
-        }
-        $self->table_close($field_path);
+    if ($unq_opened) {
+        $self->table_close($unq_path);
     }
+
+    return unless %del_acc || %add_acc;
+    my $field_path = "${table_path}.fld";
+    $self->table_write($field_path) or do {
+        $self->transact_error( $field_path, "can't open" );
+        return;
+    };
+    my %all_vals = map { $_ => 1 } ( keys %del_acc, keys %add_acc );
+    my @key_list = keys %all_vals;
+    my $existing_map = $self->index_get( $field_path, \@key_list, 'raw' );
+    my ( %batch_put, @batch_del );
+
+    foreach my $k (@key_list) {
+        $k or next;
+        my $raw_buf = $existing_map->{$k} // '';
+        if ( $del_acc{$k} ) {
+            $raw_buf = $self->bin_punch( $raw_buf, $del_acc{$k} );
+        }
+        if ( $add_acc{$k} ) {
+            $raw_buf = $self->bin_add( $raw_buf, $add_acc{$k} );
+        }
+        if ( length($raw_buf) >= 8 ) {
+            $batch_put{$k} = $raw_buf;
+        }
+        else {
+            push @batch_del, $k;
+        }
+    }
+    $self->index_put( $field_path, \%batch_put, "bin" ) if %batch_put;
+    $self->index_del( $field_path, \@batch_del ) if @batch_del;
+    $self->table_close($field_path);
 }
 
 sub search_add {
@@ -628,39 +663,88 @@ sub search_add {
     return unless exists $table_info->{search_block};
     return unless ref($records) eq 'ARRAY' && @$records;
 
+    # 1. Identify RDBM blocks and prepare pre-fetch
+    my %rdbm_blocks;
     foreach my $blk ( @{ $table_info->{search_block} } ) {
         my ( $real_blk, $src_table, $src_display ) =
             ref($blk) eq 'ARRAY' ? ( $blk->[0], $blk->[1], $blk->[2] )
                                  : ( $blk,       undef,     undef      );
 
-        my $search_path = "${table_path}_$real_blk.src";
-        my %word_acc;
+        if ( !$src_table ) {
+            ( $src_table, $src_display ) = $self->rdbm_target( $table_info, $real_blk );
+        }
+        if ( $src_table ) {
+            $src_display //= 1;
+            $rdbm_blocks{$real_blk} = { table => $src_table, display => $src_display };
+        }
+    }
+
+    # 2. Collect unique foreign IDs across all records
+    my ( %foreign_ids, %rdbm_recs );
+    if ( %rdbm_blocks ) {
+        for my $rec (@$records) {
+            for my $real_blk ( keys %rdbm_blocks ) {
+                my $val = $rec->[$real_blk];
+                next unless defined $val && $val ne '';
+                my $target_table = $rdbm_blocks{$real_blk}->{table};
+                for my $id ( split /[,;]/, $val ) {
+                    $id =~ s/^\s+|\s+$//g;
+                    $foreign_ids{$target_table}->{$id} = 1 if $id =~ /^\d+$/;
+                }
+            }
+        }
+        for my $target_table ( keys %foreign_ids ) {
+            my @ids = keys %{ $foreign_ids{$target_table} };
+            next unless @ids;
+            my @target_records = $self->read_list( $target_table, \@ids );
+            $rdbm_recs{$target_table} = { map { $_->[0] => $_ } @target_records };
+        }
+    }
+
+    # 3. Tokenize words with in-memory lookup
+    my %word_acc;
+    foreach my $blk ( @{ $table_info->{search_block} } ) {
+        my $real_blk = ref($blk) eq 'ARRAY' ? $blk->[0] : $blk;
+        my $rdbm_info = $rdbm_blocks{$real_blk};
 
         foreach my $rec (@$records) {
             my $rid = $rec->[0];
             my $val = $rec->[$real_blk];
-            if ($src_table) {
-                my @tmp = $self->read_id( $src_table, $val );
-                $val = $tmp[$src_display];
+            if ( $rdbm_info && defined $val && $val ne '' ) {
+                my $target_table = $rdbm_info->{table};
+                my $disp         = $rdbm_info->{display};
+                my @parts;
+                for my $sid ( split /[,;]/, $val ) {
+                    $sid =~ s/^\s+|\s+$//g;
+                    if ( my $target_rec = $rdbm_recs{$target_table}->{$sid} ) {
+                        my $name = $target_rec->[$disp];
+                        push @parts, $name if defined $name && length($name);
+                    }
+                }
+                $val = join( ' ', @parts );
             }
-            next unless $val;
+            next unless defined $val && $val ne '';
             my %words = $self->get_words( $val, "write", $tableid );
-            push @{ $word_acc{$_} }, $rid for keys %words;
+            push @{ $word_acc{"$real_blk:$_"} }, $rid for keys %words;
         }
-
-        next unless %word_acc;
-        $self->table_write($search_path) or do {
-            $self->transact_error( $search_path, "can't open" );
-            next;
-        };
-        foreach my $word ( keys %word_acc ) {
-            $word or next;
-            my ( undef, @existing ) = $self->index_get( $search_path, $word );
-            my @recs = $self->array_nodup( @existing, @{ $word_acc{$word} } );
-            $self->index_put( $search_path, $word, \@recs, "ids" );
-        }
-        $self->table_close($search_path);
     }
+
+    return unless %word_acc;
+    my $search_path = "${table_path}.src";
+    $self->table_write($search_path) or do {
+        $self->transact_error( $search_path, "can't open" );
+        return;
+    };
+    my @all_words = grep { length } keys %word_acc;
+    my $existing_map = $self->index_get( $search_path, \@all_words, 'raw' );
+
+    my %batch_put;
+    foreach my $k (@all_words) {
+        my $raw_buf = $existing_map->{$k} // '';
+        $batch_put{$k} = $self->bin_add( $raw_buf, $word_acc{$k} );
+    }
+    $self->index_put( $search_path, \%batch_put, "bin" );
+    $self->table_close($search_path);
 }
 
 sub search_del {
@@ -670,45 +754,96 @@ sub search_del {
     return unless exists $table_info->{search_block};
     return unless ref($records) eq 'ARRAY' && @$records;
 
+    # 1. Identify RDBM blocks and prepare pre-fetch
+    my %rdbm_blocks;
     foreach my $blk ( @{ $table_info->{search_block} } ) {
         my ( $real_blk, $src_table, $src_display ) =
             ref($blk) eq 'ARRAY' ? ( $blk->[0], $blk->[1], $blk->[2] )
                                  : ( $blk,       undef,     undef      );
 
-        my $search_path = "${table_path}_$real_blk.src";
-        next unless -e $search_path;
+        if ( !$src_table ) {
+            ( $src_table, $src_display ) = $self->rdbm_target( $table_info, $real_blk );
+        }
+        if ( $src_table ) {
+            $src_display //= 1;
+            $rdbm_blocks{$real_blk} = { table => $src_table, display => $src_display };
+        }
+    }
 
-        my %word_acc;
+    # 2. Collect unique foreign IDs across all records
+    my ( %foreign_ids, %rdbm_recs );
+    if ( %rdbm_blocks ) {
+        for my $rec (@$records) {
+            for my $real_blk ( keys %rdbm_blocks ) {
+                my $val = $rec->[$real_blk];
+                next unless defined $val && $val ne '';
+                my $target_table = $rdbm_blocks{$real_blk}->{table};
+                for my $id ( split /[,;]/, $val ) {
+                    $id =~ s/^\s+|\s+$//g;
+                    $foreign_ids{$target_table}->{$id} = 1 if $id =~ /^\d+$/;
+                }
+            }
+        }
+        for my $target_table ( keys %foreign_ids ) {
+            my @ids = keys %{ $foreign_ids{$target_table} };
+            next unless @ids;
+            my @target_records = $self->read_list( $target_table, \@ids );
+            $rdbm_recs{$target_table} = { map { $_->[0] => $_ } @target_records };
+        }
+    }
+
+    # 3. Tokenize words with in-memory lookup
+    my %word_acc;
+    foreach my $blk ( @{ $table_info->{search_block} } ) {
+        my $real_blk = ref($blk) eq 'ARRAY' ? $blk->[0] : $blk;
+        my $rdbm_info = $rdbm_blocks{$real_blk};
+
         foreach my $rec (@$records) {
             my $rid = $rec->[0];
             my $val = $rec->[$real_blk];
-            if ($src_table) {
-                my @tmp = $self->read_id( $src_table, $val );
-                $val = $tmp[$src_display];
+            if ( $rdbm_info && defined $val && $val ne '' ) {
+                my $target_table = $rdbm_info->{table};
+                my $disp         = $rdbm_info->{display};
+                my @parts;
+                for my $sid ( split /[,;]/, $val ) {
+                    $sid =~ s/^\s+|\s+$//g;
+                    if ( my $target_rec = $rdbm_recs{$target_table}->{$sid} ) {
+                        my $name = $target_rec->[$disp];
+                        push @parts, $name if defined $name && length($name);
+                    }
+                }
+                $val = join( ' ', @parts );
             }
-            next unless $val;
+            next unless defined $val && $val ne '';
             my %words = $self->get_words( $val, "write", $tableid );
-            push @{ $word_acc{$_} }, $rid for keys %words;
+            push @{ $word_acc{"$real_blk:$_"} }, $rid for keys %words;
         }
-
-        next unless %word_acc;
-        $self->table_write($search_path) or do {
-            $self->transact_error( $search_path, "can't open" );
-            next;
-        };
-        foreach my $word ( keys %word_acc ) {
-            $word or next;
-            my ( undef, @existing ) = $self->index_get( $search_path, $word );
-            my $keys = $self->array_punch( \@existing, $word_acc{$word} );
-            if (@$keys) {
-                $self->index_put( $search_path, $word, $keys, "ids" );
-            }
-            else {
-                $self->index_del( $search_path, $word );
-            }
-        }
-        $self->table_close($search_path);
     }
+
+    return unless %word_acc;
+    my $search_path = "${table_path}.src";
+    return unless -e $search_path;
+
+    $self->table_write($search_path) or do {
+        $self->transact_error( $search_path, "can't open" );
+        return;
+    };
+    my @all_words = grep { length } keys %word_acc;
+    my $existing_map = $self->index_get( $search_path, \@all_words, 'raw' );
+    my ( %batch_put, @batch_del );
+    foreach my $k (@all_words) {
+        my $raw_buf = $existing_map->{$k} // '';
+        my $updated = $self->bin_punch( $raw_buf, $word_acc{$k} );
+        if ( length($updated) >= 8 ) {
+            $batch_put{$k} = $updated;
+        }
+        else {
+            push @batch_del, $k;
+        }
+    }
+    $self->index_put( $search_path, \%batch_put, "bin" ) if %batch_put;
+    $self->index_del( $search_path, \@batch_del ) if @batch_del;
+    $self->table_close($search_path);
 }
 
 sub search_modify {
@@ -718,51 +853,124 @@ sub search_modify {
     return unless exists $table_info->{search_block};
     return unless ref($pairs) eq 'ARRAY' && @$pairs;
 
+    # 1. Identify RDBM blocks
+    my %rdbm_blocks;
     foreach my $blk ( @{ $table_info->{search_block} } ) {
-        my $real_blk    = ref($blk) eq 'ARRAY' ? $blk->[0] : $blk;
-        my $search_path = "${table_path}_$real_blk.src";
+        my ( $real_blk, $src_table, $src_display ) =
+            ref($blk) eq 'ARRAY' ? ( $blk->[0], $blk->[1], $blk->[2] )
+                                 : ( $blk,       undef,     undef      );
 
-        my ( %del_acc, %add_acc );
+        if ( !$src_table ) {
+            ( $src_table, $src_display ) = $self->rdbm_target( $table_info, $real_blk );
+        }
+        if ( $src_table ) {
+            $src_display //= 1;
+            $rdbm_blocks{$real_blk} = { table => $src_table, display => $src_display };
+        }
+    }
+
+    # 2. Collect unique foreign IDs across old and new records
+    my ( %foreign_ids, %rdbm_recs );
+    if ( %rdbm_blocks ) {
+        for my $pair (@$pairs) {
+            my ( undef, $old_rec, $new_rec ) = @$pair;
+            for my $rec ( $old_rec, $new_rec ) {
+                next unless ref($rec) eq 'ARRAY';
+                for my $real_blk ( keys %rdbm_blocks ) {
+                    my $val = $rec->[$real_blk];
+                    next unless defined $val && $val ne '';
+                    my $target_table = $rdbm_blocks{$real_blk}->{table};
+                    for my $id ( split /[,;]/, $val ) {
+                        $id =~ s/^\s+|\s+$//g;
+                        $foreign_ids{$target_table}->{$id} = 1 if $id =~ /^\d+$/;
+                    }
+                }
+            }
+        }
+        for my $target_table ( keys %foreign_ids ) {
+            my @ids = keys %{ $foreign_ids{$target_table} };
+            next unless @ids;
+            my @target_records = $self->read_list( $target_table, \@ids );
+            $rdbm_recs{$target_table} = { map { $_->[0] => $_ } @target_records };
+        }
+    }
+
+    my $resolve_val = sub {
+        my ( $rec, $real_blk ) = @_;
+        my $val = $rec->[$real_blk];
+        if ( my $rdbm_info = $rdbm_blocks{$real_blk} ) {
+            if ( defined $val && $val ne '' ) {
+                my $target_table = $rdbm_info->{table};
+                my $disp         = $rdbm_info->{display};
+                my @parts;
+                for my $sid ( split /[,;]/, $val ) {
+                    $sid =~ s/^\s+|\s+$//g;
+                    if ( my $target_rec = $rdbm_recs{$target_table}->{$sid} ) {
+                        my $name = $target_rec->[$disp];
+                        push @parts, $name if defined $name && length($name);
+                    }
+                }
+                $val = join( ' ', @parts );
+            }
+        }
+        return $val // '';
+    };
+
+    my ( %del_acc, %add_acc );
+
+    foreach my $blk ( @{ $table_info->{search_block} } ) {
+        my $real_blk = ref($blk) eq 'ARRAY' ? $blk->[0] : $blk;
+
         foreach my $pair (@$pairs) {
             my ( $rid, $old_rec, $new_rec ) = @$pair;
-            my %old_words = $self->get_words( $old_rec->[$real_blk], "write", $tableid );
-            my %new_words = $self->get_words( $new_rec->[$real_blk], "write", $tableid );
+            my $old_val = $resolve_val->( $old_rec, $real_blk );
+            my $new_val = $resolve_val->( $new_rec, $real_blk );
+            next if $old_val eq $new_val;
+
+            my %old_words = $self->get_words( $old_val, "write", $tableid );
+            my %new_words = $self->get_words( $new_val, "write", $tableid );
 
             my %diff;
             $diff{$_} = 1 for keys %old_words;
             for my $w ( keys %new_words ) { $diff{$w} = exists $diff{$w} ? 2 : 3 }
             for my $w ( keys %diff ) {
-                if    ( $diff{$w} == 1 ) { push @{ $del_acc{$w} }, $rid }
-                elsif ( $diff{$w} == 3 ) { push @{ $add_acc{$w} }, $rid }
+                if    ( $diff{$w} == 1 ) { push @{ $del_acc{"$real_blk:$w"} }, $rid }
+                elsif ( $diff{$w} == 3 ) { push @{ $add_acc{"$real_blk:$w"} }, $rid }
             }
         }
-
-        next unless %del_acc || %add_acc;
-        $self->table_write($search_path) or do {
-            $self->transact_error( $search_path, "can't open" );
-            next;
-        };
-
-        my %all_words = map { $_ => 1 } ( keys %del_acc, keys %add_acc );
-        foreach my $word ( keys %all_words ) {
-            $word or next;
-            my ( undef, @recs ) = $self->index_get( $search_path, $word );
-            if ( $del_acc{$word} ) {
-                my $k = $self->array_punch( \@recs, $del_acc{$word} );
-                @recs = @$k;
-            }
-            if ( $add_acc{$word} ) {
-                @recs = $self->array_nodup( @recs, @{ $add_acc{$word} } );
-            }
-            if (@recs) {
-                $self->index_put( $search_path, $word, \@recs, "ids" );
-            }
-            else {
-                $self->index_del( $search_path, $word );
-            }
-        }
-        $self->table_close($search_path);
     }
+
+    return unless %del_acc || %add_acc;
+    my $search_path = "${table_path}.src";
+    $self->table_write($search_path) or do {
+        $self->transact_error( $search_path, "can't open" );
+        return;
+    };
+
+    my %all_words = map { $_ => 1 } ( keys %del_acc, keys %add_acc );
+    my @key_list = keys %all_words;
+    my $existing_map = $self->index_get( $search_path, \@key_list, 'raw' );
+    my ( %batch_put, @batch_del );
+
+    foreach my $k (@key_list) {
+        $k or next;
+        my $raw_buf = $existing_map->{$k} // '';
+        if ( $del_acc{$k} ) {
+            $raw_buf = $self->bin_punch( $raw_buf, $del_acc{$k} );
+        }
+        if ( $add_acc{$k} ) {
+            $raw_buf = $self->bin_add( $raw_buf, $add_acc{$k} );
+        }
+        if ( length($raw_buf) >= 8 ) {
+            $batch_put{$k} = $raw_buf;
+        }
+        else {
+            push @batch_del, $k;
+        }
+    }
+    $self->index_put( $search_path, \%batch_put, "bin" ) if %batch_put;
+    $self->index_del( $search_path, \@batch_del ) if @batch_del;
+    $self->table_close($search_path);
 }
 
 # Appends new rid(s) to .inx file: updates keys, count, lastid.
@@ -785,18 +993,57 @@ sub records_add {
         Time::HiRes::usleep(5000);
     }
     if ($idx_handle) {
-        my ( undef, @recs_ref ) = $self->index_get( $index_path, "keys" );
         my ($lastid) = $self->index_get( $index_path, "lastid", "raw" );
         $lastid //= 0;
-        my @recs = $self->array_nodup( @recs_ref, @$new_rids );
-        @all_recs = @recs;
-        $self->index_put( $index_path, "keys",  \@recs, "ids" );
-        $self->index_put( $index_path, "count", scalar @recs, "raw" );
-        my @nums   = sort { $b <=> $a } grep { /^\d+$/ } @$new_rids;
-        if ( @nums && $nums[0] > $lastid ) {
-            $self->index_put( $index_path, "lastid", $nums[0], "raw" );
+
+        # Fast-path O(1) Binary Append:
+        # If all new_rids are numeric, strictly ascending, and greater than current lastid,
+        # they are guaranteed not to exist in the table.
+        # Append them directly to the binary buffer without unpacking or deduplicating.
+        my $can_append = 1;
+        my $prev = $lastid;
+        for my $id (@$new_rids) {
+            unless ( defined $id && $id =~ /^\d+$/ && $id > $prev ) {
+                $can_append = 0;
+                last;
+            }
+            $prev = $id;
+        }
+
+        my $count;
+        if ($can_append) {
+            my ($raw_keys) = $self->index_get( $index_path, "keys", "raw" );
+            $raw_keys //= '';
+            my $new_packed = pack( "(Q>)*", @$new_rids );
+            my $updated_keys = $raw_keys . $new_packed;
+            $self->index_put( $index_path, "keys", $updated_keys, "bin" );
+            $count = int( bytes::length($updated_keys) / 8 );
+            $lastid = $prev;
+            $self->index_put( $index_path, "lastid", $lastid, "raw" );
+            $self->index_put( $index_path, "count", $count, "raw" );
+        }
+        else {
+            # Non-sequential IDs (e.g. hole-filling or manual IDs): binary add and sort
+            my ($raw_keys) = $self->index_get( $index_path, "keys", "raw" );
+            $raw_keys //= '';
+            $raw_keys = $self->bin_add( $raw_keys, $new_rids );
+            $raw_keys = $self->bin_sort( $raw_keys );
+            $count = int( length($raw_keys) / 8 );
+            $self->index_put( $index_path, "keys",  $raw_keys, "bin" );
+            $self->index_put( $index_path, "count", $count, "raw" );
+            my @nums = sort { $b <=> $a } grep { defined && /^\d+$/ } @$new_rids;
+            if ( @nums && $nums[0] > $lastid ) {
+                $self->index_put( $index_path, "lastid", $nums[0], "raw" );
+                $lastid = $nums[0];
+            }
         }
         $self->table_close($index_path);
+
+        if ($tableid) {
+            $self->set_cache( $tableid, 'count', $count );
+            $self->set_cache( $tableid, 'lastid', $lastid );
+            $self->set_cache( $tableid, 'keys', undef );
+        }
     }
 
     if ($tableid) {
@@ -824,20 +1071,30 @@ sub records_del {
 
     my $index_path = "$table_path.inx";
     if ( -e $index_path && $self->table_write($index_path) ) {
-        my ( undef, @recs_ref ) = $self->index_get( $index_path, "keys" );
-        my $keys = $self->array_punch( \@recs_ref, $del_rids );
-        if (@$keys) {
-            $self->index_put( $index_path, "keys",  $keys, "ids" );
+        my ($raw_keys) = $self->index_get( $index_path, "keys", "raw" );
+        my $count = 0;
+        if ( defined $raw_keys && length($raw_keys) > 0 ) {
+            my $orig_len = length($raw_keys);
+            $raw_keys = $self->bin_punch( $raw_keys, $del_rids );
+            $count = int( length($raw_keys) / 8 );
+            if ( length($raw_keys) != $orig_len ) {
+                if ($count > 0) {
+                    $self->index_put( $index_path, "keys",  $raw_keys, "bin" );
+                    $self->index_put( $index_path, "count", $count, "raw" );
+                }
+                else {
+                    $self->index_del( $index_path, "keys" );
+                    $self->index_put( $index_path, "count", 0, "raw" );
+                }
+            }
         }
-        else {
-            $self->index_del( $index_path, "keys" );
-        }
-        $self->index_put( $index_path, "count", scalar @$keys, "raw" );
         $self->table_close($index_path);
-    }
 
-    if ($tableid) {
-        $self->cache_delete( $tableid, "keys" );
+        if ($tableid) {
+            $self->set_cache( $tableid, 'count', $count );
+            $self->set_cache( $tableid, 'keys', undef );
+            $self->cache_delete( $tableid, "keys" );
+        }
     }
 }
 
@@ -857,9 +1114,6 @@ sub set_slug {
 
     # To get slug value, first the table_path
     my $table_path = $self->table_path($table);
-    my $slg0_path  = "${table_path}_0.slg";
-    my $slg1_path  = "${table_path}_1.slg";
-
     my ( $val, %db_rw0, %db_rw1 );
 
     # blocks -> rdbm must be defined to read from other related files.
@@ -900,30 +1154,23 @@ sub set_slug {
         $rw_link .= $fields->[$i];
     }
 
-    # write mode (atomically locks both _1.slg and _0.slg to avoid race conditions)
+    # write mode (atomically writes into unified .slg file)
     if ($write) {
-        my $ok1 = $self->table_write($slg1_path);
-        unless ($ok1) {
-            $self->transact_error( $slg1_path, "cannot open" );
+        my $slg_path = "${table_path}.slg";
+        my $ok = $self->table_write($slg_path);
+        unless ($ok) {
+            $self->transact_error( $slg_path, "cannot open" );
             return;
         }
 
-        my $ok0 = $self->table_write($slg0_path);
-        unless ($ok0) {
-            $self->table_close($slg1_path);
-            $self->transact_error( $slg0_path, "cannot open" );
-            return;
-        }
-
-        my $recs_val = $self->recs_get( $slg1_path, $rw_link )->{$rw_link};
+        my $recs_val = $self->recs_get( $slg_path, "1:$rw_link" )->{"1:$rw_link"};
         if ( $recs_val && $recs_val ne $record->[0] ) {
             $rw_link .= "-$record->[0]";
         }
-        $self->recs_put( $slg1_path, [ $rw_link, $record->[0] ] );
-        $self->recs_put( $slg0_path, [ $record->[0], $rw_link ] );
+        $self->recs_put( $slg_path, [ "1:$rw_link", $record->[0] ] );
+        $self->recs_put( $slg_path, [ "0:$record->[0]", $rw_link ] );
 
-        $self->table_close($slg1_path);
-        $self->table_close($slg0_path);
+        $self->table_close($slg_path);
     }
 
     return $rw_link;
@@ -947,27 +1194,29 @@ sub get_slug {
     my $table_path = $self->table_path($table);
     my $table_info = $self->table_info($table);
     return {} unless $table_info->{slug_block};
-    return {} unless -e "${table_path}_$type.slg";
 
-    my $slg_path = "${table_path}_$type.slg";
-    return {} unless -e $slg_path;
-
-    $self->table_read($slg_path) or return {};
-    my @rids = map {
-        my $rid = ref($_) eq "ARRAY" ? $_->[0] : $_;
-        $rid =~ s/^\///;
-        $rid =~ s/\/$//;
-        $rid;
-    } @records;
-    my $vals = $self->recs_get( $slg_path, @rids );
-    $links->{$_} = $vals->{$_} for @rids;
-    $self->table_close($slg_path);
+    my $unified_slg = "${table_path}.slg";
+    if ( -e $unified_slg ) {
+        $self->table_read($unified_slg) or return {};
+        my @rids = map {
+            my $rid = ref($_) eq "ARRAY" ? $_->[0] : $_;
+            $rid =~ s/^\///;
+            $rid =~ s/\/$//;
+            $rid;
+        } @records;
+        my @prefixed_keys = map { "$type:$_" } @rids;
+        my $vals = $self->recs_get( $unified_slg, @prefixed_keys );
+        for my $rid (@rids) {
+            $links->{$rid} = $vals->{"$type:$rid"};
+        }
+        $self->table_close($unified_slg);
+    }
 
     return $links;
 }
 
 # ------------------------------------------------
-# Sorting Index Lifecycle Methods (.srt)
+# Sorting Index Lifecycle Methods (.inx)
 # ------------------------------------------------
 
 sub sort_add {
@@ -977,61 +1226,52 @@ sub sort_add {
     return unless ref($records) eq 'ARRAY' && @$records;
 
     my ($tableid) = ( $table_path =~ /([^\\\/]+)$/ );
+    my $index_path = "${table_path}.inx";
+
+    $self->flock_open( $tableid, "write", "records" );
+    unless ( $self->table_write($index_path) ) {
+        $self->flock_close( $tableid, "records" );
+        return;
+    }
 
     foreach my $cfg ( @{ $table_info->{sort_block} } ) {
         my ( $blk, $type, $len ) = ref($cfg) eq 'HASH'
             ? ( $cfg->{blk}, $cfg->{type}, $cfg->{len} // 8 )
             : ( $cfg, 'string', 8 );
 
-        my $sort_path = "${table_path}_$blk.srt";
-
-        $self->flock_open( $tableid, "write", "sort_$blk" );
-        unless ( $self->table_write($sort_path) ) {
-            $self->flock_close( $tableid, "sort_$blk" );
-            next;
-        }
-
-        my ( undef, @keys ) = $self->index_get( $sort_path, "keys", "ids" );
+        my ( undef, @keys ) = $self->index_get( $index_path, "$blk:keys", "ids" );
         my %map;
-        foreach my $k (@keys) {
-            my ($v) = $self->index_get( $sort_path, $k, "raw" );
-            $map{$k} = $v if defined $v;
+        if (@keys) {
+            my @norm_keys = map { "$blk:$_" } @keys;
+            my $norm_map = $self->index_get( $index_path, \@norm_keys, "raw" );
+            if ($norm_map) {
+                for my $k (@keys) {
+                    my $v = $norm_map->{"$blk:$k"};
+                    $map{$k} = $v if defined $v;
+                }
+            }
         }
 
-        my @put_pairs;
+        my %batch_put;
         foreach my $rec (@$records) {
             my $rid  = $rec->[0];
             next unless defined $rid && $rid ne '';
             next if exists $map{$rid}; # Duplicate prevention
 
             my $norm = $self->normalize_sort_key( $rec->[$blk], $type, $len );
-
             $map{$rid} = $norm;
-            push @put_pairs, [ $rid, $norm ];
-
-            # Binary search insert position
-            my ( $low, $high ) = ( 0, scalar(@keys) - 1 );
-            while ( $low <= $high ) {
-                my $mid = int( ( $low + $high ) / 2 );
-                if ( ( ( $map{ $keys[$mid] } // '' ) cmp $norm ) < 0 ) {
-                    $low = $mid + 1;
-                }
-                else {
-                    $high = $mid - 1;
-                }
-            }
-            splice( @keys, $low, 0, $rid );
+            $batch_put{"$blk:$rid"} = $norm;
         }
 
-        $self->index_put( $sort_path, "count", scalar @keys, "raw" );
-        $self->index_put( $sort_path, "keys",  \@keys, "ids" );
-        foreach my $p (@put_pairs) {
-            $self->index_put( $sort_path, $p->[0], $p->[1], "raw" );
+        if (%batch_put) {
+            my @sorted_keys = sort { ( $map{$a} // '' ) cmp ( $map{$b} // '' ) } keys %map;
+            $self->index_put( $index_path, "$blk:keys",  \@sorted_keys, "ids" );
+            $self->index_put( $index_path, \%batch_put, "raw" );
         }
-        $self->table_close($sort_path);
-
-        $self->flock_close( $tableid, "sort_$blk" );
     }
+
+    $self->table_close($index_path);
+    $self->flock_close( $tableid, "records" );
 }
 
 sub sort_modify {
@@ -1041,28 +1281,33 @@ sub sort_modify {
     return unless ref($pairs) eq 'ARRAY' && @$pairs;
 
     my ($tableid) = ( $table_path =~ /([^\\\/]+)$/ );
+    my $index_path = "${table_path}.inx";
+
+    $self->flock_open( $tableid, "write", "records" );
+    unless ( $self->table_write($index_path) ) {
+        $self->flock_close( $tableid, "records" );
+        return;
+    }
 
     foreach my $cfg ( @{ $table_info->{sort_block} } ) {
         my ( $blk, $type, $len ) = ref($cfg) eq 'HASH'
             ? ( $cfg->{blk}, $cfg->{type}, $cfg->{len} // 8 )
             : ( $cfg, 'string', 8 );
 
-        my $sort_path = "${table_path}_$blk.srt";
-
-        $self->flock_open( $tableid, "write", "sort_$blk" );
-        unless ( $self->table_write($sort_path) ) {
-            $self->flock_close( $tableid, "sort_$blk" );
-            next;
-        }
-
-        my ( undef, @keys ) = $self->index_get( $sort_path, "keys", "ids" );
+        my ( undef, @keys ) = $self->index_get( $index_path, "$blk:keys", "ids" );
         my %map;
-        foreach my $k (@keys) {
-            my ($v) = $self->index_get( $sort_path, $k, "raw" );
-            $map{$k} = $v if defined $v;
+        if (@keys) {
+            my @norm_keys = map { "$blk:$_" } @keys;
+            my $norm_map = $self->index_get( $index_path, \@norm_keys, "raw" );
+            if ($norm_map) {
+                for my $k (@keys) {
+                    my $v = $norm_map->{"$blk:$k"};
+                    $map{$k} = $v if defined $v;
+                }
+            }
         }
 
-        my @put_pairs;
+        my %batch_put;
         my $modified = 0;
         foreach my $pair (@$pairs) {
             my ( $rid, $old_rec, $new_rec ) = @$pair;
@@ -1072,39 +1317,20 @@ sub sort_modify {
 
             next if $old_norm eq $new_norm;
 
-            # 1. Remove old position
-            @keys = grep { $_ ne $rid } @keys;
-
-            # 2. Update map
             $map{$rid} = $new_norm;
-            push @put_pairs, [ $rid, $new_norm ];
-
-            # 3. Binary search new position and insert
-            my ( $low, $high ) = ( 0, scalar(@keys) - 1 );
-            while ( $low <= $high ) {
-                my $mid = int( ( $low + $high ) / 2 );
-                if ( ( ( $map{ $keys[$mid] } // '' ) cmp $new_norm ) < 0 ) {
-                    $low = $mid + 1;
-                }
-                else {
-                    $high = $mid - 1;
-                }
-            }
-            splice( @keys, $low, 0, $rid );
+            $batch_put{"$blk:$rid"} = $new_norm;
             $modified = 1;
         }
 
         if ($modified) {
-            $self->index_put( $sort_path, "count", scalar @keys, "raw" );
-            $self->index_put( $sort_path, "keys",  \@keys, "ids" );
-            foreach my $p (@put_pairs) {
-                $self->index_put( $sort_path, $p->[0], $p->[1], "raw" );
-            }
+            my @sorted_keys = sort { ( $map{$a} // '' ) cmp ( $map{$b} // '' ) } keys %map;
+            $self->index_put( $index_path, "$blk:keys",  \@sorted_keys, "ids" );
+            $self->index_put( $index_path, \%batch_put, "raw" ) if %batch_put;
         }
-
-        $self->table_close($sort_path);
-        $self->flock_close( $tableid, "sort_$blk" );
     }
+
+    $self->table_close($index_path);
+    $self->flock_close( $tableid, "records" );
 }
 
 sub sort_del {
@@ -1114,31 +1340,58 @@ sub sort_del {
     return unless ref($records) eq 'ARRAY' && @$records;
 
     my ($tableid) = ( $table_path =~ /([^\\\/]+)$/ );
+    my $index_path = "${table_path}.inx";
+    return unless -e $index_path;
 
-    foreach my $cfg ( @{ $table_info->{sort_block} } ) {
-        my ( $blk ) = ref($cfg) eq 'HASH' ? $cfg->{blk} : $cfg;
-
-        my $sort_path = "${table_path}_$blk.srt";
-
-        $self->flock_open( $tableid, "write", "sort_$blk" );
-        unless ( $self->table_write($sort_path) ) {
-            $self->flock_close( $tableid, "sort_$blk" );
-            next;
-        }
-
-        my ( undef, @keys ) = $self->index_get( $sort_path, "keys" );
-
+    $self->flock_open( $tableid, "write", "records" );
+    if ( $self->table_write($index_path) ) {
         my @del_ids = map { $_->[0] } grep { defined $_->[0] } @$records;
         my %del_map = map { $_ => 1 } @del_ids;
-        @keys = grep { !$del_map{$_} } @keys;
 
-        $self->index_put( $sort_path, "count", scalar @keys, "raw" );
-        $self->index_put( $sort_path, "keys",  \@keys, "ids" );
-        $self->index_del( $sort_path, $_ ) for @del_ids;
-        $self->table_close($sort_path);
-
-        $self->flock_close( $tableid, "sort_$blk" );
+        foreach my $cfg ( @{ $table_info->{sort_block} } ) {
+            my ( $blk ) = ref($cfg) eq 'HASH' ? $cfg->{blk} : $cfg;
+            my ($raw_keys) = $self->index_get( $index_path, "$blk:keys", "raw" );
+            if ( defined $raw_keys && length($raw_keys) >= 8 && length($raw_keys) % 8 == 0 ) {
+                my $modified = 0;
+                for my $del_id (@del_ids) {
+                    my $target_bytes = pack("Q>", $del_id);
+                    my $pos = index($raw_keys, $target_bytes);
+                    while ($pos >= 0) {
+                        if ($pos % 8 == 0) {
+                            substr($raw_keys, $pos, 8, "");
+                            $modified = 1;
+                            $pos = index($raw_keys, $target_bytes, $pos);
+                        }
+                        else {
+                            $pos = index($raw_keys, $target_bytes, $pos + 1);
+                        }
+                    }
+                }
+                if ($modified) {
+                    if (length($raw_keys) > 0) {
+                        $self->index_put( $index_path, "$blk:keys", $raw_keys, "bin" );
+                    }
+                    else {
+                        $self->index_del( $index_path, "$blk:keys" );
+                    }
+                }
+            }
+            else {
+                my ( undef, @keys ) = $self->index_get( $index_path, "$blk:keys" );
+                @keys = grep { !$del_map{$_} } @keys;
+                if (@keys) {
+                    $self->index_put( $index_path, "$blk:keys",  \@keys, "ids" );
+                }
+                else {
+                    $self->index_del( $index_path, "$blk:keys" );
+                }
+            }
+            my @del_keys = map { "$blk:$_" } @del_ids;
+            $self->index_del( $index_path, \@del_keys ) if @del_keys;
+        }
+        $self->table_close($index_path);
     }
+    $self->flock_close( $tableid, "records" );
 }
 
 # $adb->normalize_sort_key($value, $type, $len)
@@ -1265,20 +1518,20 @@ sub sort_by_block {
         return $self->array_sort( $id_sort_type, $dir, undef, @$ids_ref );
     }
 
-    my $table_path = $self->table_path($tableid);
-    my $sort_path  = "${table_path}_$blk.srt";
+    my $table_path  = $self->table_path($tableid);
+    my $index_path  = "${table_path}.inx";
 
-    if ( -e $sort_path ) {
+    if ( -e $index_path ) {
         my @pairs;
         foreach my $id (@$ids_ref) {
-            my ($v) = $self->index_get( $sort_path, $id, "raw" );
+            my ($v) = $self->index_get( $index_path, "$blk:$id", "raw" );
             push @pairs, [ $id, $v // '' ];
         }
         @pairs = $self->array_sort( 'ascii', $dir, 1, @pairs );
         return map { $_->[0] } @pairs;
     }
 
-    # Fallback when .srt map does not exist: fetch records and sort via array_sort
+    # Fallback when sort index is not built: fetch records and sort via array_sort
     my $table_info = $self->table_info($tableid);
     my $type = 'auto';
     if ( $table_info && exists $table_info->{sort_block} ) {
@@ -1347,14 +1600,14 @@ AmberDB::Index - Inverted search, exact field match, binary sort, and URL slug r
   # 2. Normalization of array or delimited values into clean lists and .unq IDs
   my @unq_ids  = $adb->field_to_list($raw_val, 'write', $table_path, $table_info, $blk);
 
-  # 3. Monotonic sort key generation for fixed-width sorting (.srt)
+  # 3. Monotonic sort key generation for fixed-width sorting (.inx)
   my $key      = $adb->normalize_sort_key("1250.50", "num");
 
 =head1 DESCRIPTION
 
-C<AmberDB::Index> manages flat-file inverted search indexes (C<.src>), exact field matching indexes (C<.fld>), primary key lists (C<.inx>), binary pre-sorted record indexes (C<.srt>), and bidirectional URL slug rewrite dictionaries (C<.slg>).
+C<AmberDB::Index> manages flat-file inverted search indexes (C<.src>), exact field matching indexes (C<.fld>), primary and pre-sorted binary record indexes (C<.inx>), and bidirectional URL slug rewrite dictionaries (C<.slg>).
 
-Facet forward indexing (C<.fac>) is handled by C<AmberDB::Index::Facet>, and dual-tier cold record indexing (C<.jinx>, C<.jfld>, C<.jsrc>) is managed by C<AmberDB::Index::Junk>.
+Facet forward indexing (C<.fac>) is handled by C<AmberDB::Index::Facet>, and dual-tier cold record indexing is managed by C<AmberDB::Index::Junk>.
 
 B<Inheritance Note:> C<AmberDB> inherits from C<AmberDB::Index> via C<use parent>. All indexing methods can be called directly on C<$adb>.
 
@@ -1364,15 +1617,15 @@ B<Inheritance Note:> C<AmberDB> inherits from C<AmberDB::Index> via C<use parent
 
 Converts ARRAY references, comma/semicolon-delimited strings, or single scalars into a normalized list of trimmed values.
 =over 4
-=item * In C<'write'> mode: Registers text values into the per-block unique/dictionary index (C<_${blk}.unq>) with auto-incrementing numeric IDs (or validates foreign key IDs for RDBM fields).
-=item * In C<'read'> mode: Resolves existing string IDs from C<_${blk}.unq> without creating new dictionary entries.
+=item * In C<'write'> mode: Registers text values into the unified unique/dictionary index (C<.unq>) with auto-incrementing numeric IDs (or validates foreign key IDs for RDBM fields).
+=item * In C<'read'> mode: Resolves existing string IDs from C<.unq> without creating new dictionary entries.
 =back
 
   my @ids = $adb->field_to_list("Red, Blue, Green", 'write', $path, $info, 3);
 
 =head2 normalize_sort_key($value, $type, [$length])
 
-Normalizes an input value into a fixed-width byte key for fast monotonic sorting in binary C<.srt> files:
+Normalizes an input value into a fixed-width byte key for fast monotonic sorting in binary C<.inx> files (C<$blk:keys>):
 =over 4
 =item * B<num / decimal>: Adds a C<1e12> (1,000,000,000,000) offset for signed float/integer monotonic sorting (C<%020.6f> format).
 =item * B<string / ascii>: Converts to ASCII, removes punctuation, truncates to 8 bytes (or C<$length>), and pads with spaces.
@@ -1383,17 +1636,17 @@ Normalizes an input value into a fixed-width byte key for fast monotonic sorting
 
 =head2 set_slug($table_id, $record, [$write_mode])
 
-Generates a URL-friendly ASCII slug from designated schema title blocks (C<slug_block>) and registers bidirectional mapping in C<_0.slg> (Record ID -E<gt> Slug) and C<_1.slg> (Slug -E<gt> Record ID).
+Generates a URL-friendly ASCII slug from designated schema title blocks (C<slug_block>) and registers bidirectional mapping in unified C<.slg> (C<0:$rid> -E<gt> Slug and C<1:$slug> -E<gt> Record ID).
 
   my $slug = $adb->set_slug("catalog_product", \@record, 1);
   # => "kablosuz-bluetooth-kulaklik"
 
 =head2 get_slug($table_id, [$type], @record_or_slug_ids)
 
-Resolves URL slugs or reverse-maps slugs back to record IDs.
+Resolves URL slugs or reverse-maps slugs back to record IDs from unified C<.slg>.
 =over 4
-=item * C<$type = 0>: Returns C<{ record_id =E<gt> slug }> (default, reads C<_0.slg>).
-=item * C<$type = 1>: Returns C<{ slug =E<gt> record_id }> (reads C<_1.slg>).
+=item * C<$type = 0>: Returns C<{ record_id =E<gt> slug }> (queries key C<0:$rid>).
+=item * C<$type = 1>: Returns C<{ slug =E<gt> record_id }> (queries key C<1:$slug>).
 =back
 
   my $slugs = $adb->get_slug("catalog_product", 0, 101, 102);
@@ -1417,11 +1670,11 @@ These methods are called automatically by AmberDB during CRUD operations (C<inse
 
 =item * C<records_add / records_del> — Updates C<keys>, C<count>, and C<lastid> in primary C<.inx> files.
 
-=item * C<match_add / match_modify / match_del> — Manages exact-match inverted index files (C<_${blk}.fld>).
+=item * C<match_add / match_modify / match_del> — Manages exact-match inverted index files (C<.fld>).
 
-=item * C<search_add / search_modify / search_del> — Manages full-text keyword search index files (C<_${blk}.src>).
+=item * C<search_add / search_modify / search_del> — Manages full-text keyword search index files (C<.src>).
 
-=item * C<sort_add / sort_modify / sort_del> — Manages binary pre-sorted record index files (C<_${blk}.srt>).
+=item * C<sort_add / sort_modify / sort_del> — Manages binary pre-sorted record indexes within C<.inx> (C<$blk:keys>).
 
 =back
 

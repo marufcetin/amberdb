@@ -19,7 +19,7 @@ subtest 'Initialization & Caching' => sub {
     is( "$tr1", "$tr2", 'Instance cache returns identical object reference' );
 
     my $fallback = AmberDB::Locale->new('nonexistent_lang');
-    is( $fallback->language, 'en', 'Fallback to English for invalid locale' );
+    is( $fallback->language, 'gb', 'Fallback to Global Base (gb) for invalid locale' );
 };
 
 subtest 'Turkish Casing Rules' => sub {

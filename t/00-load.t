@@ -23,6 +23,7 @@ my @modules = qw(
     AmberDB::Locale::Lang::en
     AmberDB::Locale::Lang::es
     AmberDB::Locale::Lang::fr
+    AmberDB::Locale::Lang::gb
     AmberDB::Locale::Lang::ja
     AmberDB::Locale::Lang::ru
     AmberDB::Locale::Lang::tr

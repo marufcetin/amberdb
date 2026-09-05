@@ -19,7 +19,7 @@ AmberDB Table Schema Anatomy (.table)
 
  ┌───────────────────────────────────────────────────────────────┐
  │ Table Metadata & Operational Flags                            │
- │  - id_type: 'num' | 'ascii'    - auto_id: 1                   │
+ │  - use_simple: 0 | 1           - auto_id: 1                   │
  │  - keep_deleted: 1             - log_owner: 1                 │
  │  - use_cache: 2                - cache_ttl: 3600              │
  ├───────────────────────────────────────────────────────────────┤
@@ -42,13 +42,12 @@ AmberDB Table Schema Anatomy (.table)
 
 ---
 
-## 2. Canonical Schema Example (`schema/catalog_products.table`)
+## 2. Canonical Schema Example (`schema/catalog_product.table`)
 
 ```perl
-# dbstore/schema/catalog_products.table
+# dbstore/schema/catalog_product.table
 {
     name         => "Product Catalog",
-    id_type      => "num",          # "num" (64-bit unsigned int) or "ascii" (max 8 bytes)
     auto_id      => 1,              # 1: Auto-increment 64-bit ID, 0: Manual ID
     keep_deleted => 1,              # 1: Soft-delete into .del file (Recycle bin)
     log_owner    => 1,              # 1: Log user modifications into .aut audit trail
@@ -103,11 +102,11 @@ Schema alterations in AmberDB never require table locks or expensive database mi
 
 ```perl
 # Dynamically add category to full-text search at runtime
-my $schema = $adb->table_attr("catalog_products");
+my $schema = $adb->table_attr("catalog_product");
 $schema->{search_block} = [ 1, 2 ]; # Now Category is also indexed in search_block
 
 # Apply updated schema live in memory
-$adb->table_attr("catalog_products", $schema);
+$adb->table_attr("catalog_product", $schema);
 ```
 
 ---

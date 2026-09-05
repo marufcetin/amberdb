@@ -10,7 +10,10 @@
 
 ## 1. Tanim ve Genel Bakis
 
-`transact_commit()`, aktif islemi kesinlestirir (commit). Tum BDB tamponlarini diske esler (sync), aktif `.txn` gunluk dosyasini siler ve tum kilitleri kaldirir.
+`transact_commit()`, aktif islemi kesinlestirir (commit). Tum BDB tamponlarini diske esler (sync), aktif `.txn` gunluk dosyasini siler ve tum Strict 2PL kilitlerini kaldirir.
+
+> [!NOTE]
+> `transact_commit()` bir ic motor metodudur. Normal uygulama akisinda islemi sonlandirmak icin `transact_end()` kullanilmalidir. `transact_end()` islem suresince hicbir hata olusmamissa `transact_commit()` metodunu otomatik olarak cagirir.
 
 ---
 
@@ -26,8 +29,9 @@ $adb->transact_commit();
 
 ```perl
 $adb->transact_start();
-# ... islemler ...
-$adb->transact_commit();
+$adb->insert_id("users", 0, "ahmet", 'ahmet@example.com');
+# Uygulama kodunda transact_end() cagrilmasi tavsiye edilir:
+$adb->transact_end();
 ```
 
 ---
@@ -35,5 +39,6 @@ $adb->transact_commit();
 ## 4. Iliskili Maddeler ve Bakiniz
 
 - [Metot: transact_start](TR-Method-transact_start)
+- [Metot: transact_error](TR-Method-transact_error)
 - [Metot: transact_end](TR-Method-transact_end)
 - [Metot: transact_rollback](TR-Method-transact_rollback)

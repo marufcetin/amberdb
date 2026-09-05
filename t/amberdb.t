@@ -34,8 +34,9 @@ subtest 'AmberDB - can() checks' => sub {
 
 # ---------------------------------------------------------------------------
 subtest 'AmberDB::Base' => sub {
-    plan tests => 1;
+    plan tests => 2;
     use_ok('AmberDB::Base');
+    is( $AmberDB::Base::VERSION, $AmberDB::VERSION, 'Base VERSION matches AmberDB VERSION' );
 };
 
 subtest 'AmberDB::Array' => sub {

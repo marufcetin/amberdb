@@ -10,14 +10,19 @@
 
 ## 1. Tanim ve Genel Bakis
 
-`transact_end()`, aktif islemi sonlandirir. Islem suresince alttaki veritabaninda herhangi bir hata loglanmis ise otomatik olarak `transact_rollback()` cagirip LIFO geri almasi yapar. Hicbir hata yoksa `transact_commit()` calistirarak degisiklikleri diske basar, `.txn` gunluk dosyasini siler ve tum Strict 2PL kilitlerini serbest birakir.
+`transact_end()`, basariyla ilerleyen aktif islemi sonlandirir. Islem suresince hicbir hata loglanmamis ise `transact_commit()` calistirarak degisiklikleri diske basar, `.txn` gunluk dosyasini siler, tum Strict 2PL kilitlerini serbest birakir ve `{ status => "commit" }` doner.
+
+Eger alttaki veritabaninda herhangi bir taban hata olusmussa veya `transact_error()` cagrilarak islem onceden geri alinmissa, son durum `{ status => "rollback" }` olarak doner.
 
 ---
 
 ## 2. Sozdizimi ve Imza
 
 ```perl
-$adb->transact_end();
+my $txn = $adb->transact_end();
+if ($txn->{status} eq 'commit') {
+    # Islem basariyla tamamlandi
+}
 ```
 
 ---
@@ -27,7 +32,7 @@ $adb->transact_end();
 ```perl
 $adb->transact_start();
 $adb->insert_id("payments", 0, $siparis_id, 1500.00, "ONAYLANDI");
-$adb->transact_end();
+my $sonuc = $adb->transact_end();
 ```
 
 ---
@@ -35,5 +40,6 @@ $adb->transact_end();
 ## 4. Iliskili Maddeler ve Bakiniz
 
 - [Metot: transact_start](TR-Method-transact_start)
+- [Metot: transact_error](TR-Method-transact_error)
 - [Metot: transact_rollback](TR-Method-transact_rollback)
 - [Metot: transact_commit](TR-Method-transact_commit)

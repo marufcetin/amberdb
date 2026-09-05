@@ -64,7 +64,7 @@ eval {
     $adb->transact_end();
 };
 if ($@) {
-    # LIFO rollback restores Account A to pre-deduction balance
+    # Revert transaction on unexpected error
     $adb->transact_rollback();
 }
 ```
@@ -75,6 +75,8 @@ if ($@) {
 
 - [Concept: Strict 2PL Locking](Concept-Strict-2PL-Locking)
 - [Method: transact_start](Method-transact_start)
+- [Method: transact_error](Method-transact_error)
+- [Method: transact_end](Method-transact_end)
 - [Method: transact_rollback](Method-transact_rollback)
 - [Method: transact_recover](Method-transact_recover)
 - [File: .txn (Undo Journal File)](File-txn)

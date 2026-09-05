@@ -12,7 +12,10 @@
 
 **8-Byte Paketli Binary Indeksleme Mekanizmasi**, AmberDB'nin birincil kayit kimlik listeleri (`.inx`), onceden siralanmis sorgu matrisleri (`.srt`) ve soguk veri indeksleri (`.jinx`) icin kullandigi ozel ikili depolama bicimidir.
 
-Kayit ID'lerini degisken uzunluklu metinler veya serilestirilmis diziler olarak saklamak yerine, Perl'in `pack("Q*", @id_list)` / `pack("a8*", @id_list)` mekanizmasi kullanilarak her bir ID kesinlikle 8-byte (64-bit) sabit genislikli ikili bayt blogu olarak paketlenir. Bu mimari, bellek icinde ve diskte sifir kopyalama ile alt-milisaniye duzeyinde $O(1)$ substring dilimleme ve sayfalama imkani sunar.
+Kayit ID'lerini degisken uzunluklu metinler veya serilestirilmis diziler olarak saklamak yerine, Perl'in `pack("(Q>)*", @id_list)` mekanizmasi kullanilarak her bir ID kesinlikle 8-byte (64-bit Big-Endian) sabit genislikli ikili bayt blogu olarak paketlenir. Bu mimari, bellek icinde ve diskte sifir kopyalama ile alt-milisaniye duzeyinde $O(1)$ substring dilimleme ve sayfalama imkani sunar.
+
+> [!NOTE]
+> UUID, e-posta veya slug gibi serbest metin anahtarlarina ihtiyac duyan tablolar icin AmberDB tablo bazinda **Basit Mod (`use_simple => 1`)** sunar. Bu modda `.inx` ikili indeksi uretilmez; 255 bayta kadar serbest metin anahtarlar dogrudan Berkeley DB anahtar-deger katmaninda calisir.
 
 ```text
 Fiziksel 8-Byte Paketli Binary Tampon Yapisi (.inx / .srt)
@@ -35,7 +38,7 @@ Fiziksel 8-Byte Paketli Binary Tampon Yapisi (.inx / .srt)
 1. Bayt ofseti aninda hesaplanir: `$ofset = 1000 * 8 = 8000`.
 2. Hedef dilim boyutu: `$uzunluk = 20 * 8 = 160` bayt.
 3. 160 baytlik veri `substr($binary_tampon, 8000, 160)` ile $O(1)$ zamanda tek hamlede kesilir.
-4. Kesilen 20 ID `unpack("Q*", $dilim)` ile listeye cevrilir. Geriye kalan 999.980 kayit bellege hic yuklenmez.
+4. Kesilen 20 ID `unpack("(Q>)*", $dilim)` ile listeye cevrilir. Geriye kalan 999.980 kayit bellege hic yuklenmez.
 
 ### `keys_only` Bellek Tasarrufu
 `read_all`, `field_fetch` veya `search_table` metoduna `keys_only => 1` parametresi gecildiginde, `.db` ana tablosundaki agir kayit govdesi cozulmez. Yalnizca filtreden gecen ID'ler dondurulur; bu sayede RAM tuketimi %95 oraninda duser.

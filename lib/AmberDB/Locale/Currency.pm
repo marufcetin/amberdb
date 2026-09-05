@@ -5,6 +5,7 @@ use warnings;
 #use utf8; # bu aktif edildiğinde tüm sitede wide character hatasına sebep oluyor
 use Carp qw(croak cluck);
 
+our $VERSION = '5.24.0';
 my $CREATED  = '2026-08-06';
 
 # Master ISO 4217 Currency Dictionary

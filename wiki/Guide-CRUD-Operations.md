@@ -57,7 +57,7 @@ my @batch_records = (
 );
 
 # Returns status hash mapping inserted IDs ($status_hash->{ID} = 1):
-my $status_hash = $adb->insert_list("catalog_products", @batch_records);
+my $status_hash = $adb->insert_list("catalog_product", @batch_records);
 print "Batch insert complete. Inserted IDs: " . join(", ", keys %$status_hash) . "\n";
 ```
 

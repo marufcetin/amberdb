@@ -30,7 +30,7 @@ Kesintisiz Kayit Dizisi Yapisi (@record)
 
 ### 0. Indis: Birincil Anahtar (ID)
 - **Otomatik ID Uretimi:** `insert_id($tablo, 0, ...)` ile yeni bir kayit eklenirken 0. indise `0`, `undef` veya `""` atanmasi motorun otomatik artan 64-bit tam sayi bir ID uretmesini saglar.
-- **Acik ID:** Uygulama isterse kendisi belirledigi benzersiz bir ID degerini (konfigurasyondaki `id_type` ayarina gore numerik veya ASCII) verebilir.
+- **Acik ID:** Uygulama isterse kendisi belirledigi benzersiz bir ID degerini (standart tablolarda pozitif 64-bit tam sayi, `use_simple => 1` tablolarinda ise 255 bayta kadar metin) verebilir.
 - **Geri Donus Garantisi:** Tum okuma metotlari (`read_id`, `read_all`, `field_fetch`, `search_table`) dondurulen listenin 0. indisinde her zaman o kaydin gercek ID'sini dondurur.
 
 ### 1. Indisten N. Indise: Genisleyebilir Veri Bloklari

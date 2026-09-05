@@ -24,7 +24,7 @@ my $deger = $adb->table_attr($tablo_adi, $nitelik_anahtari);
 my $meta = $adb->table_attr($tablo_adi);
 
 # 3. Anahtar-Deger atayici
-$adb->table_attr($tablo_adi, keep_deleted => 1, id_type => "ascii");
+$adb->table_attr($tablo_adi, keep_deleted => 1, use_simple => 1);
 
 # 4. Hashref ile atayici
 $adb->table_attr($tablo_adi, { search_block => [ 1, 4, 8 ], use_cache => 2 });

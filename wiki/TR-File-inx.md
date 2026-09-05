@@ -10,7 +10,7 @@
 
 ## 1. Tanim ve Genel Bakis
 
-`.inx` dosyasi, 64-bit isaretsiz tamsayilarin araliksiz paketlendigi (`pack("Q*", @ids)` / `pack("a8*", @ids)`) bir ikili (binary) indekstir. Dosya boyutu bolu 8 islemiyle (`-s $file / 8`) aninda $O(1)$ sayim ve dosya ofsetine atlama (`seek`) ile aninda sayfalama saglar.
+`.inx` dosyasi, 64-bit Big-Endian isaretsiz tamsayilarin araliksiz paketlendigi (`pack("(Q>)*", @ids)`) bir ikili (binary) indekstir. Dosya boyutu bolu 8 islemiyle (`-s $file / 8`) aninda $O(1)$ sayim ve dosya ofsetine atlama (`seek`) ile aninda sayfalama saglar.
 
 ---
 

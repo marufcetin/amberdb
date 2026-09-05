@@ -57,7 +57,7 @@ $adb->config("no_write", 1); # Veritabanini gecici olarak salt-okunur yap
 
 # 4. Gecici salt-ID sorgulama (keys_only)
 $adb->config("keys_only", 1);
-my ($toplam, @id_listesi) = $adb->read_all("catalog_products", 0, 100);
+my ($toplam, @id_listesi) = $adb->read_all("catalog_product", 0, 100);
 $adb->config("keys_only", 0); # Normale dondur
 ```
 

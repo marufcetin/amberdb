@@ -20,7 +20,7 @@ In AmberDB, relational foreign keys are managed via three complementary high-per
 ```text
 search_block Automated External Text Resolution Pipeline
 
- [Product Record: catalog_products]
+ [Product Record: catalog_product]
   - [1] Title: "Sony WH-1000XM5"   (Direct Text)  ──┐
   - [2] Category FK: 12            (rdbm Link)    ──┼──> [AmberDB search_add Pipeline]
                                                     │         │
@@ -50,7 +50,7 @@ When `match_block => [ 2 ]` is configured in the schema, the engine unpacks `"5,
 
 ```perl
 # Fetch all products belonging to Category #12 in $O(1) time (Zero SQL JOINs!):
-my ($total, @products) = $adb->field_fetch("catalog_products", 2 => 12);
+my ($total, @products) = $adb->field_fetch("catalog_product", 2 => 12);
 ```
 
 ---
@@ -61,7 +61,7 @@ In search interfaces, users frequently search for combinations of product names,
 
 In SQL databases, this requires expensive multi-table `JOIN` queries. In AmberDB, the application does **not** need to manually concatenate text. Configuring relational blocks in `search_block` directs the engine to resolve external text automatically:
 
-### 1. Table Schema (`schema/catalog_products.table`):
+### 1. Table Schema (`schema/catalog_product.table`):
 ```perl
 {
     fields => [
@@ -93,11 +93,11 @@ my @product = (
 # During insert_id, AmberDB:
 # - Reads title "Sony WH-1000XM5" from block 1.
 # - Sees FK 12 at block 2, opens "catalog_categories", and reads "Wireless Audio Systems" from block 1.
-# - Combines and tokenizes words from both sources into catalog_products_1.src.
-$adb->insert_id("catalog_products", @product);
+# - Combines and tokenizes words from both sources into catalog_product_1.src.
+$adb->insert_id("catalog_product", @product);
 
 # 3. Searches matching external category terms resolve instantly without JOINs:
-my ($total, @results) = $adb->search_table("catalog_products", "sony audio");
+my ($total, @results) = $adb->search_table("catalog_product", "sony audio");
 print "Found $total matching products.\n";
 ```
 
