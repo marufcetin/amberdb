@@ -1,0 +1,19 @@
+# Benchmark datasets (official IMDb dumps and generated TSVs)
+/data/*.tsv
+/data/*.tsv.gz
+/data/raw/
+
+# Database sandboxes and generated runtimes
+/sandbox/
+
+# Local benchmark result artifacts and configs
+/results/
+/config.json
+/print_amelie.pl
+/profile_chamchoum.pl
+/test_search_chamchoum.pl
+/test_unicode_search.pl
+
+# Drivers under development (not yet released)
+/lib/Drivers/Elasticsearch.pm
+/lib/Drivers/Meilisearch.pm

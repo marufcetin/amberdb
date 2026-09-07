@@ -9,7 +9,7 @@
 ---
 
 > [!NOTE]
-> **Eski Surum Uyarisi (v5.23.0):** AmberDB'nin eski surumlerinde metin anahtarlar yalnizca 8 baytlik sabit ASCII tamponlariyla sinirliydi (`pack("a8*", ...)` ve `id_type => "ascii"`). **v5.23.0** surumu ile birlikte bu format kaldirilmis; yerini cok daha guclu ve esnek olan **`use_simple => 1`** tablo mimarisine birakmistir. `use_simple => 1` tablolari **255 bayta kadar** serbest metin anahtarlarini (UUID, e-posta, slug, oturum belirteci) sifir indeksleme I/O ek yukuyle dogrudan Berkeley DB hash tablosunda saklar. Standart iliskisel tablolar ise saf 64-bit Big-Endian tam sayilari (`(Q>)*`) kullanir.
+> **Mimari Not:** AmberDB'nin ilk sürümlerindeki 8 baytlık sabit ASCII tamponları (`pack("a8*", ...)` ve `id_type => "ascii"`) yerini çok daha güçlü ve esnek olan **`use_simple => 1`** tablo mimarisine bırakmıştır. `use_simple => 1` tabloları **255 bayta kadar** serbest metin anahtarlarını (UUID, e-posta, slug, oturum belirteci) sıfır indeksleme I/O ek yüküyle doğrudan Berkeley DB hash tablosunda saklar. Standart ilişkisel tablolar ise saf 64-bit Big-Endian tam sayıları (`(Q>)*`) kullanır.
 
 ---
 

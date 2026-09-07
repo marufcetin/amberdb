@@ -4,9 +4,10 @@
 
 # Developer Guide and Comprehensive Documentation
 
-> **Version:** 5.23.1 · **Initial Design:** 2005 · **Last Updated:** 2026  
+> **Architecture:** AmberDB v5 · **Initial Design:** 2005 · **Last Updated:** 2026  
 > **Namespace:** `AmberDB`  
-> **Built-in Modules:** `Base`, `Index`, `Transact`, `Cache`, `Array`, `String`, `Date`, `Locale`, `Tools`
+> **Modular Engine:** `AmberDB::Base::*` (`Encoder`, `Schema`, `Ramdisk`, `Cache`, `Index`, `Facet`, `Junk`, `Transact`)  
+> **Standalone Components:** `AmberDB::Date`, `AmberDB::Locale`, `AmberDB::Tools`, `AmberDB::Array`
 
 ---
 
@@ -1075,7 +1076,7 @@ AmberDB stores tables, indexes, and schema definitions in dedicated physical dir
 | `dbstore/ramdisk/pids/` | Process lock files and login error state logs (`*.pid`, `*.error`) |
 
 > [!IMPORTANT]
-> **Version 5.21.0 Migration Notice:** The only manual action required when upgrading existing projects is to rename your database directory's `dbstore/scheme/` folder to **`dbstore/schema/`**. All programmatic path resolutions and API calls are automatically handled by the engine.
+> **Directory Structure Compatibility Note:** The only manual action required when upgrading legacy projects is to rename your database directory's `dbstore/scheme/` folder to **`dbstore/schema/`**. All programmatic path resolutions and API calls are automatically handled by the engine.
 
 ### 9.2 Schema Role & Flexibility: Optional vs. Full Definition
 
@@ -2409,5 +2410,5 @@ The following architectural choices might appear restrictive from an ad-hoc SQL 
 
 ---
 
-*This documentation is maintained for `AmberDB` v5.23.1 and aligns with active codebase architecture and developer practices.*
+*This documentation is maintained for the AmberDB v5 architecture and aligns with active codebase practices.*
 

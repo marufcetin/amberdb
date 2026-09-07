@@ -102,7 +102,13 @@ Tüm testler ve sürücüler `benchmark/` dizininde açık kaynak olarak yer alm
 git clone https://github.com/marufcetin/amberdb.git
 cd amberdb
 
-# 2. 600K benchmark testini izole süreçlerde başlatın
+# 2. Resmi IMDb dökümlerini indirip 600K+ master veri kümesini oluşturun (~633K gerçek film)
+perl benchmark/download_real_imdb.pl
+
+# (Alternatif: İndirmeden anında çevrimdışı test verisi üretmek isterseniz)
+# perl benchmark/data/prepare_data.pl --generate --total=100000
+
+# 3. 600K benchmark testini izole süreçlerde başlatın
 perl -Ilib benchmark/run_benchmark.pl total=600000 motors=amberdb,sqlite -with-index -random action=read
 ```
 

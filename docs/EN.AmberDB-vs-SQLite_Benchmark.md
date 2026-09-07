@@ -100,7 +100,13 @@ All benchmarks and drivers are open-source and included in the repository:
 git clone https://github.com/marufcetin/amberdb.git
 cd amberdb
 
-# 2. Run the 600K benchmark in isolated processes
+# 2. Download official IMDb dumps and build the 600K+ master dataset (~633K movies)
+perl benchmark/download_real_imdb.pl
+
+# (Alternative: Generate offline synthetic test data instantly without downloading)
+# perl benchmark/data/prepare_data.pl --generate --total=100000
+
+# 3. Run the 600K benchmark in isolated processes
 perl -Ilib benchmark/run_benchmark.pl total=600000 motors=amberdb,sqlite -with-index -random action=read
 ```
 

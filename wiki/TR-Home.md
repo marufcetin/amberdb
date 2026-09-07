@@ -2,7 +2,7 @@
 
 [Turkce Dokumantasyon](TR-Home) | [English Documentation](Home)
 
-**AmberDB** (Surum 5.22.x) teknik referans ansiklopedisine hos geldiniz. AmberDB, Perl programlama dili icin gelistirilmis; Berkeley DB (`DB_File`) uzerinde calisan, sema gudumlu (schema-driven), onceden hesaplanmis ters indekslemeye (precomputed inverted indexing), Strict 2PL kilit destekli ACID islem motoruna, otomatik cokme kurtarmasina ve yerel dil duyarlı akilli metin aramasina sahip yuksek basarimli bir NoSQL veritabanidir.
+**AmberDB** teknik referans ansiklopedisine hos geldiniz. AmberDB, Perl programlama dili icin gelistirilmis; Berkeley DB (`DB_File`) uzerinde calisan, sema gudumlu (schema-driven), onceden hesaplanmis ters indekslemeye (precomputed inverted indexing), Strict 2PL kilit destekli ACID islem motoruna, otomatik cokme kurtarmasina ve yerel dil duyarlı akilli metin aramasina sahip yuksek basarimli bir NoSQL veritabanidir.
 
 Bu wiki, **ansiklopedik bir kavram ve fonksiyon sozluk yapisinda** duzenlenmistir. Her bir metot, mimari kavram, yapilandirma bayragi ve fiziksel dosya formati bagimsiz bir madde olarak parametreleri, donus tipleri, Big-O karmasikligi, ic calisma mekanizmasi ve girdi/cikti ornekleriyle ele alinmistir.
 

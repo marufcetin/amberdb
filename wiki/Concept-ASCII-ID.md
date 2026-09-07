@@ -9,7 +9,7 @@
 ---
 
 > [!NOTE]
-> **Deprecation Notice (v5.23.0):** In legacy versions of AmberDB, string keys were restricted to rigid 8-byte null-padded ASCII buffers (`pack("a8*", ...)` with `id_type => "ascii"`). In **v5.23.0**, this format was deprecated and replaced by the far more versatile **`use_simple => 1`** per-table architecture. Tables configured with `use_simple => 1` allow arbitrary string keys up to **255 bytes** (UUIDs, emails, slugs, session tokens) directly in Berkeley DB with zero indexing I/O overhead. Standard relational tables strictly enforce positive 64-bit integer IDs (`(Q>)*`).
+> **Architectural Note:** Legacy 8-byte null-padded ASCII buffers (`pack("a8*", ...)` with `id_type => "ascii"`) have been replaced by the modern and versatile **`use_simple => 1`** per-table architecture. Tables configured with `use_simple => 1` allow arbitrary string keys up to **255 bytes** (UUIDs, emails, slugs, session tokens) directly in Berkeley DB with zero indexing I/O overhead. Standard relational tables strictly enforce positive 64-bit integer IDs (`(Q>)*`).
 
 ---
 

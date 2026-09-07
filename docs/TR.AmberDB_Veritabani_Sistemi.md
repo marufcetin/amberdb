@@ -4,9 +4,10 @@
 
 # Geliştirici Kılavuzu ve Dokümantasyon
 
-> **Sürüm:** 5.23.1 · **İlk Tasarım:** 2005 · **Son Güncelleme:** 2026  
+> **Mimari:** AmberDB v5 · **İlk Tasarım:** 2005 · **Son Güncelleme:** 2026  
 > **Namespace:** `AmberDB`  
-> **Dahili Modüller:** `Base`, `Index`, `Transact`, `Cache`, `Array`, `String`, `Date`, `Locale`, `Tools`
+> **Modüler Çekirdek:** `AmberDB::Base::*` (`Encoder`, `Schema`, `Ramdisk`, `Cache`, `Index`, `Facet`, `Junk`, `Transact`)  
+> **Bağımsız Bileşenler:** `AmberDB::Date`, `AmberDB::Locale`, `AmberDB::Tools`, `AmberDB::Array`
 
 ---
 
@@ -1081,7 +1082,7 @@ AmberDB tabloları, şemaları ve geçici/kalıcı dosyaları, belirlenen `dbsto
 | `dbstore/ramdisk/pids/` | Yalnızca RAM'de yaşayan süreç kilitleri, login attempt hataları (`*.pid`, `*.error`) |
 
 > [!IMPORTANT]
-> **Sürüm 5.21.0 Geçiş Uyarısı:** Eski projelerden yükseltme yaparken yapmanız gereken tek fiziksel işlem; veritabanı dizininizdeki `dbstore/scheme/` klasörünün adını **`dbstore/schema/`** olarak yeniden adlandırmaktır. Kod ve API tarafındaki tüm çözümlemeleri motor otomatik olarak yönetir.
+> **Dizin Yapısı Uyumluluk Notu:** Eski projelerden yükseltme yaparken yapmanız gereken tek fiziksel işlem; veritabanı dizininizdeki `dbstore/scheme/` klasörünün adını **`dbstore/schema/`** olarak yeniden adlandırmaktır. Kod ve API tarafındaki tüm çözümlemeleri motor otomatik olarak yönetir.
 
 ### 9.2 Şemanın Rolü ve Esnekliği: Zorunlu mu, İsteğe Bağlı mı?
 
@@ -2406,4 +2407,4 @@ Dışarıdan bir kısıtlama gibi algılanabilecek, ancak AmberDB'yi geleneksel 
 
 ---
 
-*Bu doküman `AmberDB` v5.23.1 motorunun güncel kod mimarisi ve geliştirici pratikleri doğrultusunda hazırlanmıştır.*
+*Bu doküman AmberDB v5 mimarisi ve güncel geliştirici pratikleri doğrultusunda hazırlanmıştır.*

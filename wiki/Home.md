@@ -2,7 +2,7 @@
 
 [Turkce Dokumantasyon](TR-Home) | [English Documentation](Home)
 
-Welcome to the technical reference encyclopedia for **AmberDB** (Version 5.22.x). AmberDB is a high-performance, schema-driven NoSQL database engine for Perl built on top of Berkeley DB (`DB_File`), featuring precomputed inverted indexing, ACID-compliant transactions with Strict Two-Phase Locking (Strict 2PL), automatic crash recovery, and intelligent locale-aware text search.
+Welcome to the technical reference encyclopedia for **AmberDB**. AmberDB is a high-performance, schema-driven NoSQL database engine for Perl built on top of Berkeley DB (`DB_File`), featuring precomputed inverted indexing, ACID-compliant transactions with Strict Two-Phase Locking (Strict 2PL), automatic crash recovery, and intelligent locale-aware text search.
 
 This wiki is organized as an **encyclopedic reference dictionary**. Each method, architectural concept, configuration flag, and physical file format is documented as an independent, deeply detailed entry with its parameters, return values, Big-O complexity, internal mechanics, and practical input/output examples.
 

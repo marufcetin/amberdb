@@ -1,12 +1,12 @@
 # AmberDB İndeks Dosyaları ve Anahtar Haritası (Index Key Map)
 
-Bu doküman, AmberDB veritabanı motorunun ürettiği tüm ikili (binary) ve ikincil indeks dosyalarının fiziksel dosya uzantılarını, içerdikleri anahtar (*key*) formatlarını, değer (*payload*) yapılarını ve v5.24 mimarisindeki konsolidasyon (birleştirme) haritasını içerir.
+Bu doküman, AmberDB veritabanı motorunun ürettiği tüm ikili (binary) ve ikincil indeks dosyalarının fiziksel dosya uzantılarını, içerdikleri anahtar (*key*) formatlarını, değer (*payload*) yapılarını ve güncel konsolidasyon (birleştirme) haritasını içerir.
 
 ---
 
 ## 1. Hızlı Konsolidasyon & Birleştirme Tablosu
 
-AmberDB v5.24 sürümüyle birlikte dosya tanıtıcı (file descriptor) ve I/O yükünü en aza indirmek için bağımsız uzantılar ve blok bazlı dosyalar birleştirilmiştir:
+AmberDB ikili indeks mimarisinde dosya tanıtıcı (file descriptor) ve I/O yükünü en aza indirmek için bağımsız uzantılar ve blok bazlı dosyalar birleştirilmiştir:
 
 | Eski Uzantı / Yapı | Güncel Dosya | Güncel Anahtar Formatı | Birleştirme Açıklaması |
 |---|---|---|---|
