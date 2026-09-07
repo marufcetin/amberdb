@@ -31,6 +31,7 @@ Global bayraklar, `$adb = AmberDB->new(cfg => { ... })` ile baslatma sirasinda t
 | **`auto_id`** | `boolean` | `1` | Otomatik 64-bit ID tahsisi davranisi (`0` verilirse disaridan ID beklenir). |
 | **`keep_deleted`**| `boolean` | `0` | Global cop kutusu politikasi (`1` yapildiginda silinenler `.del` dosyasinda saklanir). |
 | **`log_owner`** | `boolean` | `0` | Global kullanici hareket denetimi politikasi (`1` yapildiginda `.aut` gunlugu tutulur). |
+| **`use_ramdisk`**| `integer` | `0` | Tablolar arasi global RAM-disk hizlandirma modu: `0` (Kapali), `1` (Yalnizca indeksler), `2` (Tam ayna). |
 
 ---
 
@@ -42,9 +43,10 @@ use AmberDB;
 # 1. Instance olusturulurken global bayraklari belirleme
 my $adb = AmberDB->new(
     cfg => {
-        language  => "tr",          # Turkce dil kurallari
-        user      => "editor_ahmet",# Islem yapan kullanici
-        no_backup => 0,             # WAL gunlugu aktif
+        language    => "tr",          # Turkce dil kurallari
+        user        => "editor_ahmet",# Islem yapan kullanici
+        no_backup   => 0,             # WAL gunlugu aktif
+        use_ramdisk => 1,             # Indeksleri RAM-diske aynala
     },
     path => { dbase_dir => "./dbstore" }
 );
@@ -57,7 +59,7 @@ $adb->config("no_write", 1); # Veritabanini gecici olarak salt-okunur yap
 
 # 4. Gecici salt-ID sorgulama (keys_only)
 $adb->config("keys_only", 1);
-my ($toplam, @id_listesi) = $adb->read_all("catalog_product", 0, 100);
+my ($toplam, @id_listesi) = $adb->read_all("catalog_product", { offset => 0, limit => 100 });
 $adb->config("keys_only", 0); # Normale dondur
 ```
 
@@ -66,8 +68,11 @@ $adb->config("keys_only", 0); # Normale dondur
 ## 4. Iliskili Maddeler ve Bakiniz
 
 - [Kavram: Tablo Sema Bayraklari](TR-Concept-Schema-Flags)
-- [Kavram: Basit Mod (Simple Mode)](TR-Concept-Simple-Mode)
+- [Kavram: Simple Mode](TR-Concept-Simple-Mode)
+- [Kavram: RAM-Disk Hizlandirmasi](TR-Concept-RAM-Disk-Acceleration)
 - [Metot: config](TR-Method-config)
 - [Bayrak: language](TR-Flag-language)
 - [Bayrak: no_write](TR-Flag-no_write)
 - [Bayrak: keys_only](TR-Flag-keys_only)
+- [Bayrak: use_ramdisk](TR-Flag-use_ramdisk)
+- [Bayrak: dbase_dir](TR-Flag-dbase_dir)

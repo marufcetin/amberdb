@@ -63,4 +63,6 @@ my $ram_adb = AmberDB->new(
 
 - [Metot: config](TR-Method-config)
 - [Metot: set_datadir](TR-Method-set_datadir)
+- [Bayrak: dbase_dir](TR-Flag-dbase_dir)
+- [Bayrak: use_ramdisk](TR-Flag-use_ramdisk)
 - [Kavram: Kayit Anatomisi](TR-Concept-Record-Anatomy)

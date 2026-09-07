@@ -13,18 +13,19 @@ use FindBin qw($Bin);
 use lib "$Bin/../lib", 'lib';
 
 use AmberDB;
-use AmberDB::Index;
+use AmberDB::Base::Index;
+use AmberDB::Base::Encoder;
 use AmberDB::Tools;
 
 subtest 'Sort Methods Existence' => sub {
     plan tests => 7;
-    can_ok( 'AmberDB::Index', 'normalize_sort_key' );
-    can_ok( 'AmberDB::Base',  'bin_encode' );
-    can_ok( 'AmberDB::Base',  'bin_decode' );
-    can_ok( 'AmberDB::Index', 'sort_add' );
-    can_ok( 'AmberDB::Index', 'sort_modify' );
-    can_ok( 'AmberDB::Index', 'sort_del' );
-    can_ok( 'AmberDB::Tools', 'set_sort' );
+    can_ok( 'AmberDB::Base::Index',   'normalize_sort_key' );
+    can_ok( 'AmberDB::Base::Encoder', 'bin_encode' );
+    can_ok( 'AmberDB::Base::Encoder', 'bin_decode' );
+    can_ok( 'AmberDB::Base::Index',   'sort_add' );
+    can_ok( 'AmberDB::Base::Index',   'sort_modify' );
+    can_ok( 'AmberDB::Base::Index',   'sort_del' );
+    can_ok( 'AmberDB::Tools',         'set_sort' );
 };
 
 subtest 'Binary Encoding and Decoding (bin_encode / bin_decode)' => sub {

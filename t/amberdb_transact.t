@@ -13,8 +13,8 @@ use FindBin qw($Bin);
 use lib "$Bin/../lib", 'lib';
 
 use AmberDB;
-use AmberDB::Transact;
-use AmberDB::Index;
+use AmberDB::Base::Transact;
+use AmberDB::Base::Index;
 
 # ---------------------------------------------------------------------------
 subtest 'Transact Methods Existence' => sub {
@@ -25,7 +25,7 @@ subtest 'Transact Methods Existence' => sub {
     can_ok( 'AmberDB', 'transact_recover' );
     can_ok( 'AmberDB', 'transact_recover' );
     can_ok( 'AmberDB', 'transact_error' );
-    can_ok( 'AmberDB::Transact', 'transact_start' );
+    can_ok( 'AmberDB::Base::Transact', 'transact_start' );
 };
 
 # Setup temporary database directory for testing

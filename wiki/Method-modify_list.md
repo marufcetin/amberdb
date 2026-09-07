@@ -10,7 +10,7 @@
 
 ## 1. Definition and Overview
 
-`modify_list()` executes batch updates across multiple records in a single high-performance pipeline. It opens the physical database handle once, locks the table, updates all record payloads, and synchronizes all secondary indexes in a unified pass.
+`modify_list()` (standard alias: `update_list()`) executes batch updates across multiple records in a single high-performance pipeline. It opens the physical database handle once, locks the table, updates all record payloads, and synchronizes all secondary indexes in a unified pass.
 
 ---
 

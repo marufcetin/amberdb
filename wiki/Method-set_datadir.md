@@ -10,7 +10,7 @@
 
 ## 1. Definition and Overview
 
-`set_datadir()` dynamically updates the root database directory (`dbase_dir`) of the active AmberDB instance. It automatically recalculates all internal subdirectory paths (`schema/`, `tables/`, `backup/`, `buffer/`, `txn/`, `cache/`) and safely resets open physical connection handles.
+`set_datadir()` dynamically updates the root database directory (`dbase_dir`) of the active AmberDB instance. It automatically recalculates all internal subdirectory paths (`schema/`, `tables/`, `backup/`, `buffer/`, `txn/`) and safely resets open physical connection handles.
 
 ---
 

@@ -25,8 +25,9 @@ Global bayraklar tum veritabani oturumunu etkilerken, tablo sema bayraklari **ta
 | **`keep_deleted`**| `boolean` | `0` | `1`: Silinen kayitlar fiziksel olarak yok edilmek yerine `.del` cop kutusu tablosuna tasinir. |
 | **`log_owner`** | `boolean` | `0` | `1`: Kayit ekleme ve degisikliklerinde kullanici, zaman ve eski deger `.aut` denetim gunlugune yazilir. |
 | **`use_counter`**| `boolean` | `0` | `1`: Hit/goruntulenme sayaclari icin yuksek eszamanli atomik `.cnt` dosyasini aktiflestirir. |
-| **`use_cache`** | `integer` | `0` | Onbellek modu: `0` (Disk), `1` (Dinamik TTL onbellegi), `2` (Kati RAM-Disk yansitmasi). |
-| **`cache_ttl`** | `integer` | `3600` | `use_cache => 1` modunda onbellegin gecerlilik suresi (saniye). |
+| **`use_ramdisk`** | `integer` | `0` | RAM-Disk seviyesi: `0` (Disk), `1` (RAM'de sadece indeksler), `2` (Tam RAM-Disk aynası), `3` (Uçucu RAM-disk, salt .db, indexesiz basit KV modu). |
+| **`ramdisk_ttl`** | `integer` | `300` | Yalnızca `use_ramdisk => 3` modunda geçerli olan zaman aşımı süresi (saniye). |
+| **`table_dir`**   | `string`  | `undef` | Özel depolama alt dizini (örn: `'siparis'` $\rightarrow$ `dbstore/siparis/`, `''` $\rightarrow$ `dbstore/`). Boş bırakılırsa varsayılan `tables/`. |
 | **`use_junk`** | `boolean` | `0` | `1`: Sicak/Soguk cift katmanli indekslemeyi aktiflestirir. Pasif kayitlar `.jnk` katmanina ayrilir. |
 | **`junk_rule`** | `string` | `""` | Bir kaydin ne zaman soguk katmana gececegini belirleyen kosul kurali (orn: `status eq 0`). |
 | **`match_block`**| `ARRAY-ref`| `[]` | Birebir eslesme ikincil indeksinin (`.fld`) olusturulacagi 1-tabanli blok numaralari listesi. |
@@ -53,7 +54,7 @@ Sema Bayraklarinin Dosya Uretim Haritasi
  keep_deleted       ───────────────> .del (Cop Kutusu Tablosu)
  log_owner          ───────────────> .aut (Kullanici Denetim Gunlugu)
  use_counter        ───────────────> .cnt (Goruntulenme Sayac Deposu)
- use_cache          ───────────────> .cache (RAM-Disk Paylasimli Bellek)
+ use_ramdisk        ───────────────> RAM-Disk (Fiziksel RAM-Disk Depolama: .db, .inx vb.)
 ```
 
 ---
@@ -62,6 +63,9 @@ Sema Bayraklarinin Dosya Uretim Haritasi
 
 - [Kavram: AmberDB Tablo Semasi](TR-Concept-Table-Schema)
 - [Kavram: Global Bayraklar](TR-Concept-Global-Flags)
+- [Bayrak: use_ramdisk](TR-Flag-use_ramdisk)
+- [Bayrak: ramdisk_ttl](TR-Flag-ramdisk_ttl)
+- [Bayrak: table_dir](TR-Flag-table_dir)
 - [Bayrak: auto_id](TR-Flag-auto_id)
 - [Bayrak: keep_deleted](TR-Flag-keep_deleted)
 - [Bayrak: log_owner](TR-Flag-log_owner)

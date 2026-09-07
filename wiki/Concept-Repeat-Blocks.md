@@ -102,7 +102,7 @@ print "Auto-compiled Product IDs: $fetched[12]\n"; # Output: "101,102"
 
 # 4. Instant query by child product ID (Zero JOINs!):
 # Find all orders containing Product #101 via inverted match index:
-my ($total, @matched_orders) = $adb->field_fetch("order_master", 12 => 101);
+my ($total, @matched_orders) = $adb->field_fetch("order_master", 12, 101, { offset => 0, limit => 20 });
 print "Found $total orders containing Product #101!\n";
 ```
 

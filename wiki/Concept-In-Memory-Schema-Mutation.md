@@ -26,7 +26,7 @@ Physical Schema File (schema/catalog_product.table)
  Dynamically Updated Properties (Immediate Effect in Active Process):        
  - keep_deleted  => 1 (Enable soft-delete recycle bin)                       
  - search_block  => [1, 4, 9 ] (Include block 9 in full-text search)        
- - use_cache     => 2 (Force strict RAM-disk mirroring)                      
+ - use_ramdisk   => 2 (Force strict RAM-disk mirroring)                      
  - path          => "/custom/storage/path" (Auto-recalculates table handles) 
 
 ```
@@ -49,7 +49,7 @@ my $record_index = $adb->table_attr("catalog_product", "record_index");
 $adb->table_attr("catalog_product", {
     keep_deleted => 1,
     search_block => [1, 4, 8 ],
-    use_cache    => 0,
+    use_ramdisk  => 0,
 });
 
 # 3. Subsequent delete_id() calls will now soft-delete to .del archive

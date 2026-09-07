@@ -31,10 +31,10 @@ Katmanli Depolama ve Indeksleme Mimarisi
                                                                         
        A Katmani (Sicak Depolama)                                B Katmani (Soguk Depolama)
                          
- Birincil Indeks: .inx                                   Birincil Indeks: .jinx        
- Alan Esleme:     _1.fld                                 Alan Esleme:     _1.jfld      
- Arama Indeksi:   _3.src                                 Arama Indeksi:   _3.jsrc      
- Facet Bitset:    _4.fac                                
+ Birincil Indeks: .inx ("keys")                          Birincil Indeks: .inx ("j:keys")
+ Alan Esleme:     .fld ("$blk:$val")                     Alan Esleme:     .fld ("j:$blk:$val")
+ Arama Indeksi:   .src ("$blk:$word")                    Arama Indeksi:   .src ("j:$blk:$word")
+ Facet Indeksi:   .fac                                
 
 ```
 
@@ -76,17 +76,21 @@ Tablo semasinda (`schema/*.table`) junk kurallari tanimlanir:
 # 1. Magaza on yuzunde yalnizca aktif urunleri arama
 my ($aktif_sayi, @magaza_sonuclari) = $adb->search_table(
     "catalog_product", "kablosuz klavye",
-    start   => 0,
-    limit   => 20,
-    jnktype => 'A'
+    {
+        offset  => 0,
+        limit   => 20,
+        jnktype => 'A',
+    }
 );
 
 # 2. Tum veritabaninda (aktif + pasif) hibrit arama yapma
 my ($toplam_sayi, @arsiv_sonuclari) = $adb->search_table(
     "catalog_product", "kablosuz klavye",
-    start   => 0,
-    limit   => 20,
-    jnktype => 'AB'
+    {
+        offset  => 0,
+        limit   => 20,
+        jnktype => 'AB',
+    }
 );
 ```
 

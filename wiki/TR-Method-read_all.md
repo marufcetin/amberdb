@@ -17,11 +17,11 @@
 ## 2. Sozdizimi ve Imza
 
 ```perl
-# 1. Sayfalamasiz (Tum kayitlar)
-my @kayitlar = $adb->read_all($tablo_adi, [$baslangic], [$limit], [%secenekler]);
+# 1. Sayfalamasiz (Tum kayitlar veya filtresiz secenekler)
+my @kayitlar = $adb->read_all($tablo_adi, [\%secenekler]);
 
 # 2. Sayfalamali (limit > 0 iken)
-my ($toplam_sayi, @kayitlar) = $adb->read_all($tablo_adi, $baslangic, $limit, [%secenekler]);
+my ($toplam_sayi, @kayitlar) = $adb->read_all($tablo_adi, \%secenekler);
 ```
 
 ---
@@ -40,10 +40,11 @@ my ($toplam_sayi, @kayitlar) = $adb->read_all($tablo_adi, $baslangic, $limit, [%
 
 | Secenek | Tipi | Varsayilan | Aciklama |
 |:---|:---|:---|:---|
-| `start` | Integer | `0` | 0-tabanli sayfalama ofseti. |
+| `offset` | Integer | `0` | 0-tabanli sayfalama ofseti (geriye donuk `start` da desteklenir). |
 | `limit` | Integer | `0` | Dondurulecek maksimum kayit adedi (`0` ise tumu). |
 | `sort` | Int/Hash | `undef` | Siralanacak blok indisi. Pozitif ise azalan, negatif ise artan (orn: `sort => -3`). Veya hash: `{ blk => 3, reverse => 1 }`. |
 | `keys_only` | Boolean | `0` | 1 ise `.db` kayitlarini okumaz; salt Record ID listesi dondurur. |
+| `range` | Hash/Array | `undef` | Sayisal / kronolojik aralik filtresi: `{ block => 4, min => 1000, max => 2000 }`. `min` verilmezse `0` kabul edilir, `max` verilmezse ust sinir aranmaz. |
 | `jnktype` | String | `'AB'` | Katman modu: `'A'` (Yalniz aktif), `'B'` (Yalniz junk), `'AB'` (Once aktif, sonra junk). |
 | `no_index` | Boolean | `0` | `.inx` yerine ardil `.db` taramasini zorlar. |
 
@@ -56,11 +57,29 @@ my ($toplam_sayi, @kayitlar) = $adb->read_all($tablo_adi, $baslangic, $limit, [%
 my @tum_urunler = $adb->read_all("catalog_product");
 
 # 2. Fiyata (3. Blok) gore artan sirada ilk 20 urunu getirme
-my ($toplam, @sayfa) = $adb->read_all("catalog_product", 0, 20, sort => -3);
+my ($toplam, @sayfa) = $adb->read_all("catalog_product", { offset => 0, limit => 20, sort => -3 });
 print "Toplam Eslesen: $toplam, Sayfadaki Urun: " . scalar(@sayfa) . "\n";
 
-# 3. Bellek tasarruflu salt-ID cekme (keys_only)
-my ($sayi, @urun_idleri) = $adb->read_all("catalog_product", 0, 50, keys_only => 1);
+# 3. Sayisal / Kronolojik Aralik Filtresi (range)
+# min ve max kapali araligi:
+my @araliktaki_urunler = $adb->read_all("catalog_product", {
+    range     => { block => "price", min => 1000, max => 2000 },
+    keys_only => 1,
+});
+
+# Yalnizca min (1800 ve uzeri):
+my @pahali_urunler = $adb->read_all("catalog_product", {
+    range => { block => "price", min => 1800 },
+});
+
+# Yalnizca max (min otomatik 0: 0 <= fiyat <= 500):
+my @ucuz_urunler = $adb->read_all("catalog_product", {
+    range => { block => "price", max => 500 },
+});
+
+# 4. Bellek tasarruflu salt-ID cekme (keys_only)
+my ($sayi, @urun_idleri) = $adb->read_all("catalog_product", { offset => 0, limit => 50, keys_only => 1 });
+my @tum_idlar            = $adb->read_all("catalog_product", { keys_only => 1 });
 ```
 
 ---

@@ -25,8 +25,9 @@ While Global Flags govern the entire database session, Table Schema Flags allow 
 | **`keep_deleted`**| `boolean` | `0` | `1`: Soft-deletes records into `.del` archive rather than permanently purging them. |
 | **`log_owner`** | `boolean` | `0` | `1`: Logs user timestamps, actions, and previous field values into `.aut` audit trail. |
 | **`use_counter`**| `boolean` | `0` | `1`: Allocates an atomic, high-concurrency `.cnt` file for view/hit counter tracking. |
-| **`use_cache`** | `integer` | `0` | Cache tier: `0` (Disk), `1` (Dynamic TTL caching), `2` (Strict RAM-Disk memory mirroring). |
-| **`cache_ttl`** | `integer` | `3600` | Expiration window in seconds when `use_cache => 1`. |
+| **`use_ramdisk`** | `integer` | `0` | RAM-Disk tier: `0` (Disk), `1` (RAM indexes only), `2` (Full RAM-Disk mirror), `3` (Volatile RAM-disk, .db only, unindexed simple KV mode). |
+| **`ramdisk_ttl`** | `integer` | `300` | Expiration window in seconds applicable strictly when `use_ramdisk => 3`. |
+| **`table_dir`**   | `string`  | `undef` | Custom storage subfolder (e.g. `'orders'` $\rightarrow$ `dbstore/orders/`, `''` $\rightarrow$ `dbstore/`). Defaults to `tables/`. |
 | **`use_junk`** | `boolean` | `0` | `1`: Activates Hot/Cold dual-tier storage. Inactive records are routed to `.jnk` tier. |
 | **`junk_rule`** | `string` | `""` | Boolean expression triggering record archiving to cold storage (e.g. `status eq 0`). |
 | **`match_block`**| `ARRAY-ref`| `[]` | 1-based block indexes mapped to `.fld` inverted exact-match index. |
@@ -53,7 +54,7 @@ Schema Flags to Physical Storage Mapping
  keep_deleted       ───────────────> .del (Soft-Deleted Archive)
  log_owner          ───────────────> .aut (User Change Audit Ledger)
  use_counter        ───────────────> .cnt (Atomic View Counter Store)
- use_cache          ───────────────> .cache (RAM-Disk Shared Memory Cache)
+ use_ramdisk        ───────────────> RAM-Disk (Physical RAM-Disk Storage: .db, .inx, etc.)
 ```
 
 ---
@@ -62,6 +63,9 @@ Schema Flags to Physical Storage Mapping
 
 - [Concept: AmberDB Table Schema](Concept-Table-Schema)
 - [Concept: Global Flags](Concept-Global-Flags)
+- [Flag: use_ramdisk](Flag-use_ramdisk)
+- [Flag: ramdisk_ttl](Flag-ramdisk_ttl)
+- [Flag: table_dir](Flag-table_dir)
 - [Flag: auto_id](Flag-auto_id)
 - [Flag: keep_deleted](Flag-keep_deleted)
 - [Flag: log_owner](Flag-log_owner)

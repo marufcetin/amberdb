@@ -26,17 +26,16 @@ Standard AmberDB Directory Hierarchy (dbstore/)
  │   ├── catalog_product.del     ← Soft-deleted recycle bin archive
  │   ├── catalog_product.aut     ← User modification audit ledger
  │   ├── catalog_product.cnt     ← High-concurrency hit counter store
- │   ├── catalog_product.inx     ← 8-byte packed primary ID index
- │   ├── catalog_product_1.fld   ← Inverted exact-match index
- │   ├── catalog_product_2.src   ← Full-text phonetic search index
- │   ├── catalog_product_3.fac   ← Columnar facet bitset index
- │   ├── catalog_product_4.srt   ← Monotonic binary sorted index
- │   └── catalog_product_1.unq   ← Bidirectional dictionary and uniqueness index
+ │   ├── catalog_product.inx     ← 8-byte packed primary ID and sort index
+ │   ├── catalog_product.fld     ← Inverted exact-match index ("$blk:$val")
+ │   ├── catalog_product.src     ← Full-text phonetic search index
+ │   ├── catalog_product.fac     ← Columnar facet index
+ │   └── catalog_product.unq     ← Bidirectional dictionary and uniqueness index
  ├── backup/                      ← Continuous WAL & .amberdb Archives
  │   └── 2026/
  │       ├── 2026-09-01.csv       ← Continuous daily audit stream (Pillar 1)
  │       └── full_backup.amberdb  ← Compressed backup archive (Pillar 2)
- ├── cache/                       ← RAM-Disk Shared Memory (tmpfs / ImDisk)
+ ├── ramdisk/                     ← RAM-Disk Shared Memory (Linux tmpfs / macOS APFS / Windows ImDisk)
  ├── buffer/                      ← Transient Disk Staging Files (.tmp)
  └── txn/                         ← Active Transaction Undo Journals (.txn)
 ```
@@ -48,9 +47,9 @@ Standard AmberDB Directory Hierarchy (dbstore/)
 | Directory | Type | Purpose |
 | :--- | :--- | :--- |
 | **`schema/`** | Persistent | Houses table schemas (`.table`) and database group configurations (`.dbase`). |
-| **`tables/`** | Persistent | Primary master data (`.db`, `.del`, `.aut`, `.cnt`, `.unq`) and derived reconstructible indexes (`.inx`, `.fld`, `.src`, `.fac`, `.srt`, `.slg`). |
+| **`tables/`** | Persistent | Primary master data (`.db`, `.del`, `.aut`, `.cnt`, `.unq`) and derived reconstructible indexes (`.inx`, `.fld`, `.src`, `.fac`, `.srt`, `.slg`). Customizable via `table_dir`. |
 | **`backup/`** | Persistent / Archive | Year-partitioned folders (`backup/YYYY/`) holding daily append-only CSV WAL streams and native `.amberdb` archives. |
-| **`cache/`** | Shared Memory | Mount target for OS RAM-disks (`tmpfs` / `ImDisk`). High-frequency table mirrors operate here. |
+| **`ramdisk/`** | Shared Memory | Mount target for OS RAM-disks (Linux `tmpfs`, macOS `APFS RAM-Disk`, Windows `ImDisk`). High-frequency mirrors and Tier 3 volatile tables operate here. |
 | **`buffer/`** | Transient (Staging) | Stores staging buffer files (`.tmp`) during `buffer_write` pipelines. |
 | **`txn/`** | Transient (ACID) | Stores active transaction rollback journals (`.txn`). Removed upon successful commit. |
 
@@ -88,6 +87,8 @@ $adb->set_datadir("/mnt/ssd_storage/dbstore");
 
 ## 5. See Also & Related Topics
 
+- [Flag: dbase_dir](Flag-dbase_dir)
+- [Flag: table_dir](Flag-table_dir)
 - [Concept: File Structure and Extensions](Concept-File-Structure)
 - [Concept: 2-Pillar Disaster Recovery](Concept-2-Pillar-Disaster-Recovery)
 - [Concept: RAM-Disk Acceleration](Concept-RAM-Disk-Acceleration)

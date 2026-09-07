@@ -5,7 +5,7 @@ use warnings;
 use Carp qw(croak cluck);
 use File::Spec;
 
-our $VERSION = '5.24.0';
+our $VERSION = '5.25.0';
 my $CREATED = '2018-10-08';
 
 # Constructor
@@ -826,7 +826,7 @@ sub tie2csv {
     };
     foreach my $uid (@uids) {
         my @fields = $adb->db_decode( $data{$uid} );
-        my $record = $adb->_db_encode_legacy( $uid, @fields );
+        my $record = $adb->tsv_encode( $uid, @fields );
         print $fh "$record\n";
         $self->{say} .= "$i. $uid ID record converted.\n\n";
         $i++;
@@ -955,7 +955,7 @@ sub vacuum {
         return;
     };
     foreach my $record (@records) {
-        my $new_record = $adb->_db_encode_legacy(@$record);
+        my $new_record = $adb->tsv_encode(@$record);
         print $FH "$new_record\n";
         $count->{csv1}++;
     }
@@ -1079,175 +1079,6 @@ sub all_tables {
 # TABLE MIGRATION & HISTORICAL FORMAT CONVERSION ENGINE
 # =====================================================================
 
-# ---------------------------------------------------------------------
-# _detect_record_format($record):
-# Returns format identifier:
-#   v5: 2026+ ABR Binary (\x00ABR\x05)
-#   v4: 2024-2026 AmberDB Text (ARRAY:, HASH:, &#38; etc.)
-#   v3: 2016-2024 Dbase::Base (<TAB0><TAB1><TAB2><TAB3>)
-#   v2: 2004-2016 DB::CSV / TieDB / DB::Tie (\T array separator)
-#   v1: 2003-2004 FlatDB (Plain \t with standard escapes)
-# ---------------------------------------------------------------------
-sub _detect_record_format {
-    my ( $self, $record ) = @_;
-    return 'v5' if !defined $record || $record eq '';
-
-    if ( length($record) >= 7 && substr( $record, 0, 4 ) eq "\x00ABR" ) {
-        return 'v5';
-    }
-    if ( $record =~ /(?:ARRAY:|HASH:|&#(?:38|61|124|92|30);)/ ) {
-        return 'v4';
-    }
-    if ( $record =~ /<TAB[0-9]+>/ ) {
-        return 'v3';
-    }
-    if ( $record =~ /\\T/ ) {
-        return 'v2';
-    }
-    return 'v1';
-}
-
-# ---------------------------------------------------------------------
-# decode_legacy_record($record, $expected_rid):
-# Decodes any record originating from 2003 through 2026 text formats
-# into Perl data structures (scalars, arrayrefs, hashrefs).
-# ---------------------------------------------------------------------
-sub decode_legacy_record {
-    my ( $self, $record, $expected_rid ) = @_;
-    return () unless defined $record && length($record);
-
-    # If already ABR binary, decode directly via AmberDB engine
-    my $adb = $self->{_adb};
-    if ( length($record) >= 7 && substr( $record, 0, 4 ) eq "\x00ABR" ) {
-        return $adb->db_decode($record);
-    }
-
-    $record =~ s/\R$//;
-
-    # 1. ERA 2019 - 2025: <TAB> Hierarchy (<TAB0>, <TAB1>, <TAB2>, <TAB3>)
-    if ( $record =~ /<TAB[0-9]+>/ ) {
-        my $white_decode = sub {
-            return map {
-                my $s = $_;
-                if ( defined $s ) {
-                    $s =~ s/\\(.)/$1 eq "t" ? "\t" : $1 eq "n" ? "\n" : $1 eq "r" ? "\r" : $1 eq "T" ? "\\T" : $1/eg;
-                }
-                $s;
-            } @_;
-        };
-
-        my $rid_prefix;
-        if ( $record =~ /^([a-zA-Z0-9_\-\.]+)(?:<TAB0>|\t)(.*)$/s ) {
-            my ( $candidate_rid, $rest ) = ( $1, $2 );
-            if ( !defined $expected_rid || $candidate_rid eq $expected_rid ) {
-                $rid_prefix = $candidate_rid;
-                $record     = $rest;
-            }
-        }
-
-        my @fields = $record =~ /<TAB0>/ ? split( /<TAB0>/, $record, -1 ) : split( /\t/, $record, -1 );
-        @fields = $white_decode->(@fields);
-
-        for my $f1 (@fields) {
-            if ( defined $f1 && $f1 =~ /<TAB1>/ ) {
-                my @sub1 = map { $_ eq '-' ? '' : $_ } split( /<TAB1>/, $f1, -1 );
-                @sub1 = $white_decode->(@sub1);
-                for my $f2 (@sub1) {
-                    if ( defined $f2 && $f2 =~ /<TAB2>/ ) {
-                        my @sub2 = map { $_ eq '-' ? '' : $_ } split( /<TAB2>/, $f2, -1 );
-                        @sub2 = $white_decode->(@sub2);
-                        for my $f3 (@sub2) {
-                            if ( defined $f3 && $f3 =~ /<TAB3>/ ) {
-                                my @sub3 = map { $_ eq '-' ? '' : $_ } split( /<TAB3>/, $f3, -1 );
-                                $f3 = [ $white_decode->(@sub3) ];
-                            }
-                        }
-                        $f2 = \@sub2;
-                    }
-                }
-                $f1 = \@sub1;
-            }
-        }
-
-        if ( defined $rid_prefix ) {
-            unshift @fields, $rid_prefix;
-        }
-        return @fields;
-    }
-
-    # 2. ERA 2026: HTML entities (&#38;, &#124;, &#61;) + ARRAY: / HASH:
-    if ( $record =~ /(?:ARRAY:|HASH:|&#(?:38|61|124|92|30);)/ ) {
-        my $unescape_chars = sub {
-            my ($str) = @_;
-            return "" unless defined $str;
-            $str =~ s/\\\\/\\/g;
-            $str =~ s/\\([nrt])/$1 eq 'n' ? "\n" : $1 eq 'r' ? "\r" : "\t"/eg;
-            $str =~ s/&#61;/=/g;
-            $str =~ s/&#124;/|/g;
-            $str =~ s/&#30;/\x1e/g;
-            $str =~ s/&#92;/\\/g;
-            $str =~ s/&#38;/&/g;
-            return $str;
-        };
-
-        my $decode_node;
-        $decode_node = sub {
-            my ($field) = @_;
-            return "" unless defined $field;
-
-            if ( $field =~ /^ARRAY:(.*)/s ) {
-                my $payload = $1;
-                return [] if $payload eq "";
-                return [ map { $decode_node->( $unescape_chars->($_) ) } split( /\|/, $payload, -1 ) ];
-            }
-            elsif ( $field =~ /^HASH:(.*)/s ) {
-                my $payload = $1;
-                my %h;
-                if ( $payload ne "" ) {
-                    for my $pair ( split( /\|/, $payload, -1 ) ) {
-                        my ( $k, $v ) = split( /=/, $pair, 2 );
-                        $h{ $unescape_chars->($k) } = $decode_node->( $unescape_chars->( $v // '' ) );
-                    }
-                }
-                return \%h;
-            }
-            elsif ( $field =~ /\\T/ ) {
-                return [ map { $unescape_chars->($_) } split( /\\T/, $field, -1 ) ];
-            }
-            else {
-                return $unescape_chars->($field);
-            }
-        };
-
-        my @raw = split( /\t/, $record, -1 );
-        if ( @raw == 1 && $raw[0] =~ /^(?:ARRAY|HASH):/ ) {
-            my $res = $decode_node->( $raw[0] );
-            return ($res);
-        }
-        return map { $decode_node->( $unescape_chars->($_) ) } @raw;
-    }
-
-    # 3. ERA 2004 - 2006 & 2003: \t root, \T array delimiter, standard escapes
-    my $unescape_basic = sub {
-        my ($s) = @_;
-        return "" unless defined $s;
-        $s =~ s/\\(.)/$1 eq "t" ? "\t" : $1 eq "n" ? "\n" : $1 eq "r" ? "\r" : $1 eq "T" ? "\\T" : $1 eq "\\" ? "\\" : $1/eg;
-        return $s;
-    };
-
-    my @raw_fields = split( /\t/, $record, -1 );
-    @raw_fields = map { $unescape_basic->($_) } @raw_fields;
-
-    for my $line (@raw_fields) {
-        if ( defined $line && $line =~ /\\T/ ) {
-            my @parts = split( /\\T/, $line, -1 );
-            @parts = map { $unescape_basic->($_) } @parts;
-            $line = \@parts;
-        }
-    }
-
-    return @raw_fields;
-}
 
 # Helper to binary copy a file safely without external modules
 sub _copy_file {
@@ -1299,7 +1130,7 @@ sub update_table {
 
     for my $k ( keys %raw_records ) {
         my $v = $raw_records{$k};
-        my $fmt = $self->_detect_record_format($v);
+        my $fmt = $adb->detect_record_format($v);
         $format_counts{$fmt}++;
         if ( $fmt eq 'v5' ) {
             $already_current++;
@@ -1321,7 +1152,7 @@ sub update_table {
         } );
         $adb->table_close($del_file);
         for my $k ( keys %raw_del ) {
-            my $fmt = $self->_detect_record_format( $raw_del{$k} );
+            my $fmt = $adb->detect_record_format( $raw_del{$k} );
             $del_legacy_count++ if $fmt ne 'v5';
         }
     }
@@ -1337,7 +1168,7 @@ sub update_table {
         } );
         $adb->table_close($aut_file);
         for my $k ( keys %raw_aut ) {
-            my $fmt = $self->_detect_record_format( $raw_aut{$k} );
+            my $fmt = $adb->detect_record_format( $raw_aut{$k} );
             $aut_legacy_count++ if $fmt ne 'v5';
         }
     }
@@ -1396,7 +1227,7 @@ sub update_table {
             @fields = $adb->db_decode($v);
         }
         else {
-            @fields = $self->decode_legacy_record( $v, $k );
+            @fields = $adb->tsv_decode( $v, $k );
         }
         push @decoded_records, [ $k, @fields ];
     }
@@ -1446,7 +1277,7 @@ sub update_table {
         my @archive_records;
         for my $dk ( sort keys %raw_del ) {
             my $dv = $raw_del{$dk};
-            my @df = $self->decode_legacy_record( $dv, $dk );
+            my @df = $adb->tsv_decode( $dv, $dk );
             my $new_v = $adb->db_encode(@df);
             push @archive_records, [ $dk, $new_v ];
             $del_migrated++;
@@ -1475,7 +1306,7 @@ sub update_table {
             my $av = $raw_aut{$ak};
             my @af = ( defined $av && length($av) >= 7 && substr( $av, 0, 4 ) eq "\x00ABR" )
               ? $adb->db_decode($av)
-              : $self->decode_legacy_record( $av, $ak );
+              : $adb->tsv_decode( $av, $ak );
             my $new_av = $adb->db_encode(@af);
             push @archive_aut, [ $ak, $new_av ];
             $aut_migrated++;
@@ -1805,17 +1636,13 @@ sub dump {
     my $backup_base = $adb->path('backup_dir')
       || ( $adb->path('dbase_dir') ? $adb->path('dbase_dir') . "/backup" : "backup" );
     my $year_dir = "$backup_base/$year";
-    unless ( -d $year_dir ) {
-        File::Path::make_path($year_dir);
-    }
+    $adb->make_path($year_dir);
 
     my $outfile = $opts{file} || "$year_dir/amberdb_${date_iso}_${time_id}.amberdb";
 
     # Ensure parent directory for $outfile exists
     if ( my ($outdir) = $outfile =~ m{^(.*)[/\\]} ) {
-        unless ( -d $outdir ) {
-            File::Path::make_path($outdir);
-        }
+        $adb->make_path($outdir);
     }
 
     my $tar = Archive::Tar->new();
@@ -2036,8 +1863,8 @@ sub restore {
     }
 
     # Ensure target directories exist
-    File::Path::make_path($schema_dir) unless -d $schema_dir;
-    File::Path::make_path($table_dir)  unless -d $table_dir;
+    $adb->make_path($schema_dir);
+    $adb->make_path($table_dir);
 
     # Flush all active handles before restoring
     $adb->close_all();
@@ -2106,7 +1933,7 @@ sub restore {
             my $target_file = "$base_dir/$arch_path";
 
             if ( my ($tdir) = $target_file =~ m{^(.*)[/\\]} ) {
-                File::Path::make_path($tdir) unless -d $tdir;
+                $adb->make_path($tdir);
             }
 
             open my $dfh, ">:raw", $target_file or do {

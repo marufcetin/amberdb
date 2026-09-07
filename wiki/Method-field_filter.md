@@ -28,9 +28,10 @@ my $result = $adb->field_filter($table_id, \%filter_options);
 {
     type    => "and" | "or",                 # Compound matching logic
     filter  => { 1 => "5", 6 => ["12", "14"] }, # { block_index => value_or_arrayref }
+    range   => { block => 4, min => 100, max => 500 }, # Numerical / chronological range filter
     sort    => { blk => 3, reverse => 1 },   # Sorting options
     jnktype => "AB",                         # Tier mode
-    start   => 0,                            # Pagination start offset
+    offset  => 0,                            # Pagination offset (legacy 'start' accepted)
     limit   => 20,                           # Pagination limit
 }
 ```
@@ -55,8 +56,9 @@ Returns a hash reference:
 my $res = $adb->field_filter("catalog_product", {
     type    => "and",
     filter  => { 1 => "5", 2 => [ "10", "12" ] },
+    range   => { block => "price", min => 1000, max => 2500 },
     sort    => { blk => 3, reverse => 0 },
-    start   => 0,
+    offset  => 0,
     limit   => 20,
 });
 

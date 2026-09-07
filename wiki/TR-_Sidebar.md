@@ -44,13 +44,21 @@
 - [set_datadir](TR-Method-set_datadir)
 - [insert_id](TR-Method-insert_id)
 - [insert_list](TR-Method-insert_list)
+- [insert_field](TR-Method-insert_field)
+- [insert_links](TR-Method-insert_links)
 - [modify_id](TR-Method-modify_id)
 - [modify_list](TR-Method-modify_list)
+- [update_id](TR-Method-update_id)
+- [update_list](TR-Method-update_list)
+- [update_field](TR-Method-update_field)
 - [delete_id](TR-Method-delete_id)
 - [delete_list](TR-Method-delete_list)
+- [delete_field](TR-Method-delete_field)
 - [read_id](TR-Method-read_id)
 - [read_all](TR-Method-read_all)
 - [read_list](TR-Method-read_list)
+- [inflate](TR-Method-inflate)
+- [deflate](TR-Method-deflate)
 - [exist_id](TR-Method-exist_id)
 - [exist_list](TR-Method-exist_list)
 - [exist_table](TR-Method-exist_table)
@@ -88,12 +96,8 @@
 ---
 
 ### Onbellek ve Dusuk Seviye
-- [cache_setup](TR-Method-cache_setup)
-- [cache_read](TR-Method-cache_read)
-- [cache_write](TR-Method-cache_write)
-- [cache_delete](TR-Method-cache_delete)
-- [cache_preload](TR-Method-cache_preload)
-- [cache_ensure](TR-Method-cache_ensure)
+- [get_cache](TR-Method-get_cache)
+- [set_cache](TR-Method-set_cache)
 - [buffer_write](TR-Method-buffer_write)
 - [buffer_read](TR-Method-buffer_read)
 - [buffer_delete](TR-Method-buffer_delete)
@@ -131,9 +135,13 @@
 ---
 
 ### Yapilandirma Bayraklari
+- [dbase_dir](TR-Flag-dbase_dir)
+- [table_dir](TR-Flag-table_dir)
 - [log_owner](TR-Flag-log_owner)
 - [use_counter](TR-Flag-use_counter)
 - [use_junk](TR-Flag-use_junk)
+- [use_ramdisk](TR-Flag-use_ramdisk)
+- [ramdisk_ttl](TR-Flag-ramdisk_ttl)
 - [keep_deleted](TR-Flag-keep_deleted)
 - [auto_id](TR-Flag-auto_id)
 - [buffer_write](TR-Flag-buffer_write)
@@ -151,9 +159,9 @@
 - [.db](TR-File-db) · [.table](TR-File-table) · [.dbase](TR-File-dbase)
 - [.inx](TR-File-inx) · [.fld](TR-File-fld) · [.src](TR-File-src)
 - [.fac](TR-File-fac) · [.srt](TR-File-srt) · [.slg](TR-File-slg)
-- [.unq](TR-File-unq) · [.del](TR-File-del) · [.aut](TR-File-aut)
+- [.unq](TR-File-unq) · [.del](TR-File-del) · [.aut](TR-File-aut) · [.lnk](TR-File-lnk)
 - [.cnt](TR-File-cnt) · [.txn](TR-File-txn) · [.amberdb](TR-File-amberdb)
-- [.csv](TR-File-csv) · [.cache](TR-File-cache) · [.tmp](TR-File-tmp)
+- [.csv](TR-File-csv) · [.tmp](TR-File-tmp)
 
 ---
 

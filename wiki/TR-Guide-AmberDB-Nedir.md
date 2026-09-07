@@ -52,7 +52,7 @@ AmberDB hicbir harici agir CPAN bagimliligina ihtiyac duymaksizin kendi icinde m
 | **`AmberDB::Base`** | Sema yukleme (`.table`, `.dbase`), dosya yollari, veri serilestirme, 0. indis ID kurallari ve cekirdek CRUD yonetimi. |
 | **`AmberDB::Index`** | 8-byte paketli binary indeksler (`.inx`), ters eslesme (`.fld`), tam metin arama (`.src`), facet filtreleme (`.fac`) ve on-siralanmis (`.srt`) indekslerin uretimi ve esitlenmesi. |
 | **`AmberDB::Transact`** | ACID islem yonetimi, disk tabanli undo-journal gunlukleri (`.txn`), Strict 2PL cok surecli kilitler ve otomatik cokme kurtarmasi (`transact_recover`). |
-| **`AmberDB::Cache`** | Isletim sistemi duzeyinde RAM-Disk (`tmpfs` / `ImDisk`) paylasimli bellek onbellegi (`.cache`), TTL kontrolleri ve bellek ici ayna yonetimi. |
+| **`AmberDB::Ramdisk`** | Isletim sistemi duzeyinde RAM-Disk (Linux `tmpfs`, macOS `APFS`, Windows `ImDisk`) paylasimli bellek hizlandirmasi, TTL kontrolleri ve bellek ici ayna yonetimi. |
 | **`AmberDB::Locale`** | 10 dilde (`gb` [varsayilan Global Base], `tr`, `en`, `de`, `fr`, `es`, `ja`, `ru`, `ar`, `az`) dil duyarlı buyuk/kucuk harf donusumu, fonetik yumusama, aksan acilimi ve Unicode Collation (UCA) siralamasi. |
 | **`AmberDB::Array`** | Yuksek hizli dizi manipule yardimcilari (sirali karsilastirma, tekrarsiz fark alma, dilimleme, crop). |
 | **`AmberDB::String`** | Metin guvenligi, HTML temizleme, ASCII normalizasyonu ve URL slug uretimi. |
@@ -79,8 +79,8 @@ Cok tablolu operasyonlar, disk tabanli geri alma gunlukleri (`.txn`) ve katı ik
 ### 5. Akilli Aksan ve Fonetik Arama
 Turkce ve diger desteklenen dillerde fonetik yumusama (`b/d/g -> p/t/k`), sapkali harf acilimi (`â/î/û -> a/i/u`), apostrof ayirma ve dil duyarlı kucuk/buyuk harf esleme (orn: `I` $\leftrightarrow$ `ı`, `İ` $\leftrightarrow$ `i`) ile arama motoru seviyesinde metin sorgulama sunar.
 
-### 6. RAM-Disk ile Mikrosaniye Alti Onbellek
-Sik erisilen katalog tablolari, isletim sisteminin `tmpfs` veya `ImDisk` paylasimli bellek alanina baglanarak mikro-saniye seviyesinde $O(1)$ hizina ulasir.
+### 6. RAM-Disk ile Mikrosaniye Alti Hizlandirma
+Sik erisilen katalog tablolari, isletim sisteminin `tmpfs` (Linux), `APFS RAM-Disk` (macOS) veya `ImDisk` (Windows) paylasimli bellek alanina baglanarak mikro-saniye seviyesinde $O(1)$ hizina ulasir.
 
 ---
 

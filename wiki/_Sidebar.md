@@ -44,13 +44,21 @@
 - [set_datadir](Method-set_datadir)
 - [insert_id](Method-insert_id)
 - [insert_list](Method-insert_list)
+- [insert_field](Method-insert_field)
+- [insert_links](Method-insert_links)
 - [modify_id](Method-modify_id)
 - [modify_list](Method-modify_list)
+- [update_id](Method-update_id)
+- [update_list](Method-update_list)
+- [update_field](Method-update_field)
 - [delete_id](Method-delete_id)
 - [delete_list](Method-delete_list)
+- [delete_field](Method-delete_field)
 - [read_id](Method-read_id)
 - [read_all](Method-read_all)
 - [read_list](Method-read_list)
+- [inflate](Method-inflate)
+- [deflate](Method-deflate)
 - [exist_id](Method-exist_id)
 - [exist_list](Method-exist_list)
 - [exist_table](Method-exist_table)
@@ -87,13 +95,9 @@
 
 ---
 
-### Cache, Buffer & Low-Level
-- [cache_setup](Method-cache_setup)
-- [cache_read](Method-cache_read)
-- [cache_write](Method-cache_write)
-- [cache_delete](Method-cache_delete)
-- [cache_preload](Method-cache_preload)
-- [cache_ensure](Method-cache_ensure)
+### Cache & Low-Level
+- [get_cache](Method-get_cache)
+- [set_cache](Method-set_cache)
 - [buffer_write](Method-buffer_write)
 - [buffer_read](Method-buffer_read)
 - [buffer_delete](Method-buffer_delete)
@@ -131,9 +135,13 @@
 ---
 
 ### Configuration Flags
+- [dbase_dir](Flag-dbase_dir)
+- [table_dir](Flag-table_dir)
 - [log_owner](Flag-log_owner)
 - [use_counter](Flag-use_counter)
 - [use_junk](Flag-use_junk)
+- [use_ramdisk](Flag-use_ramdisk)
+- [ramdisk_ttl](Flag-ramdisk_ttl)
 - [keep_deleted](Flag-keep_deleted)
 - [auto_id](Flag-auto_id)
 - [buffer_write](Flag-buffer_write)
@@ -151,9 +159,9 @@
 - [.db](File-db) · [.table](File-table) · [.dbase](File-dbase)
 - [.inx](File-inx) · [.fld](File-fld) · [.src](File-src)
 - [.fac](File-fac) · [.srt](File-srt) · [.slg](File-slg)
-- [.unq](File-unq) · [.del](File-del) · [.aut](File-aut)
+- [.unq](File-unq) · [.del](File-del) · [.aut](File-aut) · [.lnk](File-lnk)
 - [.cnt](File-cnt) · [.txn](File-txn) · [.amberdb](File-amberdb)
-- [.csv](File-csv) · [.cache](File-cache) · [.tmp](File-tmp)
+- [.csv](File-csv) · [.tmp](File-tmp)
 
 ---
 

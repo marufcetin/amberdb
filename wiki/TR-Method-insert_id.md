@@ -36,8 +36,8 @@ my $id = $adb->insert_id($tablo_adi, $kayit_id, @alanlar);
 
 | Parametre | Tipi | Zorunlu | Varsayilan | Aciklama |
 |:---|:---|:---|:---|:---|
-| `$tablo_adi` | String | Zorunlu | — | Hedef tablo adi (orn: `"catalog_product"`). |
-| `@kayit` | Liste | Zorunlu | — | Kayit alanlari listesi. 0. indis ID'dir (otomatik ID icin `0`). |
+| `$tablo_adi` | String | Zorunlu | - | Hedef tablo adi (orn: `"catalog_product"`). |
+| `@kayit` | Liste | Zorunlu | - | Kayit alanlari listesi. 0. indis ID'dir (otomatik ID icin `0`). |
 
 ---
 

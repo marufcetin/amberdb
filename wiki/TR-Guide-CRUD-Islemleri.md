@@ -92,13 +92,16 @@ my @tum_kayitlar = $adb->read_all("member_users");
 # 2. Sayfali okuma (limit > 0: Ilk donus degeri toplam eslesen tamsayisidir)
 my ($toplam_sayi, @sayfa) = $adb->read_all(
     "member_users",
-    start => 0,
-    limit => 20,
-    sort  => -1 # 1. bloka gore artan sirala
+    {
+        offset => 0,
+        limit  => 20,
+        sort   => -1, # 1. bloka gore artan sirala
+    }
 );
 
 # 3. Yalnizca ID'leri okuma (keys_only - ultra dusuk bellek)
-my ($toplam, @sayfa_idleri) = $adb->read_all("member_users", 0, 50, keys_only => 1);
+my ($toplam, @sayfa_idleri) = $adb->read_all("member_users", { offset => 0, limit => 50, keys_only => 1 });
+my @tum_idleri              = $adb->read_all("member_users", { keys_only => 1 });
 ```
 
 ### 3.3 Toplu ID ile Okuma (`read_list`)

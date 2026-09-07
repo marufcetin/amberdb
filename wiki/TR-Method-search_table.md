@@ -18,10 +18,10 @@
 
 ```perl
 # 1. Sayfalamasiz
-my @kayitlar = $adb->search_table($tablo_adi, $sorgu, [$baslangic], [$limit], [$mod], [%secenekler]);
+my @kayitlar = $adb->search_table($tablo_adi, $sorgu, [\%secenekler]);
 
 # 2. Sayfalamali (limit > 0 iken)
-my ($toplam_sayi, @kayitlar) = $adb->search_table($tablo_adi, $sorgu, $baslangic, $limit, $mod, [%secenekler]);
+my ($toplam_sayi, @kayitlar) = $adb->search_table($tablo_adi, $sorgu, \%secenekler);
 ```
 
 ---
@@ -43,15 +43,20 @@ my @sonuclar = $adb->search_table("catalog_product", "kablosuz kulaklik");
 # 2. Sayfalamali, filtreli ve sirali arama
 my ($toplam, @sayfa) = $adb->search_table(
     "catalog_product", "kulaklik",
-    start   => 0,
-    limit   => 20,
-    sort    => -3,       # Fiyata (3. Blok) gore artan sirala
-    filter  => { field => 1, value => 5 }, # 5. Kategori filtresi
-    jnktype => 'AB'      # Once aktif urunler, sonra arsiv
+    {
+        type    => "and",
+        offset  => 0,
+        limit   => 20,
+        sort    => -3,         # Fiyata (3. Blok) gore artan sirala
+        filter  => { 1 => 5 }, # 1. Blok (Kategori) = 5
+        range   => { block => "price", min => 100, max => 1000 }, # Fiyat araligi
+        jnktype => 'AB',       # Once aktif urunler, sonra arsiv
+    }
 );
 
 # 3. Hizli keys_only ile salt ID arama
-my ($sayi, @urun_idleri) = $adb->search_table("catalog_product", "kulaklik", 0, 50, keys_only => 1);
+my ($sayi, @urun_idleri) = $adb->search_table("catalog_product", "kulaklik", { offset => 0, limit => 50, keys_only => 1 });
+my @tum_idleri           = $adb->search_table("catalog_product", "kulaklik", { keys_only => 1 });
 ```
 
 ---

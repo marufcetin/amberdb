@@ -17,40 +17,76 @@
 ## 2. Syntax and Signature
 
 ```perl
+# Standard invocation (Single unified options hashref)
+my $menu = $adb->facet_menu($table_id, \%options);
+
+# Backward-compatible invocation (Multiple arguments)
 my $menu = $adb->facet_menu($table_id, \%selected_filters, [\@facet_defs], [\%options]);
 ```
 
 ---
 
-## 3. Parameters and Options
+## 3. Parameters and Options (`\%options`)
 
-| Parameter / Option | Type | Required | Description |
+| Parameter / Option | Type | Default | Description |
 |:---|:---|:---|:---|
 | `$table_id` | String | Required | Table name (e.g. `"catalog_product"`). |
-| `\%selected_filters` | Hash-ref | Required | Currently selected filters: `{ block_idx => value_or_arrayref }`. |
-| `\@facet_defs` | Array-ref | Optional | Custom facet definitions (reads from schema if omitted). |
-| `base_ids` | Array-ref | Optional | Scope calculation to a specific record ID subset (e.g. search result IDs). |
-| `sort` | String | Optional | `'count'` (default, descending hit count) or `'label'` / `'name'`. |
-| `top` | Integer | Optional | Maximum options returned per facet group. |
-| `min_count` | Integer | Optional | Minimum hit count required to include an option (default: 1). |
+| `selected` / `filter` / `where` | Hash-ref | `{}` | Currently selected filters: `{ block_idx => value_or_arrayref }`. |
+| `facet_defs` / `blocks` | Array-ref | Schema default | Custom facet definitions (uses schema `facet_block` if omitted). |
+| `base_ids` / `scope_ids` | Array-ref | All | Scope calculation to a specific record ID subset (e.g. search result IDs). |
+| `offset` / `start` | Integer | `0` | Pagination start index for matching record IDs. |
+| `limit` | Integer | All | Maximum number of matching record IDs to return in page. |
+| `sort` | String | `'count'` | `'count'` (default, descending hit count) or `'label'` / `'name'`. |
+| `top` | Integer | `0` (All) | Maximum options returned per facet group. |
+| `min_count` | Integer | `1` | Minimum hit count required to include an option. |
+| `range` | Hash / Array | `undef` | Numerical / chronological range filtering: `{ block => 4, min => 1000, max => 2000 }`. Scopes both facet distribution counts and filtered IDs. |
 
 ---
 
-## 4. Practical Code Example
+## 4. Practical Code Examples
+
+### 4.1 Standard Unified Hashref Invocation
 
 ```perl
-my $menu_data = $adb->facet_menu(
-    "catalog_product",
-    {
+my $menu_data = $adb->facet_menu("catalog_product", {
+    selected => {
         1 => "5",              # Category = 5
         2 => [ "12", "14" ],   # Brand = 12 OR 14
     },
-    undef,
-    { sort => 'count', top => 10 }
-);
+    sort     => 'count',
+    top      => 10,
+    offset   => 0,
+    limit    => 20,
+});
 
 print "Matching Products: $menu_data->{count}\n";
-# $menu_data->{ids} contains filtered record IDs
+# $menu_data->{ids} contains paginated record IDs
+# $menu_data->{groups} contains facet option groups with accurate counts
+```
+
+### 4.2 Scoped Facet Menu from Search Results
+
+```perl
+# Full-text search returning IDs
+my @search_ids = $adb->search_table("catalog_product", "wireless", { keys_only => 1 });
+
+# Generate facet menu scoped strictly to search results
+my $menu = $adb->facet_menu("catalog_product", {
+    base_ids => \@search_ids,
+    selected => { 1 => "5" },
+    sort     => 'count',
+});
+```
+
+### 4.3 Facet Menu with Numerical / Price Range (range)
+
+```perl
+# Category and brand facets dynamically scoped to price between 1000 and 5000:
+my $menu = $adb->facet_menu("catalog_product", {
+    selected => { 1 => "5" },
+    range    => { block => "price", min => 1000, max => 5000 },
+    sort     => 'count',
+});
 ```
 
 ---

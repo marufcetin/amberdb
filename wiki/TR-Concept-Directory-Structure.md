@@ -26,17 +26,16 @@ Standart AmberDB Dizin Agaci (dbstore/)
  │   ├── catalog_product.del     ← Cop kutusu yumusak silme arşivi
  │   ├── catalog_product.aut     ← Kullanici hareket denetim izi
  │   ├── catalog_product.cnt     ← Goruntulenme/hit sayac depolari
- │   ├── catalog_product.inx     ← 8-byte paketli birincil ID indeksi
- │   ├── catalog_product_1.fld   ← Birebir eslesme ters indeksi
- │   ├── catalog_product_2.src   ← Fonetik tam metin arama indeksi
- │   ├── catalog_product_3.fac   ← Kolon tabanli facet bitset indeksi
- │   ├── catalog_product_4.srt   ← Onceden siralanmis binary indeks
- │   └── catalog_product_1.unq   ← Cift yonlu sozluk ve tekillik indeksi
+ │   ├── catalog_product.inx     ← 8-byte paketli birincil ID ve siralama indeksi
+ │   ├── catalog_product.fld     ← Birebir eslesme ters indeksi ("$blk:$val")
+ │   ├── catalog_product.src     ← Fonetik tam metin arama indeksi
+ │   ├── catalog_product.fac     ← Kolon tabanli facet indeksi
+ │   └── catalog_product.unq     ← Cift yonlu sozluk ve tekillik indeksi
  ├── backup/                      ← Surekli WAL ve .amberdb Arsivleri
  │   └── 2026/
  │       ├── 2026-09-01.csv       ← Gunluk surekli denetim akisi (Pillar 1)
  │       └── full_backup.amberdb  ← Sikistirilmis yedek arşivi (Pillar 2)
- ├── cache/                       ← RAM-Disk Paylasimli Bellek (tmpfs / ImDisk)
+ ├── ramdisk/                     ← RAM-Disk Paylasimli Bellek (Linux tmpfs / macOS APFS / Windows ImDisk)
  ├── buffer/                      ← Disk Staging Tampon Gecici Dosyalari (.tmp)
  └── txn/                         ← Aktif Islem Geri Alma Gunlukleri (.txn)
 ```
@@ -48,9 +47,9 @@ Standart AmberDB Dizin Agaci (dbstore/)
 | Dizin | Tipi | Aciklama |
 | :--- | :--- | :--- |
 | **`schema/`** | Kalici | Tablo (`.table`) ve veritabani grup (`.dbase`) semalarinin bulundugu tanim klasorudur. |
-| **`tables/`** | Kalici | Master veriler (`.db`, `.del`, `.aut`, `.cnt`, `.unq`) ve yeniden uretilebilir tum indekslerin (`.inx`, `.fld`, `.src`, `.fac`, `.srt`, `.slg`) saklandigi ana veri deposudur. |
+| **`tables/`** | Kalici | Master veriler (`.db`, `.del`, `.aut`, `.cnt`, `.unq`) ve yeniden uretilebilir tum indekslerin (`.inx`, `.fld`, `.src`, `.fac`, `.srt`, `.slg`) saklandigi ana veri deposudur. `table_dir` ile ozellestirilebilir. |
 | **`backup/`** | Kalici / Arsiv | Yil bazli alt klasorlerde (`backup/YYYY/`) gunluk append-only CSV WAL gunlukleri ve `.amberdb` yedek dosyalarini barindirir. |
-| **`cache/`** | Paylasimli Bellek | RAM-disk (`tmpfs` / `ImDisk`) mount noktasidir. Tablo bellek kopyalari (`.db`, `.inx`) burada calisir. |
+| **`ramdisk/`** | Paylasimli Bellek | RAM-disk (Linux `tmpfs`, macOS `APFS RAM-Disk`, Windows `ImDisk`) mount noktasidir. Tablo bellek kopyalari (`.db`, `.inx`) ve 3. katman ucucu tablolar burada calisir. |
 | **`buffer/`** | Gecici (Staging)| `buffer_write` modunda acilan gecici staging tampon dosyalarini (`.tmp`) barindirir. |
 | **`txn/`** | Gecici (ACID) | Aktif ACID islemlerine ait gecici geri alma gunluklerini (`.txn`) barindirir. Islem bitince temizlenir. |
 
@@ -88,6 +87,8 @@ $adb->set_datadir("/mnt/ssd_storage/dbstore");
 
 ## 5. Iliskili Maddeler ve Bakiniz
 
+- [Bayrak: dbase_dir](TR-Flag-dbase_dir)
+- [Bayrak: table_dir](TR-Flag-table_dir)
 - [Kavram: Dosya Yapisi (Uzantilar)](TR-Concept-File-Structure)
 - [Kavram: 2-Sutunlu Felaket Kurtarma](TR-Concept-2-Pillar-Disaster-Recovery)
 - [Kavram: RAM-Disk Hizlandirmasi](TR-Concept-RAM-Disk-Acceleration)

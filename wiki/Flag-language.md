@@ -4,8 +4,8 @@
 
 > **Category:** Configuration Flags  
 > **Type:** Engine & Schema Option  
-> **Valid Values:** `'en'`, `'tr'`, `'de'`, `'fr'`, `'es'`, `'ja'`, `'ru'`, `'ar'`, `'az'`  
-> **Default:** `'en'`
+> **Valid Values:** `'gb'`, `'en'`, `'tr'`, `'de'`, `'fr'`, `'es'`, `'ja'`, `'ru'`, `'ar'`, `'az'`  
+> **Default:** `'gb'`
 
 ---
 

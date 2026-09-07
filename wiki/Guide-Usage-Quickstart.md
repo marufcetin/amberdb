@@ -10,7 +10,7 @@
 
 ## 1. Introduction and Initialization
 
-When building applications with AmberDB, the database handle is conventionally initialized as `$adb`. AmberDB automatically organizes its internal directories (`schema/`, `tables/`, `backup/`, `cache/`, `txn/`) beneath the configured database root (`./dbstore`).
+When building applications with AmberDB, the database handle is conventionally initialized as `$adb`. AmberDB automatically organizes its internal directories (`schema/`, `tables/`, `backup/`, `ramdisk/`, `txn/`) beneath the configured database root (`./dbstore`).
 
 ```perl
 use strict;
@@ -21,7 +21,7 @@ use AmberDB;
 # 1. Initialize AmberDB instance handle
 my $adb = AmberDB->new(
     cfg => {
-        language => "en",          # Regional language engine: case folding & collation
+        language => "gb",          # Regional language engine: case folding & collation
         user     => "admin_user",  # User identifier for audit logging (.aut)
     },
     path => {
@@ -84,8 +84,10 @@ print "3. Product price updated successfully.\n";
 my ($total, @results) = $adb->search_table(
     "catalog_product",
     "wireless headphone",
-    start => 0,
-    limit => 10,
+    {
+        offset => 0,
+        limit  => 10,
+    }
 );
 
 print "4. Search Results: Found $total matching products.\n";
@@ -153,7 +155,7 @@ print "8. Product deleted successfully.\n";
 > 1. **Paginated Queries (`limit > 0`):** The method returns **`($total_count, @records)`** where the first scalar element is the total matched count integer.
 > 2. **Unpaginated Queries (`limit => 0` or omitted):** The method returns **`@records`** directly.
 >
-> If a paginated call is received into an array as `my @records = $adb->read_all("table", 0, 10)`, `$records[0]` is the integer total count, causing an unexpected fatal dereference when accessing `$records[0]->[1]`. Always use `my ($total, @records) = ...` for paginated queries.
+> If a paginated call is received into an array as `my @records = $adb->read_all("table", { offset => 0, limit => 10 })`, `$records[0]` is the integer total count, causing an unexpected fatal dereference when accessing `$records[0]->[1]`. Always use `my ($total, @records) = ...` for paginated queries.
 
 ---
 

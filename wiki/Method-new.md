@@ -46,7 +46,7 @@ use AmberDB;
 
 # 1. Standard Initialization
 my $adb = AmberDB->new(
-    cfg  => { language => "en", auto_id => 1 },
+    cfg  => { language => "gb", auto_id => 1 },
     path => { dbase_dir => "/var/data/amberdb_store" }
 );
 
@@ -63,4 +63,6 @@ my $ram_adb = AmberDB->new(
 
 - [Method: config](Method-config)
 - [Method: set_datadir](Method-set_datadir)
+- [Flag: dbase_dir](Flag-dbase_dir)
+- [Flag: use_ramdisk](Flag-use_ramdisk)
 - [Concept: Record Anatomy](Concept-Record-Anatomy)

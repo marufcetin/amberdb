@@ -52,7 +52,7 @@ AmberDB provides a lightweight, dependency-free internal component ecosystem:
 | **`AmberDB::Base`** | Schema loading (`.table`, `.dbase`), path routing, data serialization, 0-index primary key enforcement, and core CRUD dispatching. |
 | **`AmberDB::Index`** | 8-byte packed binary indexes (`.inx`), inverted field matching (`.fld`), full-text search (`.src`), columnar facet navigation (`.fac`), and pre-sorted indexes (`.srt`). |
 | **`AmberDB::Transact`** | ACID transaction lifecycle, disk-backed undo journaling (`.txn`), Strict 2PL multi-process locks, and automatic orphaned journal crash recovery (`transact_recover`). |
-| **`AmberDB::Cache`** | OS-level RAM-Disk (`tmpfs` / `ImDisk`) shared memory caching (`.cache`), TTL expiration, and in-memory table mirroring. |
+| **`AmberDB::Ramdisk`** | OS-level RAM-Disk (Linux `tmpfs`, macOS `APFS`, Windows `ImDisk`) shared memory acceleration, TTL expiration, and in-memory table mirroring. |
 | **`AmberDB::Locale`** | Regional language engine supporting 10 locales (`gb` [default Global Base], `en`, `tr`, `de`, `fr`, `es`, `ja`, `ru`, `ar`, `az`) with case folding, phonetic softening, accent expansion, and Unicode Collation (UCA). |
 | **`AmberDB::Array`** | High-speed array manipulation primitives (sorted comparison, deduplication, slicing, crop). |
 | **`AmberDB::String`** | String sanitization, HTML stripping, ASCII transliteration, and SEO URL slug generation. |
@@ -79,8 +79,8 @@ Multi-table operations are guarded by disk-backed undo journals (`.txn`) and Str
 ### 5. Intelligent Accent & Phonetic Search
 Advanced language handling with phonetic devoicing (`b/d/g -> p/t/k`), circumflex unfolding (`â/î/û -> a/i/u`), apostrophe stripping, and locale-aware casing provides search-engine quality querying out of the box.
 
-### 6. RAM-Disk Sub-Microsecond Caching
-High-frequency tables can be mirrored directly into an OS-level shared memory RAM-disk (`tmpfs` or `ImDisk`), delivering sub-microsecond $O(1)$ read latencies across all concurrent worker processes.
+### 6. RAM-Disk Sub-Microsecond Acceleration
+High-frequency tables can be mirrored directly into an OS-level shared memory RAM-disk (`tmpfs` on Linux, `APFS RAM-Disk` on macOS, or `ImDisk` on Windows), delivering sub-microsecond $O(1)$ read latencies across all concurrent worker processes.
 
 ---
 

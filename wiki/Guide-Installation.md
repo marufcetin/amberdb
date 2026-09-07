@@ -80,73 +80,77 @@ When building from source, pull the latest changes via `git pull`, rerun `make t
 
 ## 4. RAM-Disk Shared Memory Setup
 
-For high-throughput workloads requiring sub-microsecond ($<1\mu s$) read/write access, AmberDB can mount an operating system shared-memory RAM-Disk under `dbstore/cache/`.
+For high-throughput workloads requiring sub-microsecond ($<1\mu s$) read/write access, AmberDB can mount an operating system shared-memory RAM-Disk under `dbstore/ramdisk/`.
 
 ```text
 RAM-Disk Mount Architecture
 
- Linux:    /dev/shm or tmpfs mount ──> dbstore/cache/
- Windows:  ImDisk Virtual Drive (R:) ──> dbstore/cache/ (Junction / Symlink)
+ Linux:    /dev/shm or tmpfs mount ──> dbstore/ramdisk/
+ Windows:  ImDisk Virtual Drive (R:) ──> dbstore/ramdisk/ (Junction / Symlink)
+ macOS:    APFS RAM-Disk (hdiutil)   ──> dbstore/ramdisk/ (/Volumes/AmberDB_RAM)
 ```
 
 ### Why Root / Administrator Privileges are Required
-Creating a RAM-Disk allocates physical system memory directly from the OS kernel and attaches it as a virtual filesystem (`tmpfs` / `ImDisk`). Under Linux, macOS, and Windows security models, mounting virtual filesystems and creating block devices strictly require **`root` (Linux/macOS) or `Administrator` (Windows)** privileges.
+Creating a RAM-Disk allocates physical system memory directly from the OS kernel and attaches it as a virtual filesystem (Linux `tmpfs`, Windows `ImDisk`, macOS `APFS RAM-Disk` / `hdiutil`). Under Linux, macOS, and Windows security models, mounting virtual filesystems and creating block devices strictly require **`root` (Linux/macOS) or `Administrator` (Windows)** privileges.
 
-### 4.1 Using the RAM-Disk CLI Tool (`bin/setup_ramdisk.pl`)
+### 4.1 Using the RAM-Disk CLI Tool (`bin/ramdisk_amberdb.pl`)
 
-AmberDB provides a cross-platform RAM-disk manager script: `bin/setup_ramdisk.pl`.
+AmberDB provides a cross-platform RAM-disk manager script: `bin/ramdisk_amberdb.pl`.
 
 #### Check Status (No privileges required):
 ```bash
-perl bin/setup_ramdisk.pl --status
+perl bin/ramdisk_amberdb.pl --status
 ```
 
 #### Mount RAM-Disk (Start):
 ```bash
 # Linux / macOS (Run with sudo):
-sudo perl bin/setup_ramdisk.pl --start --size 512M
+sudo perl bin/ramdisk_amberdb.pl --start --size 512M
 
 # Windows (Elevated PowerShell / CMD as Administrator):
-perl bin/setup_ramdisk.pl --start --size 512M --drive R:
+perl bin/ramdisk_amberdb.pl --start --size 512M --drive R:
 ```
 
 #### Unmount RAM-Disk (Stop):
 ```bash
 # Linux / macOS:
-sudo perl bin/setup_ramdisk.pl --stop
+sudo perl bin/ramdisk_amberdb.pl --stop
 
 # Windows:
-perl bin/setup_ramdisk.pl --stop
+perl bin/ramdisk_amberdb.pl --stop
 ```
 
 ### 4.2 Platform-Specific Helper Scripts
 
 AmberDB includes ready-to-run scripts under `bin/`:
-- **Linux / Unix Bash:** `sudo ./bin/setup_ramdisk.sh start 512M`
-- **Windows PowerShell:** `powershell -ExecutionPolicy Bypass -File .\bin\setup_ramdisk.ps1 -Action start -Size 512MB`
-- **Windows Batch (CMD):** `.\bin\setup_ramdisk.bat start`
+- **Linux Bash:** `sudo ./bin/ramdisk_linux.sh start 512M`
+- **macOS Bash (`hdiutil`):** `./bin/ramdisk_macos.sh start 512M`
+- **Windows PowerShell:** `powershell -ExecutionPolicy Bypass -File .\bin\ramdisk_windows.ps1 -Action start -Size 512MB`
+- **Windows Batch (CMD):** `.\bin\ramdisk_windows.bat start 512M`
 
 > [!IMPORTANT]
 > **ImDisk Requirement on Windows:**  
 > To use RAM-disks on Windows, **ImDisk Toolkit** must be installed (`choco install imdisk-toolkit` or via its official installer).
 
-### 4.3 Runtime RAM-Disk Diagnostics in Perl
+> [!NOTE]
+> **Native APFS RAM-Disk on macOS:**  
+> macOS uses Apple's native `hdiutil` command to create an in-memory APFS RAM disk mounted at `/Volumes/AmberDB_RAM`. No third-party drivers or software installations are required.
 
-You can verify RAM-disk availability programmatically inside your Perl application using `$adb->cache_setup()`:
+### 4.3 Transparent Integration in Perl
+
+Once the RAM-disk is mounted, AmberDB integrates with it seamlessly. When `use_ramdisk` is configured globally or per-table, the engine automatically checks if the RAM-disk is mounted. If available, operations run at memory speeds; if the RAM-disk is not mounted, AmberDB gracefully falls back to persistent disk storage without errors.
 
 ```perl
 use AmberDB;
 
-my $adb = AmberDB->new(path => { dbase_dir => "./dbstore" });
+# Initialize with transparent RAM-disk acceleration enabled
+my $adb = AmberDB->new(
+    cfg  => { use_ramdisk => 1 },
+    path => { dbase_dir   => "./dbstore" }
+);
 
-# Fetch RAM-disk diagnostic report
-my $diag = $adb->cache_setup();
-
-if ($diag->{is_mounted}) {
-    print "RAM-Disk Active: $diag->{mount_type}, Size: $diag->{cache_size}\n";
-} else {
-    print "RAM-Disk inactive, running on persistent disk storage.\n";
-}
+# Standard operations run at memory speed automatically
+my @rec = $adb->read_id("catalog_category", 12);
 ```
 
 ---
@@ -156,6 +160,3 @@ if ($diag->{is_mounted}) {
 - [Guide: What is AmberDB?](Guide-What-is-AmberDB)
 - [Guide: How to Use AmberDB](Guide-Usage-Quickstart)
 - [Concept: RAM-Disk Acceleration](Concept-RAM-Disk-Acceleration)
-- [Method: cache_setup](Method-cache_setup)
-- [Method: cache_preload](Method-cache_preload)
-- [File: .cache (Memory Mirror)](File-cache)

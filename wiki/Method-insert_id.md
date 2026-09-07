@@ -36,8 +36,8 @@ my $id = $adb->insert_id($table_id, $record_id, @record_fields);
 
 | Parameter | Type | Required | Default | Description |
 |:---|:---|:---|:---|:---|
-| `$table_id` | String | Required | — | Target table name (e.g. `"catalog_product"`). |
-| `@record` | List | Required | — | Record fields. Index 0 is the ID (`0` for auto-ID). |
+| `$table_id` | String | Required | - | Target table name (e.g. `"catalog_product"`). |
+| `@record` | List | Required | - | Record fields. Index 0 is the ID (`0` for auto-ID). |
 
 ---
 

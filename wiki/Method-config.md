@@ -27,7 +27,7 @@ my $cfg = $adb->config();
 $adb->config( language => 'de', no_write => 1 );
 
 # 4. Hashref setter
-$adb->config({ simple => 1, cache_size => '512M' });
+$adb->config({ simple => 1, use_ramdisk => 1 });
 ```
 
 ---
@@ -40,6 +40,7 @@ See the detailed dedicated wiki entries for all supported configuration flags:
 - [Flag: auto_id](Flag-auto_id)
 - [Flag: keep_deleted](Flag-keep_deleted)
 - [Flag: use_junk](Flag-use_junk)
+- [Flag: use_ramdisk](Flag-use_ramdisk)
 - [Flag: log_owner](Flag-log_owner)
 - [Flag: buffer_write](Flag-buffer_write)
 - [Flag: no_write](Flag-no_write)

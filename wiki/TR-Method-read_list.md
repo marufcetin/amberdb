@@ -26,7 +26,7 @@ my @kayitlar = $adb->read_list($tablo_adi, \@id_listesi);
 
 ```perl
 # 1. Arama motorundan sirali ID listesi alma
-my ($sayi, @urun_idleri) = $adb->search_table("catalog_product", "kulaklik", 0, 10, keys_only => 1);
+my ($sayi, @urun_idleri) = $adb->search_table("catalog_product", "kulaklik", { offset => 0, limit => 10, keys_only => 1 });
 
 # 2. Arama siralamasini bozmadan tum kayitlari tek seferde yukleme
 my @urunler = $adb->read_list("catalog_product", \@urun_idleri);

@@ -45,6 +45,8 @@ print $sfh <<'SCHEMA';
 {
     use_simple   => 1,
     keep_deleted => 1,
+    use_ramdisk  => 1,
+    ramdisk_ttl  => 3600,
     use_cache    => 1,
     cache_ttl    => 3600,
     blocks       => [ { name => "id", type => "string" }, { name => "data", type => "string" } ],
@@ -64,7 +66,7 @@ my $adb = AmberDB->new(
 # 1. Schema Sanitization for use_simple Table
 # ============================================================
 subtest '1. Schema Sanitization & Path Verification' => sub {
-    plan tests => 7;
+    plan tests => 9;
 
     # Sessions table info should have index/block/cache definitions stripped, but behavioral flags preserved
     my $s_info = $adb->table_info('sessions');
@@ -72,6 +74,8 @@ subtest '1. Schema Sanitization & Path Verification' => sub {
     is( $s_info->{keep_deleted}, 1, 'keep_deleted preserved' );
     ok( !exists $s_info->{blocks}, 'blocks stripped for use_simple table' );
     ok( !exists $s_info->{match_block}, 'match_block stripped for use_simple table' );
+    ok( !exists $s_info->{use_ramdisk}, 'use_ramdisk stripped for use_simple table' );
+    ok( !exists $s_info->{ramdisk_ttl}, 'ramdisk_ttl stripped for use_simple table' );
     ok( !exists $s_info->{use_cache}, 'use_cache stripped for use_simple table' );
     ok( !exists $s_info->{cache_ttl}, 'cache_ttl stripped for use_simple table' );
 

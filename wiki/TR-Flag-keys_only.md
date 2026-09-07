@@ -18,7 +18,8 @@
 ## 2. Kullanim
 
 ```perl
-my ($sayi, @ideler) = $adb->search_table("catalog_product", "laptop", 0, 50, keys_only => 1);
+my ($sayi, @ideler) = $adb->search_table("catalog_product", "laptop", { offset => 0, limit => 50, keys_only => 1 });
+my @tum_ideler      = $adb->search_table("catalog_product", "laptop", { keys_only => 1 });
 ```
 
 ---

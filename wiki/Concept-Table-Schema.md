@@ -21,7 +21,7 @@ AmberDB Table Schema Anatomy (.table)
  │ Table Metadata & Operational Flags                            │
  │  - use_simple: 0 | 1           - auto_id: 1                   │
  │  - keep_deleted: 1             - log_owner: 1                 │
- │  - use_cache: 2                - cache_ttl: 3600              │
+ │  - use_ramdisk: 2              - ramdisk_ttl: 3600            │
  ├───────────────────────────────────────────────────────────────┤
  │ Indexing Block Mappings (1-Based Block Array References)      │
  │  - match_block: [1, 2]         - search_block: [1, 3]         │
@@ -52,8 +52,8 @@ AmberDB Table Schema Anatomy (.table)
     keep_deleted => 1,              # 1: Soft-delete into .del file (Recycle bin)
     log_owner    => 1,              # 1: Log user modifications into .aut audit trail
     use_counter  => 1,              # 1: Enable high-concurrency view counter (.cnt)
-    use_cache    => 2,              # 2: Strict RAM-Disk memory mirroring
-    cache_ttl    => 3600,           # Cache TTL expiration in seconds
+    use_ramdisk  => 2,              # 2: Strict RAM-Disk memory mirroring
+    ramdisk_ttl  => 3600,           # RAM-Disk TTL expiration in seconds
     
     # 1-Based Block Index Mappings:
     match_block  => [ 2, 5 ],       # .fld Exact-match secondary indexes

@@ -42,7 +42,7 @@ AmberDB JOIN-Free Record Model:
 ## 2. Key Architectural Advantages
 
 1. **Zero Query-Time JOIN Overhead:** Single-key lookups (`read_id`) and list reads (`read_list`) fetch the entire domain entity in a single $O(1)$ disk seek without disk seeks across multiple tables.
-2. **Precomputed Inverted Indexing:** Adding a category ID (e.g. `"5,12"`) to a product record automatically inserts the product's ID into the inverted match index (`_2.fld`) for both category 5 and category 12 during insertion. Querying category 5 via `field_fetch` directly returns the record IDs in $O(1)$ time.
+2. **Precomputed Inverted Indexing:** Adding a category ID (e.g. `"5,12"`) to a product record automatically inserts the product's ID into the inverted match index (`.fld`, under key `"2:$id"`) for both category 5 and category 12 during insertion. Querying category 5 via `field_fetch` directly returns the record IDs in $O(1)$ time.
 3. **No Lock Cascading:** Writing to a record only locks the target table or record without cascading lock acquisitions to junction tables.
 4. **Natural JSON and REST API Alignment:** Records map directly to JSON objects and REST representations without object-relational mapping (ORM) impedance mismatch.
 

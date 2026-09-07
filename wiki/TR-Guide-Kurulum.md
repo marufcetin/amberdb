@@ -80,73 +80,77 @@ Kaynak koddan calisiyorsaniz, yeni surumu `git pull` ile aldiktan sonra testleri
 
 ## 4. RAM-Disk Paylasimli Bellek Yapilandirmasi
 
-AmberDB, yuksek trafikli tablolarda mikrosaniye alti ($<1\mu s$) okuma/yazma hizlarina ulasmak icin isletim sistemi duzeyinde bir RAM-Disk paylasimli bellek alanini (`dbstore/cache/`) kullanabilir.
+AmberDB, yuksek trafikli tablolarda mikrosaniye alti ($<1\mu s$) okuma/yazma hizlarina ulasmak icin isletim sistemi duzeyinde bir RAM-Disk paylasimli bellek alanini (`dbstore/ramdisk/`) kullanabilir.
 
 ```text
 RAM-Disk Baglanti Mimarisi
 
- Linux:    /dev/shm veya tmpfs mount ──> dbstore/cache/
- Windows:  ImDisk Sanal Surucu (R:)  ──> dbstore/cache/ (Junction / Symlink)
+ Linux:    /dev/shm veya tmpfs mount ──> dbstore/ramdisk/
+ Windows:  ImDisk Sanal Surucu (R:)  ──> dbstore/ramdisk/ (Junction / Symlink)
+ macOS:    APFS RAM-Disk (hdiutil)   ──> dbstore/ramdisk/ (/Volumes/AmberDB_RAM)
 ```
 
 ### Neden Root / Administrator Yetkisi Gereklidir?
-RAM-Disk olusturma, isletim sisteminin cekirdek bellek alanindan ozel bir blok tahsis edilmesini ve sanal bir dosya sistemi (`tmpfs` / `ImDisk`) olarak dosya agacina baglanmasini (`mount`) icerir. Isletim sistemi cekirdek guvenligi geregi, dosya sistemi baglama (mount) ve surucu olusturma islemleri **kesinlikle `root` (Linux/macOS) veya `Administrator` (Windows)** yetkisi gerektirir.
+RAM-Disk olusturma, isletim sisteminin cekirdek bellek alanindan ozel bir blok tahsis edilmesini ve sanal bir dosya sistemi (Linux'ta `tmpfs`, Windows'ta `ImDisk`, macOS'ta `APFS RAM-Disk` / `hdiutil`) olarak dosya agacina baglanmasini (`mount`) icerir. Isletim sistemi cekirdek guvenligi geregi, dosya sistemi baglama (mount) ve surucu olusturma islemleri **kesinlikle `root` (Linux/macOS) veya `Administrator` (Windows)** yetkisi gerektirir.
 
-### 4.1 RAM-Disk Yonetim Aracinin Kullanimi (`bin/setup_ramdisk.pl`)
+### 4.1 RAM-Disk Yonetim Aracinin Kullanimi (`bin/ramdisk_amberdb.pl`)
 
-AmberDB, tum platformlarda RAM-disk yonetimini otomatize eden `bin/setup_ramdisk.pl` betigiyle birlikte gelir.
+AmberDB, tum platformlarda RAM-disk yonetimini otomatize eden `bin/ramdisk_amberdb.pl` betigiyle birlikte gelir.
 
 #### Durum Denetimi (Yetki Gerektirmez):
 ```bash
-perl bin/setup_ramdisk.pl --status
+perl bin/ramdisk_amberdb.pl --status
 ```
 
 #### RAM-Diski Baslatma (Mount):
 ```bash
 # Linux / macOS (Sudo ile):
-sudo perl bin/setup_ramdisk.pl --start --size 512M
+sudo perl bin/ramdisk_amberdb.pl --start --size 512M
 
 # Windows (Yonetici PowerShell / CMD):
-perl bin/setup_ramdisk.pl --start --size 512M --drive R:
+perl bin/ramdisk_amberdb.pl --start --size 512M --drive R:
 ```
 
 #### RAM-Diski Sonlandirma (Unmount):
 ```bash
 # Linux / macOS:
-sudo perl bin/setup_ramdisk.pl --stop
+sudo perl bin/ramdisk_amberdb.pl --stop
 
 # Windows:
-perl bin/setup_ramdisk.pl --stop
+perl bin/ramdisk_amberdb.pl --stop
 ```
 
 ### 4.2 Platforma Ozel Yardimci Betikler
 
-AmberDB deposunda `bin/` altinda her kabuk icin hazir betikler mevcuttur:
-- **Linux / Unix Bash:** `sudo ./bin/setup_ramdisk.sh start 512M`
-- **Windows PowerShell:** `powershell -ExecutionPolicy Bypass -File .\bin\setup_ramdisk.ps1 -Action start -Size 512MB`
-- **Windows Batch (CMD):** `.\bin\setup_ramdisk.bat start`
+AmberDB deposunda `bin/` altinda her isletim sistemi icin hazir betikler mevcuttur:
+- **Linux Bash:** `sudo ./bin/ramdisk_linux.sh start 512M`
+- **macOS Bash (`hdiutil`):** `./bin/ramdisk_macos.sh start 512M`
+- **Windows PowerShell:** `powershell -ExecutionPolicy Bypass -File .\bin\ramdisk_windows.ps1 -Action start -Size 512MB`
+- **Windows Batch (CMD):** `.\bin\ramdisk_windows.bat start 512M`
 
 > [!IMPORTANT]
 > **Windows'ta ImDisk Gereksinimi:**  
 > Windows ortaminda RAM-disk kullanmak icin sisteminizde **ImDisk Toolkit** kurulu olmalidir (`choco install imdisk-toolkit` veya resmi yukleyiciden).
 
-### 4.3 Kod Icinden RAM-Disk Teshisi
+> [!NOTE]
+> **macOS'ta Dahili APFS RAM-Disk Desteği:**  
+> macOS ortaminda Apple'in yerel `hdiutil` araci kullanilarak bellek uzerinde APFS RAM-disk olusturulur ve `/Volumes/AmberDB_RAM` altina baglanir. Ek bir 3. parti surucu yazilimi gerektirmez.
 
-Uygulamaniz icerisinde RAM-diskin aktif olup olmadigini `$adb->cache_setup()` metodu ile dogrulayabilirsiniz:
+### 4.3 Perl İçerisinden Şeffaf Entegrasyon
+
+RAM-disk bağlandıktan sonra, AmberDB ile entegrasyon tamamen şeffaf gerçekleşir. `use_ramdisk` seçeneği küresel veya tablo bazında yapılandırıldığında motor otomatik olarak RAM-diskin bağlı olup olmadığını doğrular. Bağlıysa işlemler bellek hızında yürütülür; bağlı değilse AmberDB hataya düşmeden kalıcı disk depolamasına geri döner (fallback).
 
 ```perl
 use AmberDB;
 
-my $adb = AmberDB->new(path => { dbase_dir => "./dbstore" });
+# Şeffaf RAM-disk hızlandırması etkinleştirilmiş veritabanı başlatma
+my $adb = AmberDB->new(
+    cfg  => { use_ramdisk => 1 },
+    path => { dbase_dir   => "./dbstore" }
+);
 
-# RAM-disk teshis raporu al
-my $teshis = $adb->cache_setup();
-
-if ($teshis->{is_mounted}) {
-    print "RAM-Disk Aktif: $teshis->{mount_type}, Boyut: $teshis->{cache_size}\n";
-} else {
-    print "RAM-Disk bagli degil, standart disk depolamasi kullaniliyor.\n";
-}
+# Standart metotlar otomatik olarak bellek hızında çalışır
+my @kayit = $adb->read_id("catalog_category", 12);
 ```
 
 ---
@@ -156,6 +160,3 @@ if ($teshis->{is_mounted}) {
 - [Rehber: AmberDB Nedir?](TR-Guide-AmberDB-Nedir)
 - [Rehber: AmberDB Nasil Kullanilir?](TR-Guide-Kullanim)
 - [Kavram: RAM-Disk Hizlandirmasi](TR-Concept-RAM-Disk-Acceleration)
-- [Metot: cache_setup](TR-Method-cache_setup)
-- [Metot: cache_preload](TR-Method-cache_preload)
-- [Dosya: .cache (Onbellek)](TR-File-cache)

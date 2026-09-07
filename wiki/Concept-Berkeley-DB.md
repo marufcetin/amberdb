@@ -12,7 +12,7 @@
 
 At the heart of **AmberDB** lies the industry-proven **Berkeley DB Version 1.x Hash Engine (`DB_File`)** for low-level physical data persistence and direct key-value mapping.
 
-Provided as a standard Perl core extension, `DB_File` maps on-disk files directly to Perl hashes (`tie %hash, 'DB_File', $filepath`). AmberDB builds an entire enterprise-grade NoSQL infrastructure on top of this battle-tested, ultra-lightweight C library—adding schema validation, precomputed binary inverted indexes, Strict 2PL ACID transactions, multi-dimensional faceting, and multilingual phonetic search.
+Provided as a standard Perl core extension, `DB_File` maps on-disk files directly to Perl hashes (`tie %hash, 'DB_File', $filepath`). AmberDB builds an entire enterprise-grade NoSQL infrastructure on top of this battle-tested, ultra-lightweight C library - adding schema validation, precomputed binary inverted indexes, Strict 2PL ACID transactions, multi-dimensional faceting, and multilingual phonetic search.
 
 ```text
 AmberDB and Berkeley DB (DB_File) Stack

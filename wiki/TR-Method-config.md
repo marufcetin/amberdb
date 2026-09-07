@@ -27,7 +27,7 @@ my $cfg = $adb->config();
 $adb->config( language => 'de', no_write => 1 );
 
 # 4. Hashref ile toplu atayici
-$adb->config({ simple => 1, cache_size => '512M' });
+$adb->config({ simple => 1, use_ramdisk => 1 });
 ```
 
 ---
@@ -40,6 +40,7 @@ Tum bayraklar icin ilgili bagimsiz wiki maddelerine bakiniz:
 - [Bayrak: auto_id](TR-Flag-auto_id)
 - [Bayrak: keep_deleted](TR-Flag-keep_deleted)
 - [Bayrak: use_junk](TR-Flag-use_junk)
+- [Bayrak: use_ramdisk](TR-Flag-use_ramdisk)
 - [Bayrak: log_owner](TR-Flag-log_owner)
 - [Bayrak: buffer_write](TR-Flag-buffer_write)
 - [Bayrak: no_write](TR-Flag-no_write)

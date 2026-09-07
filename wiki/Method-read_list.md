@@ -26,7 +26,7 @@ my @records = $adb->read_list($table_id, \@id_list);
 
 ```perl
 # 1. Fetch search result IDs
-my ($count, @product_ids) = $adb->search_table("catalog_product", "headset", 0, 10, keys_only => 1);
+my ($count, @product_ids) = $adb->search_table("catalog_product", "headset", { offset => 0, limit => 10, keys_only => 1 });
 
 # 2. Batch load full record payloads while maintaining search ranking order
 my @products = $adb->read_list("catalog_product", \@product_ids);

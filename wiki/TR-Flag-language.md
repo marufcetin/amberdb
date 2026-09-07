@@ -4,8 +4,8 @@
 
 > **Kategori:** Yapilandirma Bayraklari  
 > **Tur:** Motor ve Sema Secenegi  
-> **Gecerli Degerler:** `'en'`, `'tr'`, `'de'`, `'fr'`, `'es'`, `'ja'`, `'ru'`, `'ar'`, `'az'`  
-> **Varsayilan:** `'en'`
+> **Gecerli Degerler:** `'gb'`, `'tr'`, `'en'`, `'de'`, `'fr'`, `'es'`, `'ja'`, `'ru'`, `'ar'`, `'az'`  
+> **Varsayilan:** `'gb'`
 
 ---
 

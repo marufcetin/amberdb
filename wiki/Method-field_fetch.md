@@ -18,10 +18,10 @@
 
 ```perl
 # 1. Unpaginated
-my @records = $adb->field_fetch($table_id, $block, $value, [$start], [$limit], [%options]);
+my @records = $adb->field_fetch($table_id, $block, $value, [\%options]);
 
 # 2. Paginated (when limit > 0)
-my ($total_count, @records) = $adb->field_fetch($table_id, $block, $value, $start, $limit, [%options]);
+my ($total_count, @records) = $adb->field_fetch($table_id, $block, $value, \%options);
 ```
 
 ---
@@ -33,9 +33,10 @@ my ($total_count, @records) = $adb->field_fetch($table_id, $block, $value, $star
 | `$table_id` | String | Required | Target table name. |
 | `$block` | Integer | Required | 1-based block index defined in schema `match_block`. |
 | `$value` | Scalar / List | Required | Target value to match. Supports comma-separated strings (`"5, 12"`) or array references (`["5", "12"]`). |
-| `start` / `limit` | Integer | Optional | Pagination offset and limit count. |
+| `offset` / `limit` | Integer | Optional | Pagination offset (legacy `start` supported) and limit count. |
 | `sort` | Int / Hash | Optional | Sorting block index (e.g. `sort => -10` for ascending on block 10). |
 | `keys_only` | Boolean | Optional | If 1, skips record deserialization and returns only matching IDs. |
+| `range` | Hash / Array | Optional | Numerical / chronological range filtering on an auxiliary block: `{ block => 4, min => 1000, max => 2000 }`. |
 | `jnktype` | String | Optional | Tier mode (`'A'`, `'B'`, `'AB'`). |
 
 ---
@@ -58,12 +59,19 @@ my @category_5_products = $adb->field_fetch("catalog_product", 1, "5");
 # 2. Multi-value query with pagination and sorting
 my ($total, @page) = $adb->field_fetch(
     "catalog_product", 1, [ "5", "8" ],
-    0, 20,
-    sort => -3 # Sort by Price (Block 3) ascending
+    { offset => 0, limit => 20, sort => -3 } # Sort by Price (Block 3) ascending
 );
 
 # 3. Fast keys_only ID extraction
-my ($count, @matching_ids) = $adb->field_fetch("catalog_product", 1, "5", 0, 50, keys_only => 1);
+my ($count, @matching_ids) = $adb->field_fetch("catalog_product", 1, "5", { offset => 0, limit => 50, keys_only => 1 });
+my @all_ids                = $adb->field_fetch("catalog_product", 1, "5", { keys_only => 1 });
+
+# 4. Range filtering on an auxiliary numerical/chronological block (range)
+# Category = 5 and Price (price block) between 1000 and 2000:
+my @range_prods = $adb->field_fetch(
+    "catalog_product", 1, "5",
+    { range => { block => "price", min => 1000, max => 2000 } }
+);
 ```
 
 ---

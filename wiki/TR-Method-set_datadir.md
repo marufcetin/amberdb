@@ -10,7 +10,7 @@
 
 ## 1. Tanim ve Genel Bakis
 
-`set_datadir()`, calisan AmberDB nesnesinin ana veritabani kok dizinini (`dbase_dir`) dinamik olarak degistirir. Tum alt dizin yollarini (`schema/`, `tables/`, `backup/`, `buffer/`, `txn/`, `cache/`) otomatik olarak yeniden hesaplar ve acik dosya baglantilarini guvenli sekilde sifirlar.
+`set_datadir()`, calisan AmberDB nesnesinin ana veritabani kok dizinini (`dbase_dir`) dinamik olarak degistirir. Tum alt dizin yollarini (`schema/`, `tables/`, `backup/`, `buffer/`, `txn/`) otomatik olarak yeniden hesaplar ve acik dosya baglantilarini guvenli sekilde sifirlar.
 
 ---
 

@@ -21,7 +21,7 @@ AmberDB Tablo Sema Anatomisi (.table)
  │ Tablo Baslik Nitelikleri (Meta-Flags)                         │
  │  - use_simple: 0 | 1           - auto_id: 1                   │
  │  - keep_deleted: 1             - log_owner: 1                 │
- │  - use_cache: 2                - cache_ttl: 3600              │
+ │  - use_ramdisk: 2              - ramdisk_ttl: 3600            │
  ├───────────────────────────────────────────────────────────────┤
  │ Indeksleme Blok Eslestirmeleri (1-Tabanli Blok Dizi Refleri)  │
  │  - match_block: [1, 2]         - search_block: [1, 3]         │
@@ -52,8 +52,8 @@ AmberDB Tablo Sema Anatomisi (.table)
     keep_deleted => 1,              # 1: Silinenleri .del dosyasina tasi (Cop kutusu)
     log_owner    => 1,              # 1: Kullanici degisiklik izini .aut'a kaydet
     use_counter  => 1,              # 1: Goruntulenme/hit sayacini .cnt'de tut
-    use_cache    => 2,              # 2: Kati RAM-Disk yansitmasi
-    cache_ttl    => 3600,           # Saniye cinsinden onbellek omru
+    use_ramdisk  => 2,              # 2: Kati RAM-Disk yansitmasi
+    ramdisk_ttl  => 3600,           # Saniye cinsinden RAM-Disk omru
     
     # Indeksleme Eslemeleri (1-Tabanli Blok Numaralari):
     match_block  => [ 2, 5 ],       # .fld Birebir eslesme indeksleri

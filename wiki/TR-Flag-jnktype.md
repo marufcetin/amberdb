@@ -21,7 +21,8 @@
 ## 2. Kullanim
 
 ```perl
-my @tum_kayitlar = $adb->read_all("catalog_product", 0, 50, jnktype => 'AB');
+my ($toplam, @tum_kayitlar) = $adb->read_all("catalog_product", { offset => 0, limit => 50, jnktype => 'AB' });
+my @aktifler                = $adb->read_all("catalog_product", { jnktype => 'A' });
 ```
 
 ---

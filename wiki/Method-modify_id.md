@@ -10,7 +10,7 @@
 
 ## 1. Definition and Overview
 
-`modify_id()` updates an existing record in the specified table. It extracts the target primary key from `$record[0]`, writes the new serialized payload into `.db`, resynchronizes all affected secondary indexes (`.inx`, `.fld`, `.src`, `.fac`, `.srt`), and appends a modification entry to the continuous WAL audit log.
+`modify_id()` (standard alias: `update_id()`) updates an existing record in the specified table. It extracts the target primary key from `$record[0]`, writes the new serialized payload into `.db`, resynchronizes all affected secondary indexes (`.inx`, `.fld`, `.src`, `.fac`), and appends a modification entry to the continuous WAL audit log.
 
 ---
 

@@ -27,7 +27,7 @@ my $meta = $adb->table_attr($tablo_adi);
 $adb->table_attr($tablo_adi, keep_deleted => 1, use_simple => 1);
 
 # 4. Hashref ile atayici
-$adb->table_attr($tablo_adi, { search_block => [ 1, 4, 8 ], use_cache => 2 });
+$adb->table_attr($tablo_adi, { search_block => [ 1, 4, 8 ], use_ramdisk => 2 });
 ```
 
 ---
@@ -44,5 +44,8 @@ $adb->table_attr("catalog_product", keep_deleted => 1);
 ## 4. Iliskili Maddeler ve Bakiniz
 
 - [Kavram: Bellek Ici Sema Mutasyonu](TR-Concept-In-Memory-Schema-Mutation)
+- [Bayrak: use_ramdisk](TR-Flag-use_ramdisk)
+- [Bayrak: ramdisk_ttl](TR-Flag-ramdisk_ttl)
+- [Bayrak: table_dir](TR-Flag-table_dir)
 - [Bayrak: keep_deleted](TR-Flag-keep_deleted)
 - [Dosya: .table (Sema Dosyasi)](TR-File-table)

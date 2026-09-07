@@ -26,7 +26,7 @@ Fiziksel Sema Dosyasi (schema/catalog_product.table)
  Anlik Olarak Guncellenen Ozellikler (O Surec Icin Gecerli Olur):            
  - keep_deleted  => 1 (Yumusak silme cop kutusunu aktif et)                  
  - search_block  => [1, 4, 9 ] (9. blogu da tam metin aramaya dahil et)     
- - use_cache     => 2 (Kati RAM-disk yansitmasini ac)                         
+ - use_ramdisk   => 2 (Kati RAM-disk yansitmasini ac)                         
  - path          => "/ozel/depolama/yolu" (Dosya yollarini otomatik yeniler) 
 
 ```
@@ -49,7 +49,7 @@ my $record_index = $adb->table_attr("catalog_product", "record_index");
 $adb->table_attr("catalog_product", {
     keep_deleted => 1,
     search_block => [1, 4, 8 ],
-    use_cache    => 0,
+    use_ramdisk  => 0,
 });
 
 # 3. Artik delete_id() kaydi tamamen yok etmez, .del cop kutusuna tasir

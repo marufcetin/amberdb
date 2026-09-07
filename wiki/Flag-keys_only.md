@@ -18,7 +18,8 @@
 ## 2. Usage
 
 ```perl
-my ($count, @ids) = $adb->search_table("catalog_product", "laptop", 0, 50, keys_only => 1);
+my ($count, @ids) = $adb->search_table("catalog_product", "laptop", { offset => 0, limit => 50, keys_only => 1 });
+my @all_ids       = $adb->search_table("catalog_product", "laptop", { keys_only => 1 });
 ```
 
 ---

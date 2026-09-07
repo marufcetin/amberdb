@@ -17,16 +17,33 @@
 ## 2. Syntax and Signature
 
 ```perl
-my $all_counts = $adb->field_allfltkeys($table_id, \@block_list, [\@base_scope_ids]);
+# Standard invocation (Single unified options hashref)
+my $all_counts = $adb->field_allfltkeys($table_id, \%options);
+
+# Backward-compatible invocation
+my $all_counts = $adb->field_allfltkeys($table_id, \@block_list, [\%options_or_scope_ids]);
 ```
+
+### Parameters and Options (`\%options`)
+
+| Parameter / Option | Type | Default | Description |
+|:---|:---|:---|:---|
+| `$table_id` | String | Required | Target table identifier. |
+| `target_blocks` / `blocks` | Array-ref | Schema default | Arrayref of facet block indices to count (e.g. `[ 2, 3 ]`). |
+| `base_ids` / `scope_ids` | Array-ref | All | Scope facet counting strictly to a subset of record IDs (e.g. search results). |
 
 ---
 
 ## 3. Practical Code Example
 
 ```perl
-my $facets = $adb->field_allfltkeys("catalog_product", [ 1, 2, 4 ], \@active_ids);
-# Returns: { 1 => { "CatA" => 10, ... }, 2 => { "BrandX" => 5, ... }, ... }
+# Standard invocation:
+my $facets = $adb->field_allfltkeys("catalog_product", {
+    target_blocks => [ 2, 3 ],
+    base_ids      => \@active_ids,
+});
+
+# Returns: { 2 => { "Smartphones" => 10, ... }, 3 => { "Apple" => 5, ... } }
 ```
 
 ---

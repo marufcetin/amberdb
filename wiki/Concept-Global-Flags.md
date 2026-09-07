@@ -31,6 +31,7 @@ Global flags are initialized in `$adb = AmberDB->new(cfg => { ... })` and can be
 | **`auto_id`** | `boolean` | `1` | Dictates 64-bit auto-increment ID generation (`0` requires explicit external IDs). |
 | **`keep_deleted`**| `boolean` | `0` | Global soft-delete policy (moves erased records into `.del` recycle store). |
 | **`log_owner`** | `boolean` | `0` | Global user action audit logging policy (maintains `.aut` ledger). |
+| **`use_ramdisk`**| `integer` | `0` | Global RAM-disk acceleration mode across tables: `0` (Disabled), `1` (Index-only), `2` (Full mirror). |
 
 ---
 
@@ -42,22 +43,23 @@ use AmberDB;
 # 1. Initialize instance with global flags
 my $adb = AmberDB->new(
     cfg => {
-        language  => "en",          # English locale rules
-        user      => "admin_editor",# Active authenticated user
-        no_backup => 0,             # Keep WAL active
+        language    => "en",          # English locale rules
+        user        => "admin_editor",# Active authenticated user
+        no_backup   => 0,             # Keep WAL active
+        use_ramdisk => 1,             # Mirror indexes to RAM-disk
     },
     path => { dbase_dir => "./dbstore" }
 );
 
 # 2. Query flag state at runtime
-my $current_lang = $adb->config("language"); # "en"
+my $current_lang = $adb->config("language"); # "gb"
 
 # 3. Mutate global flags dynamically
 $adb->config("no_write", 1); # Lock database into read-only mode
 
-# 4. Stream IDs with keys_only
+# 4. Read keys-only temporarily (keys_only)
 $adb->config("keys_only", 1);
-my ($total, @id_list) = $adb->read_all("catalog_product", 0, 100);
+my ($total, @id_list) = $adb->read_all("catalog_product", { offset => 0, limit => 100 });
 $adb->config("keys_only", 0); # Reset back to full record mode
 ```
 
@@ -67,7 +69,10 @@ $adb->config("keys_only", 0); # Reset back to full record mode
 
 - [Concept: Table Schema Flags](Concept-Schema-Flags)
 - [Concept: Simple Mode](Concept-Simple-Mode)
+- [Concept: RAM-Disk Acceleration](Concept-RAM-Disk-Acceleration)
 - [Method: config](Method-config)
 - [Flag: language](Flag-language)
 - [Flag: no_write](Flag-no_write)
 - [Flag: keys_only](Flag-keys_only)
+- [Flag: use_ramdisk](Flag-use_ramdisk)
+- [Flag: dbase_dir](Flag-dbase_dir)

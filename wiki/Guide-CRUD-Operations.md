@@ -92,13 +92,16 @@ my @all_users = $adb->read_all("member_users");
 # 2. Paginated scan (limit > 0: First return value is the total count integer)
 my ($total_count, @page) = $adb->read_all(
     "member_users",
-    start => 0,
-    limit => 20,
-    sort  => -1 # Sort ascending by Block 1 (Name)
+    {
+        offset => 0,
+        limit  => 20,
+        sort   => -1, # Sort ascending by Block 1 (Name)
+    }
 );
 
 # 3. Keys-only scan (returns only record IDs for extreme memory efficiency)
-my ($total, @page_ids) = $adb->read_all("member_users", 0, 50, keys_only => 1);
+my ($total, @page_ids) = $adb->read_all("member_users", { offset => 0, limit => 50, keys_only => 1 });
+my @all_ids            = $adb->read_all("member_users", { keys_only => 1 });
 ```
 
 ### 3.3 Batch Read by IDs (`read_list`)

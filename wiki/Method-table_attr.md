@@ -27,7 +27,7 @@ my $meta = $adb->table_attr($table_id);
 $adb->table_attr($table_id, keep_deleted => 1, use_simple => 1);
 
 # 4. Hashref setter
-$adb->table_attr($table_id, { search_block => [ 1, 4, 8 ], use_cache => 2 });
+$adb->table_attr($table_id, { search_block => [ 1, 4, 8 ], use_ramdisk => 2 });
 ```
 
 ---
@@ -44,5 +44,8 @@ $adb->table_attr("catalog_product", keep_deleted => 1);
 ## 4. See Also
 
 - [Concept: In-Memory Schema Mutation](Concept-In-Memory-Schema-Mutation)
+- [Flag: use_ramdisk](Flag-use_ramdisk)
+- [Flag: ramdisk_ttl](Flag-ramdisk_ttl)
+- [Flag: table_dir](Flag-table_dir)
 - [Flag: keep_deleted](Flag-keep_deleted)
 - [File: .table (Schema Format)](File-table)

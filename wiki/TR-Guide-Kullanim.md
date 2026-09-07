@@ -10,7 +10,7 @@
 
 ## 1. Giris ve Baslatma Prensipleri
 
-AmberDB ile calisirken nesne `$adb` (AmberDB Handle) olarak baslatilir. Veritabani kok dizini (varsayilan: `./dbstore`) altinda `schema/`, `tables/`, `backup/`, `cache/` ve `txn/` klasorleri otomatik olarak yonetilir.
+AmberDB ile calisirken nesne `$adb` (AmberDB Handle) olarak baslatilir. Veritabani kok dizini (varsayilan: `./dbstore`) altinda `schema/`, `tables/`, `backup/`, `ramdisk/` ve `txn/` klasorleri otomatik olarak yonetilir.
 
 ```perl
 use strict;
@@ -84,8 +84,10 @@ print "3. Urun fiyati basariyla guncellendi.\n";
 my ($toplam, @sonuclar) = $adb->search_table(
     "catalog_product",
     "kablosuz kulaklik",
-    start => 0,
-    limit => 10,
+    {
+        offset => 0,
+        limit  => 10,
+    }
 );
 
 print "4. Arama Sonucu: Toplam $toplam urun bulundu.\n";
@@ -153,7 +155,7 @@ print "8. Urun basariyla silindi.\n";
 > 1. **Sayfali Sorgularda (`limit > 0`):** Metot **`($toplam_sayi, @kayitlar)`** dondurur. Ilk skalar eslesen toplam sayidir.
 > 2. **Sayfasiz Sorgularda (`limit => 0` veya verilmezse):** Metot dogrudan **`@kayitlar`** dondurur.
 >
-> Sayfali bir sorguyu `my @kayitlar = $adb->read_all("tablo", 0, 10)` seklinde karsilarsaniz, `@kayitlar` dizisinin ilk elemani sayisal toplam sayi olacagindan `$kayitlar[0]->[1]` cagrisi calisma zamani hatasi verecektir. Dogru kullanim: `my ($toplam, @kayitlar) = ...` seklindedir.
+> Sayfali bir sorguyu `my @kayitlar = $adb->read_all("tablo", { offset => 0, limit => 10 })` seklinde karsilarsaniz, `@kayitlar` dizisinin ilk elemani sayisal toplam sayi olacagindan `$kayitlar[0]->[1]` cagrisi calisma zamani hatasi verecektir. Dogru kullanim: `my ($toplam, @kayitlar) = ...` seklindedir.
 
 ---
 

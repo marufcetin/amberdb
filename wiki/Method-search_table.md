@@ -18,10 +18,10 @@
 
 ```perl
 # 1. Unpaginated
-my @records = $adb->search_table($table_id, $query, [$start], [$limit], [$mode], [%options]);
+my @records = $adb->search_table($table_id, $query, [\%options]);
 
 # 2. Paginated (when limit > 0)
-my ($total_count, @records) = $adb->search_table($table_id, $query, $start, $limit, $mode, [%options]);
+my ($total_count, @records) = $adb->search_table($table_id, $query, \%options);
 ```
 
 ---
@@ -43,15 +43,20 @@ my @results = $adb->search_table("catalog_product", "wireless headset");
 # 2. Paginated search with sorting and tier mode
 my ($total, @page) = $adb->search_table(
     "catalog_product", "headset",
-    start   => 0,
-    limit   => 20,
-    sort    => -3,       # Sort by Price (Block 3) ascending
-    filter  => { field => 1, value => 5 }, # Filter by Category 5
-    jnktype => 'AB'      # Search active records first, then junk archive
+    {
+        type    => "and",
+        offset  => 0,
+        limit   => 20,
+        sort    => -3,         # Sort by Price (Block 3) ascending
+        filter  => { 1 => 5 }, # Filter by Category 5
+        range   => { block => "price", min => 100, max => 1000 }, # Price range
+        jnktype => 'AB',       # Search active records first, then junk archive
+    }
 );
 
 # 3. Fast keys_only ID search
-my ($count, @product_ids) = $adb->search_table("catalog_product", "headset", 0, 50, keys_only => 1);
+my ($count, @product_ids) = $adb->search_table("catalog_product", "headset", { offset => 0, limit => 50, keys_only => 1 });
+my @all_ids               = $adb->search_table("catalog_product", "headset", { keys_only => 1 });
 ```
 
 ---

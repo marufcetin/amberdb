@@ -10,7 +10,7 @@
 
 ## 1. Tanim ve Genel Bakis
 
-`modify_list()`, birden fazla kaydi tek bir yuksek hizli boru hattinda toplu olarak gunceller. Tabloyu tek seferde kilitler, tum kayitlari yazar ve ikincil indeksleri tek geciste birlestirerek gunceller.
+`modify_list()` (standart alias: `update_list()`), birden fazla kaydi tek bir yuksek hizli boru hattinda toplu olarak gunceller. Tabloyu tek seferde kilitler, tum kayitlari yazar ve ikincil indeksleri tek geciste birlestirerek gunceller.
 
 ---
 

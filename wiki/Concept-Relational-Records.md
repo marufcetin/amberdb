@@ -50,7 +50,7 @@ When `match_block => [ 2 ]` is configured in the schema, the engine unpacks `"5,
 
 ```perl
 # Fetch all products belonging to Category #12 in $O(1) time (Zero SQL JOINs!):
-my ($total, @products) = $adb->field_fetch("catalog_product", 2 => 12);
+my @products = $adb->field_fetch("catalog_product", 2, 12);
 ```
 
 ---

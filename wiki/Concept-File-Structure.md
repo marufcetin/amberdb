@@ -22,11 +22,11 @@ AmberDB employs deterministic and purpose-driven file extensions across its phys
 
 | Extension | Classification | Reconstructible? | Description |
 | :--- | :--- | :---: | :--- |
-| **`.db`** | **Authoritative Master Data** | ❌ **NO** | Berkeley DB (`DB_File` Hash) primary document table. |
-| **`.del`** | **Authoritative Master Data** | ❌ **NO** | Soft-deleted records recycle bin (`keep_deleted`). |
-| **`.aut`** | **Authoritative Master Data** | ❌ **NO** | Chronological user action and change audit ledger (`log_owner`). |
-| **`.cnt`** | **Authoritative Master Data** | ❌ **NO** | High-concurrency atomic view/hit counter store (`use_counter`). |
-| **`.unq`** | **Authoritative Master Data** | ❌ **NO** | Bidirectional string-to-foreign-key dictionary and uniqueness index (`_${blk}.unq`). |
+| **`.db`** | **Authoritative Master Data** | **NO** | Berkeley DB (`DB_File` Hash) primary document table. |
+| **`.del`** | **Authoritative Master Data** | **NO** | Soft-deleted records recycle bin (`keep_deleted`). |
+| **`.aut`** | **Authoritative Master Data** | **NO** | Chronological user action and change audit ledger (`log_owner`). |
+| **`.cnt`** | **Authoritative Master Data** | **NO** | High-concurrency atomic view/hit counter store (`use_counter`). |
+| **`.unq`** | **Authoritative Master Data** | **NO** | Bidirectional string-to-foreign-key dictionary and uniqueness index (`_${blk}.unq`). |
 | **`.inx`** | **Derived Secondary Index** |  **YES** | Primary 8-byte packed binary index containing all active record IDs. |
 | **`.fld`** | **Derived Secondary Index** |  **YES** | Field value $\rightarrow$ IDs inverted exact-match index (`match_block`). |
 | **`.src`** | **Derived Secondary Index** |  **YES** | Word tokens $\rightarrow$ IDs phonetic full-text search index (`search_block`). |
@@ -36,12 +36,11 @@ AmberDB employs deterministic and purpose-driven file extensions across its phys
 | **`.jinx`**| **Derived Secondary Index** |  **YES** | 8-byte packed primary index for cold/junk records (`use_junk`). |
 | **`.jfld`**| **Derived Secondary Index** |  **YES** | Inverted field match index for cold records. |
 | **`.jsrc`**| **Derived Secondary Index** |  **YES** | Full-text search index for cold records. |
-| **`.table`**| **Schema Definition** | ❌ **NO** | Table schema configuration file (`schema/*.table`). |
-| **`.dbase`**| **Schema Definition** | ❌ **NO** | Database group configuration file (`schema/*.dbase`). |
-| **`.amberdb`**| **Backup Archive** | — | Compressed, SHA-256 verified portable database archive. |
-| **`.csv`** | **Continuous WAL** | — | Append-only daily audit stream (`backup/YYYY/YYYY-MM-DD.csv`). |
+| **`.table`**| **Schema Definition** | **NO** | Table schema configuration file (`schema/*.table`). |
+| **`.dbase`**| **Schema Definition** | **NO** | Database group configuration file (`schema/*.dbase`). |
+| **`.amberdb`**| **Backup Archive** | - | Compressed, SHA-256 verified portable database archive. |
+| **`.csv`** | **Continuous WAL** | - | Append-only daily audit stream (`backup/YYYY/YYYY-MM-DD.csv`). |
 | **`.txn`** | **ACID Journal** | Transient | Active transaction undo-journal rollback file (`txn/*.txn`). |
-| **`.cache`** | **Shared Memory** |  **YES** | RAM-disk shared memory cache file (`cache/*.db`). |
 | **`.tmp`** | **Disk Buffer** | Transient | Transient staging buffer file under `buffer/` (`buffer_write`). |
 | **`.lock`** | **Process Mutex** | Transient | Operating system `flock` synchronization mutex lock file. |
 

@@ -21,7 +21,8 @@
 ## 2. Usage
 
 ```perl
-my @all_records = $adb->read_all("catalog_product", 0, 50, jnktype => 'AB');
+my ($total, @all_records) = $adb->read_all("catalog_product", { offset => 0, limit => 50, jnktype => 'AB' });
+my @active_only           = $adb->read_all("catalog_product", { jnktype => 'A' });
 ```
 
 ---

@@ -20,7 +20,7 @@ binmode(STDOUT, ':utf8');
 binmode(STDERR, ':utf8');
 
 use_ok('AmberDB')        or BAIL_OUT('Cannot load AmberDB');
-use_ok('AmberDB::Index') or BAIL_OUT('Cannot load AmberDB::Index');
+use_ok('AmberDB::Base::Index') or BAIL_OUT('Cannot load AmberDB::Base::Index');
 use_ok('AmberDB::Tools') or BAIL_OUT('Cannot load AmberDB::Tools');
 
 # ------------------------------------------------------------------

@@ -1,6 +1,6 @@
 use strict;
 use warnings;
-use Test::More tests => 11;
+use Test::More tests => 12;
 use File::Temp qw(tempdir);
 use AmberDB;
 
@@ -211,4 +211,13 @@ subtest "10. path() getter, setter and shallow copy immutability" => sub {
     # Mutation protection
     $paths_copy->{dbase_dir} = "/compromised/path";
     is( $adb->path('dbase_dir'), $tmpdir, "Internal path is NOT affected by mutating copy" );
+};
+
+subtest "11. Default engine configuration" => sub {
+    plan tests => 3;
+
+    my $adb_def = AmberDB->new();
+    is( $adb_def->config('language'), 'gb', "default config('language') is 'gb'" );
+    is( $adb_def->{_lang}, 'gb', "default internal _lang is 'gb'" );
+    is( $adb_def->language, 'gb', "default language() accessor is 'gb'" );
 };

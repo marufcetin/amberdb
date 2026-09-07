@@ -60,11 +60,11 @@ Fiziksel 8-Byte Paketli Binary Tampon Yapisi (.inx / .srt)
 
 ```perl
 # 1. Binary indeks optimizasyonu ile 2. sayfayi (20-40 arasi) okuma
-my ($toplam_sayi, @sayfa_kayitlari) = $adb->read_all("catalog_product", 20, 20);
+my ($toplam_sayi, @sayfa_kayitlari) = $adb->read_all("catalog_product", { offset => 20, limit => 20 });
 print "Katalogdaki Toplam Urun: $toplam_sayi\n";
 
 # 2. keys_only ile salt-ID boru hatti (Hafif ve yuksek hizli)
-my ($sayi, @urun_idleri) = $adb->read_all("catalog_product", 0, 50, keys_only => 1);
+my ($sayi, @urun_idleri) = $adb->read_all("catalog_product", { offset => 0, limit => 50, keys_only => 1 });
 # Dönen liste: ($sayi, 1001, 1002, 1003, ...) - .db dosyasi okunmaz
 ```
 

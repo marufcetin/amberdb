@@ -102,7 +102,7 @@ print "Otomatik Derlenen Urun ID'leri: $okunan[12]\n"; # "101,102"
 
 # 4. Alt kalem Urun ID'si uzerinden TUM SIPARISLERI tek sorguda bulma:
 # 101 numarali urunun gectigi tum siparisleri aninda listele ($O(1) fld aramasi!)
-my ($toplam, @siparisler) = $adb->field_fetch("order_master", 12 => 101);
+my ($toplam, @siparisler) = $adb->field_fetch("order_master", 12, 101, { offset => 0, limit => 20 });
 print "101 Nolu urunu iceren $toplam adet siparis bulundu!\n";
 ```
 

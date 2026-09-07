@@ -50,7 +50,7 @@ Tablo semasinda `match_block => [ 2 ]` tanimlandiginda, motor `"5,12,89"` degeri
 
 ```perl
 # 12 Numarali kategorideki tum urunleri SIFIR JOIN ile $O(1) hizinda bul:
-my ($toplam, @urunler) = $adb->field_fetch("catalog_product", 2 => 12);
+my @urunler = $adb->field_fetch("catalog_product", 2, 12);
 ```
 
 ---

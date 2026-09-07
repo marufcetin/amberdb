@@ -28,7 +28,7 @@ $adb->transact_error($file_path, $mesaj);
 ```
 
 ### Parametreler
-- **`$file_path`** *(Metin, Zorunlu)*: Hatanin olustugu fiziksel dosya yolu (orn. `"$table_path.$adb->{db_ext}"` veya `"$table_path_0.fld"`).
+- **`$file_path`** *(Metin, Zorunlu)*: Hatanin olustugu fiziksel dosya yolu (orn. `"$table_path.$adb->{db_ext}"` veya `"$table_path.fld"`).
 - **`$mesaj`** *(Metin, Zorunlu)*: Motor tarafindan uretilen hata aciklamasi (orn. `"Could not open file to write"`).
 
 ---

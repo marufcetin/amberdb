@@ -31,10 +31,10 @@ Tiered Storage Index Partitioning Architecture
                                                                         
        Tier A (Hot Storage)                                      Tier B (Cold Storage)
                          
- Primary Index:  .inx                                    Primary Index:  .jinx         
- Field Matches:  _1.fld, _2.fld                          Field Matches:  _1.jfld       
- Full-Text Search: _3.src                                Full-Text Search: _3.jsrc     
- Facet Bitsets:  _4.fac                                 
+ Primary Index:  .inx ("keys")                           Primary Index:  .inx ("j:keys")
+ Field Matches:  .fld ("$blk:$val")                      Field Matches:  .fld ("j:$blk:$val")
+ Full-Text Search: .src ("$blk:$word")                   Full-Text Search: .src ("j:$blk:$word")
+ Facet Index:    .fac                                 
 
 ```
 
@@ -76,17 +76,21 @@ Rules are defined in the table schema (`schema/*.table`):
 # 1. Search only active products on the public storefront
 my ($active_count, @store_results) = $adb->search_table(
     "catalog_product", "wireless keyboard",
-    start   => 0,
-    limit   => 20,
-    jnktype => 'A'
+    {
+        offset  => 0,
+        limit   => 20,
+        jnktype => 'A',
+    }
 );
 
 # 2. Search entire archive including passive/discontinued items
 my ($all_count, @archive_results) = $adb->search_table(
     "catalog_product", "wireless keyboard",
-    start   => 0,
-    limit   => 20,
-    jnktype => 'AB'
+    {
+        offset  => 0,
+        limit   => 20,
+        jnktype => 'AB',
+    }
 );
 ```
 

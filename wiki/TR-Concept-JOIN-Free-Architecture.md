@@ -42,7 +42,7 @@ AmberDB JOIN-Free Kayit Modeli:
 ## 2. Temel Mimari Avantajlar
 
 1. **Sorgu Aninda Sifir JOIN Maliyeti:** Tekil kayit cekme (`read_id`) veya toplu okuma (`read_list`), onlarca disk aramasi (seek) yerine tek bir $O(1)$ erisimiyle nesneyi eksiksiz yukler.
-2. **Onceden Hesaplanmis Ters Indeksler:** Urun kaydina `"5,12"` kategori kimlikleri yazildiginda, motor urunun ID'sini hem 5 hem de 12 numarali kategorinin ters indeks dosyasina (`_2.fld`) ekler. 5. kategorideki urunler `field_fetch` ile sorgulandiginda $O(1)$ surede eslesen tum ID'ler aninda doner.
+2. **Onceden Hesaplanmis Ters Indeksler:** Urun kaydina `"5,12"` kategori kimlikleri yazildiginda, motor urunun ID'sini hem 5 hem de 12 numarali kategorinin ters indeks dosyasina (`.fld`, `"2:$id"` anahtariyla) ekler. 5. kategorideki urunler `field_fetch` ile sorgulandiginda $O(1)$ surede eslesen tum ID'ler aninda doner.
 3. **Kilit Zincirlerinin Engellenmesi:** Bir kayit yazilirken yalnizca hedef tablo veya kayit kilitlenir; ara baglanti tablolarina dogru kilit yayilmasi (lock escalation) olusmaz.
 4. **JSON ve REST API Uyumu:** Kayitlar harici bir ORM katmanina gerek kalmadan dogrudan JSON ve API formatlarina birebir eslenir.
 

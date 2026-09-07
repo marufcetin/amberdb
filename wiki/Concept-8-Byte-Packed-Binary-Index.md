@@ -60,11 +60,11 @@ When passing `keys_only => 1` to `read_all`, `field_fetch`, or `search_table`, A
 
 ```perl
 # 1. Fetch page 2 (start: 20, limit: 20) with binary index optimization
-my ($total_count, @page_records) = $adb->read_all("catalog_product", 20, 20);
+my ($total_count, @page_records) = $adb->read_all("catalog_product", { offset => 20, limit => 20 });
 print "Total Catalog Count: $total_count\n";
 
 # 2. Memory-efficient scalar ID pipeline (keys_only)
-my ($count, @product_ids) = $adb->read_all("catalog_product", 0, 50, keys_only => 1);
+my ($count, @product_ids) = $adb->read_all("catalog_product", { offset => 0, limit => 50, keys_only => 1 });
 # Returns: ($count, 1001, 1002, 1003, ...) without touching .db records
 ```
 

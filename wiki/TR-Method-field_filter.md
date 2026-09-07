@@ -28,9 +28,10 @@ my $sonuc = $adb->field_filter($tablo_adi, \%filtre_secenekleri);
 {
     type    => "and" | "or",                 # Birlestirme mantigi (VE / VEYA)
     filter  => { 1 => "5", 6 => ["12", "14"] }, # { blok_indisi => deger_veya_dizi }
+    range   => { block => 4, min => 100, max => 500 }, # Sayisal / kronolojik aralik filtresi
     sort    => { blk => 3, reverse => 1 },   # Siralama secenekleri
     jnktype => "AB",                         # Katman modu
-    start   => 0,                            # Sayfalama baslangici
+    offset  => 0,                            # Sayfalama ofseti (geriye donuk 'start' kabul edilir)
     limit   => 20,                           # Sayfalama limiti
 }
 ```
@@ -55,8 +56,9 @@ Asagidaki formatta bir hash referansi dondurur:
 my $res = $adb->field_filter("catalog_product", {
     type    => "and",
     filter  => { 1 => "5", 2 => [ "10", "12" ] },
+    range   => { block => "price", min => 1000, max => 2500 },
     sort    => { blk => 3, reverse => 0 },
-    start   => 0,
+    offset  => 0,
     limit   => 20,
 });
 

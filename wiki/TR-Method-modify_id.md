@@ -10,7 +10,7 @@
 
 ## 1. Tanim ve Genel Bakis
 
-`modify_id()`, belirtilen tablodaki mevcut bir kaydi gunceller. Kayit ID'sini `$kayit[0]` uzerinden alir, yeni serilestirilmis veriyi `.db` dosyasina yazar, etkilenen tum ikincil indeksleri (`.inx`, `.fld`, `.src`, `.fac`, `.srt`) otomatik esitler ve WAL denetim gunlugune guncelleme kaydini duser.
+`modify_id()` (standart alias: `update_id()`), belirtilen tablodaki mevcut bir kaydi gunceller. Kayit ID'sini `$kayit[0]` uzerinden alir, yeni serilestirilmis veriyi `.db` dosyasina yazar, etkilenen tum ikincil indeksleri (`.inx`, `.fld`, `.src`, `.fac`) otomatik esitler ve WAL denetim gunlugune guncelleme kaydini duser.
 
 ---
 
