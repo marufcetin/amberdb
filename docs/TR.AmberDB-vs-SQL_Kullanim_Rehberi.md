@@ -142,11 +142,11 @@ AmberDB ile kod geliştirmeye başlamadan önce bilmeniz gereken 4 pratik kural:
   ```perl
   my @p = $adb->read_id("products", 101);
   $p[2] = 129.99; # 2. bloktaki fiyatı güncelle
-  $adb->modify_id("products", @p);
+  $adb->update_id("products", @p);
   ```
 
-* **Açıklama:** AmberDB kayıtları bir bütün olarak saklar. Kaydı okuyup ilgili dizi elemanını değiştirdikten sonra `@p` dizisini `modify_id`'ye göndermek standart ve güvenli yoldur. `@p[0]` zaten kayıt ID'sini içerdiğinden tablo ve dizi parametreleri yeterlidir.
-* **Referans:** [Tutorial Bölüm 3.3: modify_id](TR.AmberDB_Veritabani_Sistemi.html#33-kayıt-güncelleme-modify_id)
+* **Açıklama:** AmberDB kayıtları bir bütün olarak saklar. Kaydı okuyup ilgili dizi elemanını değiştirdikten sonra `@p` dizisini `update_id`'ye göndermek standart ve güvenli yoldur. `@p[0]` zaten kayıt ID'sini içerdiğinden tablo ve dizi parametreleri yeterlidir.
+* **Referans:** [Tutorial Bölüm 3.3: update_id](TR.AmberDB_Veritabani_Sistemi.html#33-kayıt-güncelleme-update_id)
 
 ---
 
@@ -164,11 +164,11 @@ AmberDB ile kod geliştirmeye başlamadan önce bilmeniz gereken 4 pratik kural:
       [ 101, "Sony WH-1000XM5", 139.99, "Sony", 5 ],
       [ 102, "Apple AirPods Max", 549.99, "Apple", 5 ],
   );
-  my $status = $adb->modify_list("products", @updates);
+  my $status = $adb->update_list("products", @updates);
   ```
 
-* **Açıklama:** Güncellenecek kayıt listesini `modify_list` metoduna göndererek tek seferde ve kilit verimliliğiyle tüm indeksleri güncelleyebilirsiniz.
-* **Referans:** [Tutorial Bölüm 8: modify_list](TR.AmberDB_Veritabani_Sistemi.html#8-yüksek-başarımlı-toplu-batch-işlemler-batch-etl--ingestion)
+* **Açıklama:** Güncellenecek kayıt listesini `update_list` metoduna göndererek tek seferde ve kilit verimliliğiyle tüm indeksleri güncelleyebilirsiniz.
+* **Referans:** [Tutorial Bölüm 8: update_list](TR.AmberDB_Veritabani_Sistemi.html#8-yüksek-başarımlı-toplu-batch-işlemler-batch-etl--ingestion)
 
 ---
 
@@ -507,8 +507,8 @@ AmberDB, çökmelere karşı korumalı geri alma günlüğü (undo-log) ve Stric
       $sender[1]   -= 100;
       $receiver[1] += 100;
       
-      $adb->modify_id("accounts", @sender);
-      $adb->modify_id("accounts", @receiver);
+      $adb->update_id("accounts", @sender);
+      $adb->update_id("accounts", @receiver);
   } else {
       # Hata bildir (transact_end'in otomatik rollback yapmasını sağlar)
       $adb->transact_error("accounts", "Yetersiz bakiye");
@@ -589,7 +589,7 @@ Günlük kod yazarken başvurabileceğiniz hızlı dönüşüm tablosu:
 | `SELECT * FROM t WHERE id = ?` | `read_id` | `my @rec = $adb->read_id("t", $id);` |
 | `SELECT * FROM t WHERE id IN (...)` | `read_list` | `my @recs = $adb->read_list("t", $res->{ids});` |
 | `SELECT * FROM t LIMIT 20 OFFSET 0` | `read_all` | `my ($tot, @recs) = $adb->read_all("t", { offset => 0, limit => 20 });` |
-| `UPDATE t SET ... WHERE id = ?` | `modify_id` | `$adb->modify_id("t", @guncel_kayit);` |
+| `UPDATE t SET ... WHERE id = ?` | `update_id` | `$adb->update_id("t", @guncel_kayit);` |
 | `DELETE FROM t WHERE id = ?` | `delete_id` | `$adb->delete_id("t", $id);` |
 | `DELETE FROM t WHERE id IN (...)` | `delete_list` | `$adb->delete_list("t", @id_list);` |
 | `SELECT COUNT(*) FROM t` | `table_count` | `my $count = $adb->table_count("t");` |

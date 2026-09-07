@@ -121,7 +121,7 @@ AmberDB'de her bir kayıt (döküman), doğal bir Perl dizi/liste yapısı (`@re
 > [!TIP]
 > **Temel AmberDB Metotları:**  
 > Günlük uygulama geliştirmede en sık kullanılan temel çekirdek işlemler şunlardır:
-> * **Yazma & Değiştirme:** `insert_id`, `modify_id`, `delete_id`
+> * **Yazma & Değiştirme:** `insert_id`, `update_id`, `delete_id`
 > * **Okuma & Listeleme:** `read_id`, `read_all`, `read_list`
 > * **Filtreleme & Arama:** `field_fetch`, `search_table`
 
@@ -159,7 +159,7 @@ my $meta     = $gelen_kayit[6]; # { status => "aktif", ... } (HASH-ref)
 
 # Güncelleme: Alanları değiştirip doğrudan @gelen_kayit dizisini geçirme:
 $gelen_kayit[4] = 1499.90; # Bakiyeyi güncelle
-$adb->modify_id("member_user", @gelen_kayit);
+$adb->update_id("member_user", @gelen_kayit);
 
 # Silme: 0. indisteki ID üzerinden kaydı silme:
 $adb->delete_id("member_user", $gelen_kayit[0]);
@@ -172,7 +172,7 @@ $adb->delete_id("member_user", $gelen_kayit[0]);
 AmberDB'de temel veri ekleme, güncelleme, silme ve okuma işlemleri doğrudan veritabanı tablosu üzerinde yürütülür.
 
 Tablolar için önceden bir `.table` şema dosyası oluşturmak **zorunlu değildir**; şemasız tablolarda da veri depolama ve ID bazlı doğrudan okuma tam verimle çalışır. Ancak **şemada indeksleme kuralları tanımlandıysa** (`record_index`, `match_block`, `search_block`, `facet_block`, `sort_block`, `slug_block`):
-1. Yapılan her `insert_id`, `modify_id` veya `delete_id` çağrısı, şemada belirtilen tüm arama, eşleştirme ve sıralama indekslerini **arka planda otomatik ve senkronize olarak oluşturur ve günceller**.
+1. Yapılan her `insert_id`, `update_id` veya `delete_id` çağrısı, şemada belirtilen tüm arama, eşleştirme ve sıralama indekslerini **arka planda otomatik ve senkronize olarak oluşturur ve günceller**.
 2. Okuma, arama ve sorgulama metotları (`read_all`, `field_fetch`, `search_table`, `facet_menu` vb.) bu önceden hesaplanmış indeksleri **otomatik olarak kullanarak** disk taraması (full table scan) yapmadan doğrudan anahtar eşleşmesiyle çalışır.
 
 ### 3.1 Kayıt Ekleme - `insert_id`
@@ -240,9 +240,9 @@ my @kat12_urunleri  = $adb->field_fetch("catalog_product", 1, "12"); # 12 nolu k
 my @yazar9_urunleri = $adb->field_fetch("catalog_product", 3, "9");  # 9 nolu yazarın ürünleri
 ```
 
-### 3.2 Kayıt Güncelleme - `modify_id`
+### 3.2 Kayıt Güncelleme - `update_id`
 
-AmberDB'de kayıt güncelleme işlemi, kaydın 0. indiste ID değerini barındıran bütüncül dizi yapısı (`@kayit` veya `@alanlar`) üzerinden tek ve standart bir biçimde yürütülür. `modify_id`, dizinin ilk elemanını (`$kayit[0]`) otomatik olarak güncellenecek kaydın ID'si kabul eder:
+AmberDB'de kayıt güncelleme işlemi, kaydın 0. indiste ID değerini barındıran bütüncül dizi yapısı (`@kayit` veya `@alanlar`) üzerinden tek ve standart bir biçimde yürütülür. `update_id`, dizinin ilk elemanını (`$kayit[0]`) otomatik olarak güncellenecek kaydın ID'si kabul eder:
 
 ```perl
 # 1. Yöntem: read_id ile mevcut kaydı okuyup güncelleme
@@ -251,7 +251,7 @@ my @kayit = $adb->read_id("catalog_product", 5001);
 $kayit[1]  = "5,12,18";   # Yeni kategori ID'si ekle (18: Aksesuar)
 $kayit[10] = "13499.90";  # Fiyatı güncelle
 
-my $ok = $adb->modify_id("catalog_product", @kayit);
+my $ok = $adb->update_id("catalog_product", @kayit);
 
 # 2. Yöntem: Form/API'den gelen verilerle güncelleme dizisi hazırlama
 my $kayit_id = 5001; # Formdan, URL'den veya API'den gelen hedef kayıt ID'si
@@ -271,7 +271,7 @@ my @alanlar = (
     "1"                           # [11] Durum
 );
 
-my $ok2 = $adb->modify_id("catalog_product", @alanlar);
+my $ok2 = $adb->update_id("catalog_product", @alanlar);
 
 if ($ok || $ok2) {
     print "Ürün ve tüm ilişkili indeksler başarıyla güncellendi.\n";
@@ -279,7 +279,7 @@ if ($ok || $ok2) {
 ```
 
 > [!WARNING]
-> Kayıt dizisinde (`@kayit` / `@alanlar`) 0. indis zaten güncellenecek kaydın ID'sini barındırdığı için, tablo adından sonra fazladan bir ID parametresi **yazılmamalıdır** (yani `$adb->modify_id("tablo", 5001, @alanlar)` şeklinde çağrılmamalıdır). Dizi doğrudan geçirilmelidir.
+> Kayıt dizisinde (`@kayit` / `@alanlar`) 0. indis zaten güncellenecek kaydın ID'sini barındırdığı için, tablo adından sonra fazladan bir ID parametresi **yazılmamalıdır** (yani `$adb->update_id("tablo", 5001, @alanlar)` şeklinde çağrılmamalıdır). Dizi doğrudan geçirilmelidir.
 
 ### 3.3 Kayıt Silme - `delete_id`
 
@@ -613,13 +613,13 @@ Tüm standart CRUD ve toplu metotlar basit modda eksiksiz çalışır:
 # Tekil Ekleme, Okuma, Güncelleme, Silme
 $adb->insert_id( 'orders', 'order_101', 'Beklemede', '150.00' );
 my @order = $adb->read_id( 'orders', 'order_101' );
-$adb->modify_id( 'orders', 'order_101', 'Tamamlandı', '175.50' );
+$adb->update_id( 'orders', 'order_101', 'Tamamlandı', '175.50' );
 $adb->delete_id( 'orders', 'order_101' );
 my $var_mi = $adb->exist_id( 'orders', 'order_101' );
 
 # Toplu İşlemler (Bulk CRUD)
 my $ins_status = $adb->insert_list( 'orders', [ 'o_1', 'A', 50 ], [ 'o_2', 'B', 75 ] );
-my $mod_status = $adb->modify_list( 'orders', [ 'o_1', 'A+', 55 ] );
+my $mod_status = $adb->update_list( 'orders', [ 'o_1', 'A+', 55 ] );
 my $del_status = $adb->delete_list( 'orders', 'o_1', 'o_2' );
 ```
 
@@ -685,7 +685,7 @@ my $txn = $adb->transact_end(); # Hata varsa otomatik rollback, yoksa commit
 
 Basit mod şemadan bağımsız olduğundan, **metin tabanlı sürekli denetim ve kurtarma akışı (`recs_back`)** basit modda da varsayılan olarak devrededir.
 
-Basit modun düz dizin yapısı gereği ayrı bir `backup/` veya `YYYY/` alt klasörü oluşturulmaz; yapılan her `insert_id` (`add`), `modify_id` (`edit`) ve `delete_id` (`del`) işlemi doğrudan tablolarla aynı dizinde bulunan **`$dbase_dir/YYYY-MM-DD.csv`** günlük dosyasına CSV formatında işlenir:
+Basit modun düz dizin yapısı gereği ayrı bir `backup/` veya `YYYY/` alt klasörü oluşturulmaz; yapılan her `insert_id` (`add`), `update_id` (`edit`) ve `delete_id` (`del`) işlemi doğrudan tablolarla aynı dizinde bulunan **`$dbase_dir/YYYY-MM-DD.csv`** günlük dosyasına CSV formatında işlenir:
 
 ```text
 2026-08-31 14:30:00    admin    add     sessions    sess_token_99999    Aktif\x1f192.168.1.50
@@ -864,13 +864,13 @@ AmberDB, gömülü (embedded) ve şema güdümlü mimarisine uygun olarak 4 teme
 
 | İlke | Kısaltma | AmberDB'deki Teknik Karşılığı ve Güvencesi |
 | :--- | :--- | :--- |
-| **Atomicity** | **A** (Atomiklik) | **Disk Destekli Geri Alma Günlüğü (Undo-Journal):** `transact_start` ile mikrosaniye hassasiyetinde `.txn` kütüğü açılır. Yapılan her `insert_id`, `modify_id`, `delete_id` çağrısının tersi (undo verisi) günlüğe kaydedilir. Hata veya `transact_rollback` durumunda, yapılan tüm değişiklikler ana `.db` dosyasında, `.del` arşivinde, `.aut` denetim izinde ve ilişkili ikincil indekslerde (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, `.slg`, `.jinx`, `.jsrc`, `.jfld`) **LIFO (son yapılan ilk)** sırasıyla tamamen geri alınır. |
+| **Atomicity** | **A** (Atomiklik) | **Disk Destekli Geri Alma Günlüğü (Undo-Journal):** `transact_start` ile mikrosaniye hassasiyetinde `.txn` kütüğü açılır. Yapılan her `insert_id`, `update_id`, `delete_id` çağrısının tersi (undo verisi) günlüğe kaydedilir. Hata veya `transact_rollback` durumunda, yapılan tüm değişiklikler ana `.db` dosyasında, `.del` arşivinde, `.aut` denetim izinde ve ilişkili ikincil indekslerde (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, `.slg`, `.jinx`, `.jsrc`, `.jfld`) **LIFO (son yapılan ilk)** sırasıyla tamamen geri alınır. |
 | **Consistency** | **C** (Tutarlılık) | **Şema, İndeks ve Durum Bütünlüğü:** Her kayıt tanımlı şema alanlarına (`schema`), veri tiplerine ve boyut sınırlarına göre doğrulanır. Otomatik artan sayaç (`autoid`), ikincil arama/faset indeksleri ve URL slug eşleşmeleri işlem anında eşzamanlı güncellenir. Bir işlem geri alındığında bellek önbelleği (`set_cache`) ve tüm indeks türevleri eski temiz haline getirilerek veritabanı asla tutarsız ara durumda bırakılmaz. |
 | **Isolation** | **I** (Yalıtım) | **Strict Two-Phase Locking (Strict 2PL):** Bir transaction sırasında değiştirilen tüm kayıtlar işletim sistemi seviyesinde `flock(LOCK_EX)` ile kilitlenir. Kilitler işlem devam ederken açık tutulur; başka hiçbir sürecin bu kayıtları eşzamanlı değiştirmesine izin verilmez. Kilitler yalnızca `transact_end` veya `transact_rollback` anında topluca serbest bırakılır. Bu sayede serileştirilebilir (Serializable) seviyede yalıtım sağlanır. |
 | **Durability** | **D** (Dayanıklılık) | **Senkronize Günlükleme & Çökme Kurtarma (`transact_recover`):** Her günlük yazımında `$fh->flush` işletilir; `cfg => { txn_sync => 1 }` yapılandırıldığında çekirdek seviyesinde `fsync` (`$fh->sync`) ve Berkeley DB tampon senkronizasyonu (`DB_File->sync`) uygulanır. Süreç aniden çökse bile yetim (orphan) `.txn` dosyaları kilit durumuna göre tespit edilir ve otomatik olarak geri alınır. |
 
 > **Not: Toplu İşlemler (Batch / ETL) ve Transaction Ayrımı**  
-> `insert_list`, `modify_list` ve `delete_list` metotları, harici XML/JSON/CSV dosyalarından yüksek verimli toplu veri aktarımları (ETL) için tasarlanmıştır. Liste kayıtları birbiriyle bağlantılı ve birbirini etkileyen kayıtlar olmadığı gibi bu tür yüklemelerde bozuk birkaç kayıt için binlerce geçerli kaydın geri alınması istenmez. Karşılıklı bağımlılık ve atomik bütünlük gerektiren iş mantığı süreçlerinde (sipariş, stok, fatura) tekil CRUD metotları (`insert_id`, `modify_id`, `delete_id`) transaction bloğu içinde çalıştırılır. Eğer bir liste yüklemesi transact edilmesi gerekiyorsa listeyi döngü içine yerleştirerek tekil işlemleri (`insert_id`, `modify_id`, `delete_id`) kullanınız. Bu şekilde tüm liste tam transact edilir.
+> `insert_list`, `update_list` ve `delete_list` metotları, harici XML/JSON/CSV dosyalarından yüksek verimli toplu veri aktarımları (ETL) için tasarlanmıştır. Liste kayıtları birbiriyle bağlantılı ve birbirini etkileyen kayıtlar olmadığı gibi bu tür yüklemelerde bozuk birkaç kayıt için binlerce geçerli kaydın geri alınması istenmez. Karşılıklı bağımlılık ve atomik bütünlük gerektiren iş mantığı süreçlerinde (sipariş, stok, fatura) tekil CRUD metotları (`insert_id`, `update_id`, `delete_id`) transaction bloğu içinde çalıştırılır. Eğer bir liste yüklemesi transact edilmesi gerekiyorsa listeyi döngü içine yerleştirerek tekil işlemleri (`insert_id`, `update_id`, `delete_id`) kullanınız. Bu şekilde tüm liste tam transact edilir.
 
 ### 7.3 Transaction Yaşam Döngüsü
 
@@ -904,7 +904,7 @@ if ($mevcut_stok < $adet) {
 } else {
     # Stoğu düş ve güncelle (@urun[0] zaten $urun_id değerini içerir)
     $urun[8] -= $adet;
-    $adb->modify_id("catalog_product", @urun);
+    $adb->update_id("catalog_product", @urun);
 
     # Sipariş kaydı oluştur
     my @siparis = ( $user_id, $urun_id, $adet, time(), "onaylandi" );
@@ -1023,7 +1023,7 @@ my $statu = $adb->insert_list("catalog_product", @yeni_urunler);
 # $statu hashref döner: { 101 => 1, 102 => 1, 103 => 1, ... }
 ```
 
-### 8.3 Toplu Kayıt Güncelleme (`modify_list`)
+### 8.3 Toplu Kayıt Güncelleme (`update_list`)
 
 ```perl
 my @guncellemeler = (
@@ -1031,7 +1031,7 @@ my @guncellemeler = (
     [ 102, "5,12", "8", "Mekanik Klavye RGB",    "329.00", "2026-08-28", "1" ],
 );
 
-my $statu = $adb->modify_list("catalog_product", @guncellemeler);
+my $statu = $adb->update_list("catalog_product", @guncellemeler);
 ```
 
 ### 8.4 Toplu Kayıt Silme (`delete_list`)
@@ -1326,7 +1326,7 @@ AmberDB'de `.unq` (Unique) dizini, hem **tekillik güvencesini** hem de **ilişk
 
 1. **İsimlendirme Netliği:** `.srt` (Sort / Sıralama) ile eski `.str` (String) karışıklığını önlemek için tekillik ve sözlük dosyaları `.unq` uzantısıyla tutulur.
 2. **$O(1)$ Tekillik Denetimi (`valid => "unique"`):**
-   - Bir alanda `valid => "unique"` tanımlandığında (örn. `username`, `email`, `barkod`), motor `insert_id` veya `modify_id` anında `.unq` dosyasından `s:$değer` anahtarını kontrol eder.
+   - Bir alanda `valid => "unique"` tanımlandığında (örn. `username`, `email`, `barkod`), motor `insert_id` veya `update_id` anında `.unq` dosyasından `s:$değer` anahtarını kontrol eder.
    - Değer başka bir kayda aitse işlem anında durdurulur ve hata fırlatılır.
    - Başarılı ekleme ve güncellemelerde çift yönlü anahtarlar (`s:$değer => $rid` ve `n:$rid => $değer`) kaydedilir. Kayıt silindiğinde bu anahtarlar `.unq` dosyasından temizlenir.
 3. **RDBM ve `match_block` Metin $\leftrightarrow$ Sayısal ID Dönüşümü:**
@@ -1341,7 +1341,7 @@ AmberDB'de `.unq` (Unique) dizini, hem **tekillik güvencesini** hem de **ilişk
 AmberDB, veri tutarlılığını sağlamak için iki yönlü şema doğrulama ve dönüşüm mekanizması uygular:
 
 1. **Yazma Anında Doğrulama (`enc_validate`):**
-   - `insert_id`, `modify_id`, `insert_list` ve `modify_list` metotlarında veri diske ve ikincil indekslere yazılmadan **hemen önce** çalışır.
+   - `insert_id`, `update_id`, `insert_list` ve `update_list` metotlarında veri diske ve ikincil indekslere yazılmadan **hemen önce** çalışır.
    - `num` alanları için sayısal temizlik yapılır, boşluklar ayıklanır ve boş değerlere `0` atanır.
    - `ascii` alanlarında Türkçe ve özel karakterler `to_ascii` ile normalize edilir.
    - `valid => "auto_date"` kuralı olan boş tarih alanlarına otomatik güncel sistem tarihi atanır.
@@ -1410,7 +1410,7 @@ AmberDB, sabit sütun sınırlarını aşarak tek bir ana döküman kaydının s
 ```
 
 #### 9.10.2 Çalışma Mantığı ve Otomatik İndeksleme (`repeat_fields`)
-Her `insert_id`, `modify_id`, `insert_list` veya `modify_list` çağrısında motor, `repeat_start` (15) ve sonrasındaki tüm değişken blokları otomatik olarak işler:
+Her `insert_id`, `update_id`, `insert_list` veya `update_list` çağrısında motor, `repeat_start` (15) ve sonrasındaki tüm değişken blokları otomatik olarak işler:
 1. Her ürün/kalem bloğunun (dizi ise ilk elemanını `$_->[0]`, metin ise kendisini) çeker.
 2. Bu ID'leri virgülle birleştirip (`"101,102,103"`) otomatik olarak `repeat_ids` (12) bloğuna yazar (geliştiricinin bu alanı manuel doldurmasına gerek yoktur).
 3. Blok 12 şemada `match_block` içinde tanımlandığı için, motor `field_to_list` ile bu ID'lerin her birini `order_active.fld` eşleştirme indeksine (`"12:$id"` anahtarıyla) kaydeder.
@@ -1641,7 +1641,7 @@ AmberDB bünyesinde iki farklı bellek katmanı bulunur ve amaçları birbirinde
 | **Kapsam** | Süreçler arası ortak, sistem çapında paylaşımlı | Tek bir Perl süreci / iş parçacığı belleği |
 | **Depolama Motoru** | Yerel `DB_File` ve ikili indeks dosyaları | Süreç içi Perl hash referansları |
 | **Kalıcılık** | Kalıcı disk ile senkronize (Seviye 1 & 2) | Yalnızca süreç çalışma süresi boyunca |
-| **Metotlar** | `insert_id`, `read_id`, `search_table`, `modify_id` | `$adb->get_cache()`, `$adb->set_cache()` |
+| **Metotlar** | `insert_id`, `read_id`, `search_table`, `update_id` | `$adb->get_cache()`, `$adb->set_cache()` |
 
 ```perl
 # L1 Süreç İçi Önbellek Kullanımı
@@ -1698,7 +1698,7 @@ my ($adet, @sonuclar) = $adb->search_table("catalog_product", "kablosuz kulaklik
 
 # Yazma: Motor otomatik olarak hem kalıcı diske hem RAM-diske yazar (Dual-Write)
 $adb->insert_id("catalog_product", 0, @yeni_urun);
-$adb->modify_id("catalog_product", 101, @guncel_veri);
+$adb->update_id("catalog_product", 101, @guncel_veri);
 ```
 
 ### 13.6 İşletim Sistemine Göre Başlatma Komutları
@@ -2150,7 +2150,7 @@ dbstore/
 3. **Şemalarda Gereksiz Blokları İndekslemeyin:** Yalnızca filtrelenecek alanları `match_block`, aranacak alanları `search_block` olarak tanımlayın.
 4. **Sayfalama Dönen Değer İmzasını Doğru Karşılayın:** `read_all`, `field_fetch` ve `search_table` metotlarında `$limit > 0` verildiğinde dönen listenin ilk elemanının `$toplam` tamsayısı olduğunu unutmayın. Asla `my @kayitlar = $adb->read_all("tablo", { offset => 0, limit => 20 })` şeklinde tek diziye almayın (fatal crash verir); mutlaka `my ($toplam, @kayitlar)` şeklinde ilk elemanı toplam sayı olarak karşılayın.
 5. **Kayıt ID Tipi ve Basit Mod Seçimi:** Standart ilişkisel tablolar 64-bit tam sayı ID'ler ile çalışarak ikili sabit boyutlu ofsetler (`(Q>)*`) üzerinde en yüksek dilimleme hızını sunar. UUID, slug veya oturum belirteçleri gibi serbest metin anahtarları gerektiğinde ise tablo şemasına `use_simple => 1` vererek sıfır indeks ek yüküyle doğrudan anahtar-değer modunu kullanın.
-6. **Kayıt Dizisinde ID Standartı:** Kayıt dizilerinde (`@record`) her zaman 0. indisi Kayıt ID'si (`$record[0]`) olarak konumlandırın. Yeni kayıtta `0` verip `my $id = $record[0] = $adb->insert_id("tablo", @record);` şeklinde atayın. Okuma (`read_id`), güncelleme (`modify_id("tablo", @record)`) ve silme (`delete_id("tablo", $record[0])`) işlemlerini bu bütüncül dizi üzerinden yürütmek parametre kaymalarını ve hataları tamamen önler.
+6. **Kayıt Dizisinde ID Standartı:** Kayıt dizilerinde (`@record`) her zaman 0. indisi Kayıt ID'si (`$record[0]`) olarak konumlandırın. Yeni kayıtta `0` verip `my $id = $record[0] = $adb->insert_id("tablo", @record);` şeklinde atayın. Okuma (`read_id`), güncelleme (`update_id("tablo", @record)`) ve silme (`delete_id("tablo", $record[0])`) işlemlerini bu bütüncül dizi üzerinden yürütmek parametre kaymalarını ve hataları tamamen önler.
 
 ---
 
@@ -2214,7 +2214,7 @@ my @mevcut = $adb->read_id("catalog_product", $urun_id);
 if ($mevcut[8] >= 1) { # Stok kontrolü
     # Stoğu 1 azalt (@mevcut[0] zaten $urun_id değerini içerir)
     $mevcut[8] -= 1;
-    $adb->modify_id("catalog_product", @mevcut);
+    $adb->update_id("catalog_product", @mevcut);
     
     # Sipariş oluştur (Kalemler Blok 3'te ARRAY olarak iç içe döküman şeklinde tutulur)
     my @siparis_kalemleri = ( [ $urun_id, "MacBook Pro M3", 1, 64999.00 ] );
@@ -2242,8 +2242,8 @@ if ($txn->{status} eq "commit") {
 | **Temel CRUD** | | | |
 | `insert_id` | `$tablo, $id, @alanlar` | `$yeni_id` | Tekil kayıt ekler, tüm indeksleri günceller. |
 | `insert_list` | `$tablo, @kayitlar` | `\%statu` | Toplu kayıt ekler (Yüksek hızlı bulk write). |
-| `modify_id` | `$tablo, $id, @alanlar` | `1/undef` | Kaydı günceller ve indeksleri senkronize eder. |
-| `modify_list` | `$tablo, @kayitlar` | `\%statu` | Toplu kayıt günceller. |
+| `update_id` | `$tablo, $id, @alanlar` | `1/undef` | Kaydı günceller ve indeksleri senkronize eder. |
+| `update_list` | `$tablo, @kayitlar` | `\%statu` | Toplu kayıt günceller. |
 | `delete_id` | `$tablo, $id` | `1/undef` | Kaydı siler (veya `.del` soft-delete yapar). |
 | `delete_list` | `$tablo, @idlar` | `\%statu` | Toplu kayıt siler. |
 | **Okuma ve Arama** | | | |
@@ -2354,7 +2354,7 @@ AmberDB'de tablonun `.table` şema dosyasında bir kez tanımlarsınız:
 }
 ```
 
-Siz yalnızca `$adb->insert_id(...)`, `$adb->modify_id(...)` veya `$adb->delete_id(...)` çağırırsınız; motor yukarıdaki tüm indeks ve log dosyalarını **tek adımda ve otomatik** günceller.
+Siz yalnızca `$adb->insert_id(...)`, `$adb->update_id(...)` veya `$adb->delete_id(...)` çağırırsınız; motor yukarıdaki tüm indeks ve log dosyalarını **tek adımda ve otomatik** günceller.
 
 ### 24.4 Doğrudan Tersine İndeks Erişimi (Sorgu Planlayıcı Yükü Yok)
 SQL'de `SELECT id FROM orders WHERE customer_id = 'A'` sorgusu çalıştırıldığında SQL parser, query optimizer ve execution engine devreye girer.
@@ -2396,9 +2396,9 @@ Dışarıdan bir kısıtlama gibi algılanabilecek, ancak AmberDB'yi geleneksel 
 - **Gerçek ve Avantaj:** SQL'de indekssiz kolon sorguları arka planda kontrolsüz **tam tablo taraması (full table scan)** yaparak üretim sunucularının CPU ve disk I/O kaynaklarını tüketir. AmberDB, geliştiriciyi sorgulanacak alanları şemada `match_block` veya `search_block` olarak önceden bildirmeye yönlendirir. Bu sayede indekslenmiş alanlar üzerindeki tüm sorgular, karmaşık sorgu optimizasyonu yükü olmadan doğrudan tekil anahtar aramaları (indeksli anahtar başına ortalama O(1)) üzerinden deterministik ve tahmin edilebilir düşük gecikmeyle çalışır.
 
 #### 25.2.2 Toplu (Bulk) Metodlarda Undo Günlüğünün Devre Dışı Olması: Kısıtlama mı, Maksimum I/O Verimi mi?
-- **Genel Algı:** *"`insert_list` ve `modify_list` çağrıları neden otomatik transaction undo günlüğü tutmuyor?"*
+- **Genel Algı:** *"`insert_list` ve `update_list` çağrıları neden otomatik transaction undo günlüğü tutmuyor?"*
 - **Gerçek ve Avantaj:** Yüz binlerce kaydın toplu aktarımında her satır için ayrı disk günlüğü tutmak ciddi bir I/O darboğazı yaratır. AmberDB, toplu aktarımlarda tek dosya oturumu açarak doğrudan belleğe ve diske yazar, böylece maksimum aktarım hızına (high throughput) ulaşır.
-> **Geliştirici Özgürlüğü:** Bir listenin atomik ve geri alınabilir (transactional) olarak işlenmesi gerekiyorsa, geliştirici işlemleri bir döngü içerisinde tekil CRUD metodları (`insert_id`, `modify_id`, `delete_id`) ile `transact_start()` ve `transact_end()` bloğuna alır. Böylece liste hem atomik hem de tam geri alınabilir olur.
+> **Geliştirici Özgürlüğü:** Bir listenin atomik ve geri alınabilir (transactional) olarak işlenmesi gerekiyorsa, geliştirici işlemleri bir döngü içerisinde tekil CRUD metodları (`insert_id`, `update_id`, `delete_id`) ile `transact_start()` ve `transact_end()` bloğuna alır. Böylece liste hem atomik hem de tam geri alınabilir olur.
 
 #### 25.2.3 Sabit 8-Bayt İkili Adımlar ve Serbest Metin Anahtarlar: Kısıtlama mı, Mimari Tercih mi?
 - **Genel Algı:** *"İlişkisel ve indeksli tablolarda neden sadece 64-bit pozitif tam sayılar destekleniyor?"*

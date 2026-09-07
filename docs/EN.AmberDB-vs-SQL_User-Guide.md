@@ -142,11 +142,11 @@ Before writing queries, keep these 4 operational rules in mind:
   ```perl
   my @p = $adb->read_id("products", 101);
   $p[2] = 129.99; # Mutate Price in Block 2
-  $adb->modify_id("products", @p);
+  $adb->update_id("products", @p);
   ```
 
-* **Explanation:** AmberDB stores records as cohesive documents. The recommended idiom is reading the record array, modifying the desired indices, and passing `@p` back to `modify_id`. Since `$p[0]` holds `101`, the table name and array are sufficient.
-* **Reference:** [User Guide Section 3.3: modify_id](EN.AmberDB_User-Guide.html#33-record-mutation-modify_id)
+* **Explanation:** AmberDB stores records as cohesive documents. The recommended idiom is reading the record array, modifying the desired indices, and passing `@p` back to `update_id`. Since `$p[0]` holds `101`, the table name and array are sufficient.
+* **Reference:** [User Guide Section 3.3: update_id](EN.AmberDB_User-Guide.html#33-record-mutation-update_id)
 
 ---
 
@@ -164,11 +164,11 @@ Before writing queries, keep these 4 operational rules in mind:
       [ 101, "Sony WH-1000XM5", 139.99, "Sony", 5 ],
       [ 102, "Apple AirPods Max", 549.99, "Apple", 5 ],
   );
-  my $status = $adb->modify_list("products", @updates);
+  my $status = $adb->update_list("products", @updates);
   ```
 
-* **Explanation:** Pass the array of updated record tuples directly to `modify_list` without backslash. All secondary indexes are synchronized in batch mode.
-* **Reference:** [User Guide Section 8: modify_list](EN.AmberDB_User-Guide.html#8-high-throughput-batch-operations-batch-etl--ingestion)
+* **Explanation:** Pass the array of updated record tuples directly to `update_list` without backslash. All secondary indexes are synchronized in batch mode.
+* **Reference:** [User Guide Section 8: update_list](EN.AmberDB_User-Guide.html#8-high-throughput-batch-operations-batch-etl--ingestion)
 
 ---
 
@@ -499,8 +499,8 @@ AmberDB provides crash-safe undo-log transaction management and Strict 2PL (Two-
       $sender[1]   -= 100;
       $receiver[1] += 100;
       
-      $adb->modify_id("accounts", @sender);
-      $adb->modify_id("accounts", @receiver);
+      $adb->update_id("accounts", @sender);
+      $adb->update_id("accounts", @receiver);
   } else {
       # Report error (triggers automatic rollback during transact_end)
       $adb->transact_error("accounts", "Insufficient funds");
@@ -581,7 +581,7 @@ A side-by-side mapping for common database operations:
 | `SELECT * FROM t WHERE id = ?` | `read_id` | `my @rec = $adb->read_id("t", $id);` |
 | `SELECT * FROM t WHERE id IN (...)` | `read_list` | `my @recs = $adb->read_list("t", $res->{ids});` |
 | `SELECT * FROM t LIMIT 20 OFFSET 0` | `read_all` | `my ($tot, @recs) = $adb->read_all("t", { offset => 0, limit => 20 });` |
-| `UPDATE t SET ... WHERE id = ?` | `modify_id` | `$adb->modify_id("t", @updated_rec);` |
+| `UPDATE t SET ... WHERE id = ?` | `update_id` | `$adb->update_id("t", @updated_rec);` |
 | `DELETE FROM t WHERE id = ?` | `delete_id` | `$adb->delete_id("t", $id);` |
 | `DELETE FROM t WHERE id IN (...)` | `delete_list` | `$adb->delete_list("t", @id_list);` |
 | `SELECT COUNT(*) FROM t` | `table_count` | `my $count = $adb->table_count("t");` |
