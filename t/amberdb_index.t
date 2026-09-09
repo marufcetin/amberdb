@@ -18,7 +18,9 @@ use_ok('AmberDB::Base::Facet')        or BAIL_OUT('Cannot load AmberDB::Base::Fa
 use_ok('AmberDB::Tools')              or BAIL_OUT('Cannot load AmberDB::Tools');
 
 subtest 'Index Methods Existence' => sub {
-    plan tests => 12;
+    plan tests => 17;
+    can_ok( 'AmberDB::Base::Index', 'get_fieldlist' );
+    can_ok( 'AmberDB::Base::Index', 'set_fieldlist' );
     can_ok( 'AmberDB::Base::Index', 'field_to_list' );
     can_ok( 'AmberDB::Base::Index', 'rdbm_target' );
     can_ok( 'AmberDB::Base::Index', 'repeat_fields' );
@@ -29,12 +31,17 @@ subtest 'Index Methods Existence' => sub {
     can_ok( 'AmberDB::Base::Index', 'match_add' );
     can_ok( 'AmberDB::Base::Index', 'search_add' );
     can_ok( 'AmberDB::Base::Index', 'records_add' );
+    can_ok( 'AmberDB::Base::Index', 'slug_add' );
+    can_ok( 'AmberDB::Base::Index', 'slug_del' );
+    can_ok( 'AmberDB::Base::Index', 'slug_modify' );
     can_ok( 'AmberDB::Base::Index', 'set_slug' );
     can_ok( 'AmberDB::Base::Index', 'get_slug' );
 };
 
 subtest 'AmberDB Inheritance of Index Methods' => sub {
-    plan tests => 12;
+    plan tests => 17;
+    can_ok( 'AmberDB', 'get_fieldlist' );
+    can_ok( 'AmberDB', 'set_fieldlist' );
     can_ok( 'AmberDB', 'field_to_list' );
     can_ok( 'AmberDB', 'rdbm_target' );
     can_ok( 'AmberDB', 'repeat_fields' );
@@ -45,6 +52,9 @@ subtest 'AmberDB Inheritance of Index Methods' => sub {
     can_ok( 'AmberDB', 'match_add' );
     can_ok( 'AmberDB', 'search_add' );
     can_ok( 'AmberDB', 'records_add' );
+    can_ok( 'AmberDB', 'slug_add' );
+    can_ok( 'AmberDB', 'slug_del' );
+    can_ok( 'AmberDB', 'slug_modify' );
     can_ok( 'AmberDB', 'set_slug' );
     can_ok( 'AmberDB', 'get_slug' );
 };
@@ -155,7 +165,7 @@ subtest 'index_get binary -> bin_decode pipeline' => sub {
     $adb->index_put( $inx_path, 'keys', \@ids );
     $adb->table_close($inx_path);
 
-    my ( $total_pipe, @decoded ) = $adb->index_get( $inx_path, 'keys' );
+    my ( $total_pipe, @decoded ) = $adb->index_get( $inx_path, 'keys', 0, 0, 'asc' );
     is( $total_pipe, 5,              'keys total = 5' );
     is_deeply( \@decoded, \@ids,     'index_get IDs match original' );
 
@@ -206,7 +216,7 @@ SCHEMA
 
     ok( -e $inx_path, '.inx file created after inserts' );
 
-    my ( $cnt_all, @allkeys ) = $adb->index_get( $inx_path, 'keys' );
+    my ( $cnt_all, @allkeys ) = $adb->index_get( $inx_path, 'keys', 0, 0, 'asc' );
     my ($count)  = $adb->index_get( $inx_path, 'count' );
     my ($lastid) = $adb->index_get( $inx_path, 'lastid' );
     ok( defined $cnt_all, 'keys present in .inx' );
@@ -220,7 +230,7 @@ SCHEMA
     my @all_recs = $adb->read_all('items');
     is( scalar @all_recs, 5, 'read_all returns 5 records (no limit)' );
 
-    my ( $cnt, @page ) = $adb->read_all( 'items', 0, 3 );
+    my ( $cnt, @page ) = $adb->read_all( 'items', 0, 3, dir => 'asc' );
     is( $cnt, 5,             'read_all total count = 5' );
     is( scalar @page, 3,    'read_all limit=3 returns 3 records' );
     my @page_ids = map { $_->[0] } @page;
@@ -318,13 +328,13 @@ SCHEMA
 
     $adb->delete_id( 'nodes', 2 );
 
-    my @after = $adb->read_all('nodes');
+    my @after = $adb->read_all('nodes', dir => 'asc');
     is( scalar @after, 2, 'read_all = 2 after delete' );
 
     my @after_ids = map { $_->[0] } @after;
     ok( !( grep { $_ == 2 } @after_ids ), 'deleted ID 2 not in results' );
 
-    my ( $cnt ) = $adb->read_all( 'nodes', 0, 5 );
+    my ( $cnt ) = $adb->read_all( 'nodes', 0, 5, dir => 'asc' );
     is( $cnt, 2, 'total count = 2 after delete' );
     is_deeply( \@after_ids, [1, 3], 'remaining IDs = [1, 3]' );
 };

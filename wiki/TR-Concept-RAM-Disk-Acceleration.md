@@ -81,11 +81,11 @@ $adb->insert_id("catalog_category", 0, @yeni_kategori);
 $adb->modify_id("catalog_category", 12, @guncel_veri);
 ```
 
-### RAM-Disk Başlatma Komutları (İşletim Sistemlerine Göre)
-- **Linux (`tmpfs`):** `sudo bash bin/ramdisk_linux.sh start 512M`
-- **Windows (`ImDisk`):** `bin\ramdisk_windows.bat start 512M` (veya `powershell .\bin\ramdisk_windows.ps1 -Action start -Size 512M`)
-- **macOS (`APFS RAM-Disk` / `hdiutil`):** `bash bin/ramdisk_macos.sh start 512M` (bağlantı: `/Volumes/AmberDB_RAM`)
-- **Evrensel Perl Yardımcısı:** `perl bin/ramdisk_amberdb.pl --start --size 512M`
+### RAM-Disk Yönetimi (`amberdb_setup.pl`)
+Tüm platformlarda RAM-disk yapılandırması tek elden `amberdb_setup.pl` ile yönetilir:
+- **RAM-Diski Başlatma:** `perl bin/amberdb_setup.pl --action=ramdisk --start --size 512M`
+- **Durum Denetimi:** `perl bin/amberdb_setup.pl --action=ramdisk --status`
+- **RAM-Diski Durdurma:** `perl bin/amberdb_setup.pl --action=ramdisk --stop`
 
 ---
 

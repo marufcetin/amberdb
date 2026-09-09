@@ -82,11 +82,11 @@ $adb->insert_id("catalog_category", 0, @new_category);
 $adb->modify_id("catalog_category", 12, @updated_category);
 ```
 
-### RAM-Disk Launch Commands by Operating System
-- **Linux (`tmpfs`):** `sudo bash bin/ramdisk_linux.sh start 512M`
-- **Windows (`ImDisk`):** `bin\ramdisk_windows.bat start 512M` (or `powershell .\bin\ramdisk_windows.ps1 -Action start -Size 512M`)
-- **macOS (`APFS RAM-Disk` / `hdiutil`):** `bash bin/ramdisk_macos.sh start 512M` (mounts at `/Volumes/AmberDB_RAM`)
-- **Universal Perl Helper:** `perl bin/ramdisk_amberdb.pl --start --size 512M`
+### RAM-Disk Administration (`amberdb_setup.pl`)
+RAM-disk storage is managed uniformly across all platforms via `amberdb_setup.pl`:
+- **Mount RAM-Disk:** `perl bin/amberdb_setup.pl --action=ramdisk --start --size 512M`
+- **Inspect Status:** `perl bin/amberdb_setup.pl --action=ramdisk --status`
+- **Unmount RAM-Disk:** `perl bin/amberdb_setup.pl --action=ramdisk --stop`
 
 ---
 

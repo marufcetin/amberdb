@@ -57,6 +57,31 @@ sub transact_error {
     return;
 }
 
+# $ok = $adb->is_transact([$tableid]);
+# ------------------------------------------------
+# Returns 1 if transaction is active and table is eligible (not no_transact).
+# Caches eligibility per table in $self->{_txn}->{tbl_enabled} during active transaction.
+# ------------------------------------------------
+sub is_transact {
+    my ( $self, $tableid ) = @_;
+
+    return 0 if $self->{_no_txn};
+
+    my $txn = $self->{_txn};
+    return 0 unless $txn && $txn->{active};
+    return 1 unless defined $tableid && length($tableid);
+
+    if ( exists $txn->{tbl_enabled}->{$tableid} ) {
+        return $txn->{tbl_enabled}->{$tableid};
+    }
+
+    my $t_info = eval { $self->table_info($tableid) };
+    my $is_enabled = ( $t_info && $t_info->{no_transact} ) ? 0 : 1;
+
+    $txn->{tbl_enabled}->{$tableid} = $is_enabled;
+    return $is_enabled;
+}
+
 # $adb->transact_start();
 # -
 # Starts a new transaction. Opens a journal file for undo logging.
@@ -101,11 +126,13 @@ sub transact_start {
     $fh->autoflush(1);
 
     $self->{_txn} = {
-        active => 1,
-        file   => $txn_file,
-        fh     => $fh,
-        ops    => 0,
-        locks  => {},
+        active      => 1,
+        file        => $txn_file,
+        fh          => $fh,
+        ops         => 0,
+        locks       => {},
+        logged      => {},
+        tbl_enabled => {},
     };
 
     return 1;
@@ -231,22 +258,38 @@ sub transact_rollback {
     return $result;
 }
 
-# $adb->_txn_log($tableid, $action, $rid, $new_raw, $old_raw);
+# $adb->_txn_log( $type, $tableid, $file_path, $key, $action, $old_val );
+# Backward-compatible signature:
+# $adb->_txn_log( $tableid, $action, $rid, $new_raw, $old_raw );
 # ------------------------------------------------
 # Appends one undo-log entry to the journal file.
 # Flushes buffer and optionally calls sync (fsync) for durability.
-# $new_raw / $old_raw are raw DB values (no encode/decode needed).
 # Noop if no active transaction — backward compatible.
 # ------------------------------------------------
 sub _txn_log {
-    my ( $self, $tableid, $action, $rid, $new_raw, $old_raw ) = @_;
+    my $self = shift;
 
     return unless $self->{_txn} && $self->{_txn}->{active};
     my $fh = $self->{_txn}->{fh} or return;
 
+    my ( $type, $tableid, $file_path, $key, $action, $old_val );
+
+    if ( @_ >= 6 && ( $_[0] eq 'recs' || $_[0] eq 'index' ) ) {
+        ( $type, $tableid, $file_path, $key, $action, $old_val ) = @_;
+    }
+    else {
+        # Legacy signature fallback: ($tableid, $action, $rid, $new_raw, $old_raw)
+        my ( $t_id, $act, $r_id, $new_raw, $old_raw ) = @_;
+        $type      = 'recs';
+        $tableid   = $t_id;
+        $file_path = $self->table_path( $t_id, 1 );
+        $key       = $r_id;
+        $action    = $act;
+        $old_val   = ( $act eq 'add' ) ? '__NULL__' : ( $old_raw // '' );
+    }
+
     my $ts = $self->_txn_timestamp();
-    $new_raw //= "";
-    $old_raw //= "";
+    $old_val //= '__NULL__';
 
     my $safe_enc = sub {
         my ($s) = @_;
@@ -258,10 +301,11 @@ sub _txn_log {
         return $s;
     };
 
-    my $new_safe = $safe_enc->($new_raw);
-    my $old_safe = $safe_enc->($old_raw);
+    my $val_safe = ( $type eq 'recs' && $old_val ne '__NULL__' )
+        ? $safe_enc->($old_val)
+        : "$old_val";
 
-    print $fh join( $TXN_SEP, $ts, $tableid, $action, $rid, $new_safe, $old_safe ), "\n";
+    print $fh join( $TXN_SEP, $ts, $type, $tableid, $file_path, $key, $action, $val_safe ), "\n";
 
     $fh->flush;
     if ( $self->config('txn_sync') ) {
@@ -274,11 +318,10 @@ sub _txn_log {
 
 # $adb->_txn_apply_rollback($txn_file);
 # ------------------------------------------------
-# Reads journal in reverse order (LIFO), applies undo operations to BOTH
-# base database records AND index files (.inx, .src, .fld, .fac, .slg).
-# add  → delete base record + revert .aut audit entry + delete index entries
-# edit → restore old base record + revert .aut audit entry + revert index entries (new → old)
-# del  → restore old base record + revert .del archive entry + revert .aut audit entry + re-add index entries
+# Reads journal in reverse order (LIFO), applies generic undo operations:
+# - recs  (add -> delete, edit/del -> restore old raw record)
+# - index (add -> delete key, edit/del -> restore binary buffer from Hex)
+# Independent of business logic, indexes, junk, or ramdisk configurations.
 # Clears caches for all affected tables after rollback.
 # ------------------------------------------------
 sub _txn_apply_rollback {
@@ -302,6 +345,7 @@ sub _txn_apply_rollback {
     }
 
     my %affected_tables;
+    my %open_files;
 
     my $safe_dec = sub {
         my ($s) = @_;
@@ -312,288 +356,64 @@ sub _txn_apply_rollback {
 
     foreach my $line ( reverse @lines ) {
         chomp $line;
-        my ( $ts, $tableid, $action, $rid, $new_raw, $old_raw ) =
-            split /\x1e/, $line, 6;
-        next unless $tableid && $action && $rid;
+        my @f = split /\x1e/, $line, 7;
+        next unless @f >= 6;
 
-        $new_raw = $safe_dec->($new_raw) if defined $new_raw;
-        $old_raw = $safe_dec->($old_raw) if defined $old_raw;
+        my ( $ts, $type, $tableid, $file_path, $key, $action, $old_val );
+        if ( $f[1] eq 'recs' || $f[1] eq 'index' ) {
+            ( $ts, $type, $tableid, $file_path, $key, $action, $old_val ) = @f;
+        }
+        else {
+            # Legacy 6-field journal format fallback
+            ( $ts, $tableid, $action, $key, my $new_raw, $old_val ) = @f;
+            $type      = 'recs';
+            $file_path = $self->table_path( $tableid, 1 );
+        }
 
-        $affected_tables{$tableid} = 1;
+        next unless $file_path && defined $key;
+        $affected_tables{$tableid} = 1 if $tableid;
 
-        my $table_info  = $self->table_info($tableid);
-        my $table_path  = $self->table_path($tableid);
-        my $use_ramdisk = $table_info ? ( $table_info->{use_ramdisk} // $table_info->{use_cache} // 0 ) : 0;
-        my $ram_path    = $use_ramdisk ? $self->ramdisk_path($tableid) : undef;
-        my $is_simple   = $self->config('simple');
+        unless ( $open_files{$file_path} ) {
+            $self->table_write($file_path) or next;
+            $open_files{$file_path} = 1;
+        }
+        my $db = $self->{_db}->{$file_path} or next;
 
-        if ( $action eq "add" ) {
-            # 1. Base Undo: delete record from .db file (and RAM-disk .db if use_ramdisk == 2)
-            $self->_txn_raw_delete( $tableid, $rid );
+        my $is_unq = ( $file_path =~ /\.unq$/ ) ? 1 : 0;
+        my $k = ( $type eq 'recs' || $is_unq ) ? $self->utf_encode("$key") : "$key";
 
-            # 2. Audit Undo: remove newly created record audit trail from .aut
-            $self->_txn_auth_rollback( $tableid, $table_path, $table_info, "add", $rid );
-
-            # 3. Index Undo: remove from indexes (active or junk) if not simple mode
-            if ( !$is_simple && $new_raw ) {
-                my @new_rec = ( $rid, $self->db_decode($new_raw) );
-                my @batch   = ( \@new_rec );
-
-                if ( $table_info->{use_junk} && $self->junk_rules( $table_info, @new_rec ) ) {
-                    $self->junk_records_del( $table_path, $table_info, [$rid], $tableid );
-                    $self->junk_search_del( $table_path, $table_info, $tableid, \@batch );
-                    $self->junk_match_del( $table_path, $table_info, \@batch );
-                    if ($ram_path) {
-                        $self->junk_records_del( $ram_path, $table_info, [$rid], $tableid );
-                        $self->junk_search_del( $ram_path, $table_info, $tableid, \@batch );
-                        $self->junk_match_del( $ram_path, $table_info, \@batch );
-                    }
-                }
-                else {
-                    $self->records_del( $table_path, $table_info, [$rid], $tableid );
-                    $self->search_del( $table_path, $table_info, $tableid, \@batch );
-                    $self->match_del( $table_path, $table_info, \@batch );
-                    $self->facet_del( $table_path, $table_info, \@batch );
-                    if ($ram_path) {
-                        $self->records_del( $ram_path, $table_info, [$rid], $tableid );
-                        $self->search_del( $ram_path, $table_info, $tableid, \@batch );
-                        $self->match_del( $ram_path, $table_info, \@batch );
-                        $self->facet_del( $ram_path, $table_info, \@batch );
-                    }
-                }
-                $self->sort_del( $table_path, $table_info, \@batch );
-                $self->sort_del( $ram_path, $table_info, \@batch ) if $ram_path;
-
-                if ( $table_info->{slug_block} ) {
-                    my $slug_map = $self->get_slug( $tableid, 0, $rid );
-                    my $slug     = $slug_map->{$rid};
-                    if ($slug) {
-                        my $slg_path = "${table_path}.slg";
-                        if ( $self->table_write($slg_path) ) {
-                            $self->recs_del( $slg_path, "0:$rid" );
-                            $self->recs_del( $slg_path, "1:$slug" );
-                            $self->table_close($slg_path);
-                        }
-                        if ($ram_path) {
-                            my $r_slg = "${ram_path}.slg";
-                            if ( -e $r_slg && $self->table_write($r_slg) ) {
-                                $self->recs_del( $r_slg, "0:$rid" );
-                                $self->recs_del( $r_slg, "1:$slug" );
-                                $self->table_close($r_slg);
-                            }
-                        }
-                    }
-                }
+        if ( $type eq 'recs' ) {
+            if ( $action eq 'add' || $old_val eq '__NULL__' ) {
+                $db->del($k);
+            }
+            else {
+                $old_val = $safe_dec->($old_val);
+                $db->put( $k, $self->utf_encode($old_val) );
             }
         }
-        elsif ( $action eq "edit" ) {
-            # 1. Base Undo: restore old_raw to .db file (and RAM-disk .db if use_ramdisk == 2)
-            $self->_txn_raw_restore( $tableid, $rid, $old_raw );
-
-            # 2. Audit Undo: pop last edit action from .aut
-            $self->_txn_auth_rollback( $tableid, $table_path, $table_info, "edit", $rid );
-
-            # 3. Index Undo: revert indexes from new_rec back to old_rec
-            if ( !$is_simple && $new_raw && $old_raw ) {
-                my @old_rec = ( $rid, $self->db_decode($old_raw) );
-                my @new_rec = ( $rid, $self->db_decode($new_raw) );
-                my @pairs   = ( [ $rid, \@new_rec, \@old_rec ] );
-
-                if ( $table_info->{use_junk} ) {
-                    $self->junk_transition( $table_path, $table_info, $tableid, \@pairs );
-                    $self->junk_transition( $ram_path, $table_info, $tableid, \@pairs ) if $ram_path;
-                }
-                else {
-                    $self->search_modify( $table_path, $table_info, $tableid, \@pairs );
-                    $self->match_modify( $table_path, $table_info, \@pairs );
-                    $self->facet_modify( $table_path, $table_info, \@pairs );
-                    if ($ram_path) {
-                        $self->search_modify( $ram_path, $table_info, $tableid, \@pairs );
-                        $self->match_modify( $ram_path, $table_info, \@pairs );
-                        $self->facet_modify( $ram_path, $table_info, \@pairs );
-                    }
-                }
-                $self->sort_modify( $table_path, $table_info, \@pairs );
-                $self->sort_modify( $ram_path, $table_info, \@pairs ) if $ram_path;
-
-                if ( $table_info->{slug_block} ) {
-                    my $slug_map = $self->get_slug( $tableid, 0, $rid );
-                    my $new_slug = $slug_map->{$rid};
-                    my $old_slug = $self->set_slug( $tableid, \@old_rec, 1 );
-                    $self->set_slug( $tableid, \@old_rec, 1, $ram_path ) if $ram_path;
-                    if ( $new_slug && $old_slug && $new_slug ne $old_slug ) {
-                        my $slg_path = "${table_path}.slg";
-                        if ( $self->table_write($slg_path) ) {
-                            $self->recs_del( $slg_path, "1:$new_slug" );
-                            $self->table_close($slg_path);
-                        }
-                        if ($ram_path) {
-                            my $r_slg = "${ram_path}.slg";
-                            if ( -e $r_slg && $self->table_write($r_slg) ) {
-                                $self->recs_del( $r_slg, "1:$new_slug" );
-                                $self->table_close($r_slg);
-                            }
-                        }
-                    }
-                }
+        elsif ( $type eq 'index' ) {
+            if ( $action eq 'add' || $old_val eq '__NULL__' ) {
+                $db->del($k);
+            }
+            else {
+                my $raw_bin = pack( "H*", $old_val );
+                $db->put( $k, $raw_bin );
             }
         }
-        elsif ( $action eq "del" ) {
-            # 1. Base Undo: restore old_raw to .db file (and RAM-disk .db if use_ramdisk == 2)
-            $self->_txn_raw_restore( $tableid, $rid, $old_raw );
+    }
 
-            # 2. Archive Undo: remove from .del archive if keep_deleted was enabled
-            if ( $table_info->{keep_deleted} ) {
-                my $del_path = "$table_path.del";
-                if ( -e $del_path ) {
-                    if ( $self->table_write($del_path) ) {
-                        $self->recs_del( $del_path, $rid );
-                        $self->table_close($del_path);
-                    }
-                }
-            }
-
-            # 3. Audit Undo: pop last del action from .aut
-            $self->_txn_auth_rollback( $tableid, $table_path, $table_info, "del", $rid );
-
-            # 4. Index Undo: re-add indexes (active or junk) for old_rec
-            if ( !$is_simple && $old_raw ) {
-                my @old_rec = ( $rid, $self->db_decode($old_raw) );
-                my @batch   = ( \@old_rec );
-
-                if ( $table_info->{use_junk} && $self->junk_rules( $table_info, @old_rec ) ) {
-                    $self->junk_records_add( $table_path, $table_info, $tableid, [$rid] );
-                    $self->junk_search_add( $table_path, $table_info, $tableid, \@batch );
-                    $self->junk_match_add( $table_path, $table_info, \@batch );
-                    if ($ram_path) {
-                        $self->junk_records_add( $ram_path, $table_info, $tableid, [$rid] );
-                        $self->junk_search_add( $ram_path, $table_info, $tableid, \@batch );
-                        $self->junk_match_add( $ram_path, $table_info, \@batch );
-                    }
-                }
-                else {
-                    $self->records_add( $table_path, $table_info, $tableid, [$rid] );
-                    $self->search_add( $table_path, $table_info, $tableid, \@batch );
-                    $self->match_add( $table_path, $table_info, \@batch );
-                    $self->facet_add( $table_path, $table_info, \@batch );
-                    if ($ram_path) {
-                        $self->records_add( $ram_path, $table_info, $tableid, [$rid] );
-                        $self->search_add( $ram_path, $table_info, $tableid, \@batch );
-                        $self->match_add( $ram_path, $table_info, \@batch );
-                        $self->facet_add( $ram_path, $table_info, \@batch );
-                    }
-                }
-                $self->sort_add( $table_path, $table_info, \@batch );
-                $self->sort_add( $ram_path, $table_info, \@batch ) if $ram_path;
-                $self->set_slug( $tableid, \@old_rec, 1 );
-                $self->set_slug( $tableid, \@old_rec, 1, $ram_path ) if $ram_path;
-            }
-        }
+    # Close all files touched during rollback
+    foreach my $file_path ( keys %open_files ) {
+        $self->table_close($file_path);
     }
 
     # Clear in-memory caches for affected tables
     foreach my $tableid ( keys %affected_tables ) {
         $self->clear_cache($tableid);
+        delete $self->{_auth}->{$tableid} if $self->{_auth};
     }
 
     return 1;
-}
-
-# $adb->_txn_auth_rollback($tableid, $table_path, $table_info, $action, $rid);
-# ------------------------------------------------
-# Reverts .aut audit history entries written during a rolled-back transaction.
-# add  → deletes the newly created audit history record from .aut
-# edit → pops the last 'edit' audit history entry
-# del  → pops the last 'del' audit history entry
-# Clears the in-memory { _auth } cache for the affected table/record.
-# ------------------------------------------------
-sub _txn_auth_rollback {
-    my ( $self, $tableid, $table_path, $table_info, $action, $rid ) = @_;
-
-    return unless $table_info && $table_info->{log_owner};
-
-    my $aut_path = "$table_path.aut";
-    return unless -e $aut_path;
-
-    if ( $self->table_write($aut_path) ) {
-        if ( $action eq "add" ) {
-            $self->recs_del( $aut_path, $rid );
-        }
-        elsif ( $action eq "edit" || $action eq "del" ) {
-            my $value = $self->recs_get( $aut_path, $rid );
-            if ( $value && defined $value->{$rid} && $value->{$rid} ne '' ) {
-                my @rec = $self->db_decode( $value->{$rid} );
-                if ( @rec > 1 ) {
-                    pop @rec;
-                    $self->recs_put( $aut_path, [ $rid, @rec ] );
-                }
-                elsif ( @rec == 1 ) {
-                    $self->recs_del( $aut_path, $rid );
-                }
-            }
-        }
-        $self->table_close($aut_path);
-    }
-
-    if ( $self->{_auth} && $self->{_auth}->{$tableid} ) {
-        delete $self->{_auth}->{$tableid}->{$rid};
-    }
-}
-
-# $adb->_txn_raw_delete($tableid, $rid);
-# ------------------------------------------------
-# Deletes a record from the raw .db file directly. Used in rollback for "add".
-# Mirrors deletion in RAM-disk .db if use_ramdisk == 2.
-# ------------------------------------------------
-sub _txn_raw_delete {
-    my ( $self, $tableid, $rid ) = @_;
-
-    my $file_path = $self->table_path($tableid, 1);
-    if ( $file_path && -e $file_path ) {
-        $self->table_write($file_path) or return;
-        $self->recs_del( $file_path, $rid );
-        $self->table_close($file_path);
-    }
-
-    my $table_info  = $self->table_info($tableid);
-    my $use_ramdisk = $table_info ? ( $table_info->{use_ramdisk} // $table_info->{use_cache} // 0 ) : 0;
-    if ( $use_ramdisk == 2 ) {
-        my $ram_db = $self->ramdisk_path($tableid, 1);
-        if ( $ram_db && -e $ram_db ) {
-            if ( $self->table_write($ram_db) ) {
-                $self->recs_del( $ram_db, $rid );
-                $self->table_close($ram_db);
-            }
-        }
-    }
-}
-
-# $adb->_txn_raw_restore($tableid, $rid, $raw_value);
-# ------------------------------------------------
-# Restores raw record string into the .db file directly. Used in rollback for "edit"/"del".
-# Mirrors restoration in RAM-disk .db if use_ramdisk == 2.
-# ------------------------------------------------
-sub _txn_raw_restore {
-    my ( $self, $tableid, $rid, $raw_value ) = @_;
-
-    my $file_path = $self->table_path($tableid, 1);
-    if ( $file_path && -e $file_path ) {
-        $self->table_write($file_path) or return;
-        $self->recs_put( $file_path, [ $rid, $raw_value ] );
-        $self->table_close($file_path);
-    }
-
-    my $table_info  = $self->table_info($tableid);
-    my $use_ramdisk = $table_info ? ( $table_info->{use_ramdisk} // $table_info->{use_cache} // 0 ) : 0;
-    if ( $use_ramdisk == 2 ) {
-        my $ram_db = $self->ramdisk_path($tableid, 1);
-        if ( $ram_db && -e $ram_db ) {
-            if ( $self->table_write($ram_db) ) {
-                $self->recs_put( $ram_db, [ $rid, $raw_value ] );
-                $self->table_close($ram_db);
-            }
-        }
-    }
 }
 
 # $adb->transact_recover();

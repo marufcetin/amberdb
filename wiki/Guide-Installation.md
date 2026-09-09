@@ -93,40 +93,44 @@ RAM-Disk Mount Architecture
 ### Why Root / Administrator Privileges are Required
 Creating a RAM-Disk allocates physical system memory directly from the OS kernel and attaches it as a virtual filesystem (Linux `tmpfs`, Windows `ImDisk`, macOS `APFS RAM-Disk` / `hdiutil`). Under Linux, macOS, and Windows security models, mounting virtual filesystems and creating block devices strictly require **`root` (Linux/macOS) or `Administrator` (Windows)** privileges.
 
-### 4.1 Using the RAM-Disk CLI Tool (`bin/ramdisk_amberdb.pl`)
+### 4.1 Using the RAM-Disk CLI Tool (`bin/amberdb_setup.pl`)
 
-AmberDB provides a cross-platform RAM-disk manager script: `bin/ramdisk_amberdb.pl`.
+AmberDB provides a cross-platform setup and RAM-disk management tool: `bin/amberdb_setup.pl`.
 
 #### Check Status (No privileges required):
 ```bash
-perl bin/ramdisk_amberdb.pl --status
+perl bin/amberdb_setup.pl --action=ramdisk --status
 ```
 
 #### Mount RAM-Disk (Start):
 ```bash
 # Linux / macOS (Run with sudo):
-sudo perl bin/ramdisk_amberdb.pl --start --size 512M
+sudo perl bin/amberdb_setup.pl --action=ramdisk --start --size 512M
 
 # Windows (Elevated PowerShell / CMD as Administrator):
-perl bin/ramdisk_amberdb.pl --start --size 512M --drive R:
+perl bin/amberdb_setup.pl --action=ramdisk --start --size 512M --drive R:
 ```
 
 #### Unmount RAM-Disk (Stop):
 ```bash
 # Linux / macOS:
-sudo perl bin/ramdisk_amberdb.pl --stop
+sudo perl bin/amberdb_setup.pl --action=ramdisk --stop
 
 # Windows:
-perl bin/ramdisk_amberdb.pl --stop
+perl bin/amberdb_setup.pl --action=ramdisk --stop
 ```
 
-### 4.2 Platform-Specific Helper Scripts
+### 4.2 Automated Infrastructure Provisioning
 
-AmberDB includes ready-to-run scripts under `bin/`:
-- **Linux Bash:** `sudo ./bin/ramdisk_linux.sh start 512M`
-- **macOS Bash (`hdiutil`):** `./bin/ramdisk_macos.sh start 512M`
-- **Windows PowerShell:** `powershell -ExecutionPolicy Bypass -File .\bin\ramdisk_windows.ps1 -Action start -Size 512MB`
-- **Windows Batch (CMD):** `.\bin\ramdisk_windows.bat start 512M`
+`amberdb_setup.pl` provisions directory trees, file ownership, RAM-disks, and self-healing watchdog cron jobs in a single step:
+
+```bash
+# Linux / macOS (Run with sudo):
+sudo perl bin/amberdb_setup.pl --action=install --user=eticaretim --size=512M --cron
+
+# Windows (Elevated Command Prompt / PowerShell):
+perl bin/amberdb_setup.pl --action=install --size=512M --drive=R: --cron
+```
 
 > [!IMPORTANT]
 > **ImDisk Requirement on Windows:**  

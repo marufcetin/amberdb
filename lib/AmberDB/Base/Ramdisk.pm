@@ -4,10 +4,56 @@ use 5.016;
 use warnings;
 use Carp qw(croak cluck);
 use Cwd qw(abs_path);
+use Digest::MD5 qw(md5_hex);
 
 our $VERSION = '5.25.0';
 
 my $CREATED = '2026-08-11';
+
+our %RAMDISK_TIERS = (
+    '0'            => 0,
+    'none'         => 0,
+    'off'          => 0,
+    'disk'         => 0,
+    'disabled'     => 0,
+
+    '1'            => 1,
+    'index'        => 1,
+    'indexes'      => 1,
+    'indices'      => 1,
+    'hybrid'       => 1,
+
+    '2'            => 2,
+    'dual'         => 2,
+    'full'         => 2,
+    'all'          => 2,
+    'mirror'       => 2,
+    'mirrored'     => 2,
+
+    '3'            => 3,
+    'temp'         => 3,
+    'temporary'    => 3,
+    'volatile'     => 3,
+    'ephemeral'    => 3,
+    'ram_only'     => 3,
+    'memory_only'  => 3,
+
+    '4'            => 4,
+    'async'        => 4,
+    'sync'         => 4,
+    'delay'        => 4,
+    'delayed'      => 4,
+    'write_behind' => 4,
+    'writeback'    => 4,
+);
+
+sub _normalize_ramdisk_tier {
+    my ( $self, $val ) = @_;
+    return 0 unless defined $val && length $val;
+    my $key = lc("$val");
+    $key =~ s/^\s+|\s+$//g;
+    return exists $RAMDISK_TIERS{$key} ? $RAMDISK_TIERS{$key} : ( $key =~ /^\d+$/ ? int($key) : 0 );
+}
 
 # ============================================================================
 # AmberDB Native .db and .inx RAM-Disk (Linux tmpfs / macOS APFS / Windows ImDisk) Engine
@@ -77,10 +123,10 @@ sub ramdisk_setup {
     my $is_mac      = ( $^O eq 'darwin' );
 
     my $bin_dir     = ( $self->path('dbase_dir') || "." ) . "/../bin";
-    my $helper_pl   = "$bin_dir/ramdisk_amberdb.pl";
-    my $helper_bat  = "$bin_dir/ramdisk_windows.bat";
-    my $helper_ps1  = "$bin_dir/ramdisk_windows.ps1";
-    my $helper_sh   = $is_mac ? "$bin_dir/ramdisk_macos.sh" : "$bin_dir/ramdisk_linux.sh";
+    my $helper_pl   = "$bin_dir/amberdb_setup.pl";
+    my $helper_bat  = "$bin_dir/setup_windows.bat";
+    my $helper_ps1  = "$bin_dir/setup_windows.ps1";
+    my $helper_sh   = $is_mac ? "$bin_dir/setup_macos.sh" : "$bin_dir/setup_linux.sh";
 
     my $is_mounted  = 0;
     my $mount_desc  = "Local Storage (No RAM-disk active)";
@@ -205,10 +251,8 @@ sub ramdisk_setup {
         script_ps1   => $helper_ps1,
         script_sh    => $helper_sh,
         instructions => $is_win
-          ? "Run as Administrator: $helper_bat start $disk_size (or powershell $helper_ps1 -Action start -Size $disk_size or perl $helper_pl --start --size $disk_size)"
-          : $is_mac
-          ? "Run: bash $helper_sh start $disk_size (or perl $helper_pl --start --size $disk_size)"
-          : "Run with sudo: sudo bash $helper_sh start $disk_size (or sudo perl $helper_pl --start --size $disk_size)",
+          ? "Run as Administrator: perl $helper_pl --action=ramdisk --start --size $disk_size"
+          : "Run with sudo: sudo perl $helper_pl --action=ramdisk --start --size $disk_size",
     };
 }
 
@@ -338,9 +382,9 @@ sub ramdisk_ensure {
     my $table_path   = $self->table_path($tableid);
     my $needs_preload = 0;
 
-    # For use_ramdisk == 2: ensure .db is present in RAM-disk
-    # Note: Tiers 1 and 2 do not expire via TTL as they are synchronized with physical disk.
-    if ( $use_ramdisk == 2 ) {
+    # For use_ramdisk == 2 or 4: ensure .db is present in RAM-disk
+    # Note: Tiers 1, 2, and 4 do not expire via TTL as they are synchronized with physical disk.
+    if ( $use_ramdisk == 2 || $use_ramdisk == 4 ) {
         my $db_ext = $self->{db_ext} // 'db';
         my $src_db = "$table_path.$db_ext";
         my $ram_db = "$ramdisk_path.$db_ext";
@@ -498,21 +542,304 @@ sub ramdisk_preload {
         }
     };
 
-    # 1. Preload data file .db only for use_ramdisk == 2
-    if ( $use_ramdisk == 2 ) {
+    # 1. Preload data file .db only for use_ramdisk == 2 or 4
+    if ( $use_ramdisk == 2 || $use_ramdisk == 4 ) {
         my $src_db = "$table_path.$db_ext";
         my $dst_db = "$ramdisk_path.$db_ext";
         $_copy_atomic->( $src_db, $dst_db );
     }
 
-    # 2. Preload index & lookup files (.inx, .fld, .src, .fac, .unq, .slg) for use_ramdisk >= 1
-    foreach my $ext ( qw( inx fld src fac unq slg ) ) {
-        my $src_file = "$table_path.$ext";
-        my $dst_file = "$ramdisk_path.$ext";
-        $_copy_atomic->( $src_file, $dst_file );
+    # 2. Preload index & lookup files (.inx, .fld, .src, .fac, .unq, .slg) for use_ramdisk >= 1 and != 3
+    if ( $use_ramdisk >= 1 && $use_ramdisk != 3 ) {
+        foreach my $ext ( qw( inx fld src fac unq slg ) ) {
+            my $src_file = "$table_path.$ext";
+            my $dst_file = "$ramdisk_path.$ext";
+            $_copy_atomic->( $src_file, $dst_file );
+        }
     }
 
     return 1;
+}
+
+# ============================================================================
+# Tier 4 (Async Write-Behind) Sync Event Tracking & Background Daemon Engine
+# ============================================================================
+
+# Returns absolute path to the sync events journal slot.
+# ------------------------------------------------
+sub ramdisk_sync_db_path {
+    my ($self) = @_;
+    return $self->journal_slot("sync_events");
+}
+
+# Marks a record dirty in the RAM-disk sync events journal.
+# Formats entry as: [ 'recs', $tableid, $file_path, $rid, $action, $pos, $raw, time() ]
+# Appends to $journal_dir/sync_events
+# ------------------------------------------------
+sub ramdisk_mark_dirty {
+    my ( $self, $file_path, $rid, $action, $raw, $pos ) = @_;
+
+    return unless defined $file_path && length $file_path;
+    return unless defined $rid && length $rid;
+    $action //= 'edit';
+
+    return unless $self->ramdisk_is_mounted();
+
+    my $db_ext = $self->{db_ext} // 'db';
+    my ($fname) = $file_path =~ m{([^/\\:]+)$};
+    $fname =~ s{\.\Q$db_ext\E$}{} if defined $fname;
+    my $tableid = $fname // 'default';
+
+    my $norm_action = ( $action eq '1' || $action eq 'add' || $action eq 'insert' ) ? 'add'
+                    : ( $action eq '2' || $action eq 'edit' || $action eq 'modify' || $action eq 'update' ) ? 'edit'
+                    : ( $action eq '3' || $action eq 'del' || $action eq 'delete' ) ? 'del'
+                    : $action;
+
+    # If raw payload not supplied and not a delete, fetch from RAM-disk
+    if ( !defined $raw && $norm_action ne 'del' ) {
+        my $ram_path = $tableid ? $self->ramdisk_path($tableid) : undef;
+        my $ram_file = $ram_path ? "$ram_path.$db_ext" : undef;
+        if ( $ram_file && -e $ram_file ) {
+            my $rec_hash = $self->recs_get( $ram_file, $rid );
+            $raw = $rec_hash ? $rec_hash->{$rid} : undef;
+        }
+    }
+
+    $self->journal_append( 'sync_events', [ 'recs', $tableid, $file_path, $rid, $norm_action, $pos // '', $raw, time() ] );
+    return 1;
+}
+
+# Removes dirty tracking marker for given record (used on immediate dual-write / txn commit).
+# In the journal write-behind architecture, transactional writes bypass ramdisk_mark_dirty
+# entirely via immediate dual-write. Retained as a harmless compatibility helper.
+# ------------------------------------------------
+sub ramdisk_unmark_dirty {
+    my ( $self, $file_path, $rid ) = @_;
+    return 1;
+}
+
+# Synchronizes pending dirty events from journal (sync_events) to persistent disk.
+# If $target_table is specified, syncs only events matching that table.
+# Atomically rotates active journal file: sync_events -> sync_events_${epoch}
+# Processes all pending rotated journals, applies coalescing, and removes processed files.
+# Returns number of synced events.
+# ------------------------------------------------
+sub ramdisk_sync {
+    my ( $self, $target_table ) = @_;
+
+    return 0 unless $self->ramdisk_is_mounted();
+
+    # 1. Rotate active sync_events journal under lock
+    $self->journal_rotate('sync_events');
+
+    # 2. Scan for rotated journal files
+    my @journal_files = $self->journal_scan('sync_events_');
+    return 0 unless @journal_files;
+
+    my $db_ext       = $self->{db_ext} // 'db';
+    my $synced_count = 0;
+
+    foreach my $jfile (@journal_files) {
+        my @entries = $self->journal_read($jfile);
+        next unless @entries;
+
+        my ( @to_process, @to_keep );
+        if ( defined $target_table && length $target_table ) {
+            for my $e (@entries) {
+                if ( ( $e->{tableid} // '' ) eq $target_table ) {
+                    push @to_process, $e;
+                }
+                else {
+                    push @to_keep, $e;
+                }
+            }
+        }
+        else {
+            @to_process = @entries;
+        }
+
+        # If partial sync with target_table, re-queue events for other tables
+        if (@to_keep) {
+            my @re_entries = map {
+                [ $_->{type}, $_->{tableid}, $_->{file_path}, $_->{key}, $_->{action}, $_->{pos}, $_->{payload}, $_->{epoch} ]
+            } @to_keep;
+            $self->journal_append( 'sync_events', @re_entries );
+        }
+
+        # 3. In-batch state machine coalescing
+        # (add + edit) => add
+        # (add + del)  => canceled (never touches persistent disk)
+        # (edit + edit)=> edit
+        # (edit + del) => del
+        # (del + add)  => edit
+        my %coalesced;
+        my @ordered_keys;
+
+        foreach my $entry (@to_process) {
+            my $file_path = $entry->{file_path};
+            my $rid       = $entry->{key};
+            my $composite = "$file_path\0$rid";
+            my $action    = $entry->{action};
+
+            if ( !exists $coalesced{$composite} ) {
+                push @ordered_keys, $composite;
+                $coalesced{$composite} = {
+                    entry  => $entry,
+                    action => $action,
+                    raw    => $entry->{payload},
+                };
+            }
+            else {
+                my $state      = $coalesced{$composite};
+                my $old_action = $state->{action};
+
+                if ( $old_action eq 'add' || $old_action eq '1' ) {
+                    if ( $action eq 'edit' || $action eq '2' ) {
+                        $state->{action} = 'add';
+                        $state->{raw}    = $entry->{payload} if defined $entry->{payload};
+                        $state->{entry}  = $entry;
+                    }
+                    elsif ( $action eq 'del' || $action eq '3' ) {
+                        delete $coalesced{$composite};
+                        @ordered_keys = grep { $_ ne $composite } @ordered_keys;
+                    }
+                }
+                elsif ( $old_action eq 'edit' || $old_action eq '2' ) {
+                    if ( $action eq 'edit' || $action eq '2' ) {
+                        $state->{action} = 'edit';
+                        $state->{raw}    = $entry->{payload} if defined $entry->{payload};
+                        $state->{entry}  = $entry;
+                    }
+                    elsif ( $action eq 'del' || $action eq '3' ) {
+                        $state->{action} = 'del';
+                        $state->{raw}    = undef;
+                        $state->{entry}  = $entry;
+                    }
+                }
+                elsif ( $old_action eq 'del' || $old_action eq '3' ) {
+                    if ( $action eq 'add' || $action eq '1' ) {
+                        $state->{action} = 'edit';
+                        $state->{raw}    = $entry->{payload} if defined $entry->{payload};
+                        $state->{entry}  = $entry;
+                    }
+                }
+            }
+        }
+
+        # 4. Flush coalesced events to persistent disk
+        foreach my $composite (@ordered_keys) {
+            my $state = $coalesced{$composite};
+            next unless $state;
+
+            my $entry      = $state->{entry};
+            my $action     = $state->{action};
+            my $raw        = $state->{raw};
+            my $file_path  = $entry->{file_path};
+            my $rid        = $entry->{key};
+            my $tableid    = $entry->{tableid};
+            my $table_info = $self->table_info($tableid);
+            my $table_path = $self->table_path($tableid);
+            my $ramdisk_path = $self->ramdisk_path($tableid);
+
+            # If raw not present in journal payload, fetch from RAM-disk
+            if ( !defined $raw && ( $action eq 'add' || $action eq 'edit' || $action eq '1' || $action eq '2' ) ) {
+                my $ram_file = "$ramdisk_path.$db_ext";
+                my $rec_hash = -e $ram_file ? $self->recs_get( $ram_file, $rid ) : undef;
+                $raw = $rec_hash ? $rec_hash->{$rid} : undef;
+            }
+
+            if ( $action eq 'add' || $action eq 'edit' || $action eq '1' || $action eq '2' ) {
+                if ( defined $raw ) {
+                    # 1. Sync to persistent disk .db
+                    if ( $self->table_write($file_path) ) {
+                        $self->recs_put( $file_path, [ $rid, $raw ] );
+                        $self->table_close($file_path);
+                    }
+
+                    # 2. Sync secondary index files on persistent disk
+                    unless ( $self->config('simple') || ( $table_info && $table_info->{use_simple} ) ) {
+                        my @decoded = ( $rid, $self->db_decode($raw) );
+                        my @batch   = ( \@decoded );
+
+                        # Base stream indexes
+                        $self->records_add( $table_path, $table_info, $tableid, [$rid] );
+                        $self->search_add( $table_path, $table_info, $tableid, \@batch );
+                        $self->match_add( $table_path, $table_info, \@batch );
+                        $self->sort_add( $table_path, $table_info, \@batch );
+                        $self->unique_add( $table_path, $table_info, \@batch );
+                        $self->slug_add( $table_path, $table_info, $tableid, \@batch ) if $table_info->{slug_block};
+
+                        if ( $table_info->{use_junk} ) {
+                            if ( $action eq 'add' || $action eq '1' ) {
+                                my $is_junk = $self->junk_rules( $table_info, @decoded );
+                                my $tier    = $is_junk ? 'B' : 'A';
+                                $self->records_add( $table_path, $table_info, $tableid, [$rid], $tier );
+                                $self->search_add( $table_path, $table_info, $tableid, \@batch, $tier );
+                                $self->match_add( $table_path, $table_info, \@batch, $tier );
+                                $self->sort_add( $table_path, $table_info, \@batch, $tier ) if $table_info->{sort_block};
+                                $self->facet_add( $table_path, $table_info, \@batch ) if !$is_junk && $table_info->{use_facet};
+                            }
+                            else {
+                                my @mod_pairs = ( [ $rid, [$rid], \@decoded ] );
+                                $self->junk_transition( $table_path, $table_info, $tableid, \@mod_pairs );
+                            }
+                        }
+                        else {
+                            if ( $action eq 'add' || $action eq '1' ) {
+                                $self->facet_add( $table_path, $table_info, \@batch ) if $table_info->{use_facet};
+                            }
+                            else {
+                                my @mod_pairs = ( [ $rid, [$rid], \@decoded ] );
+                                $self->facet_modify( $table_path, $table_info, \@mod_pairs ) if $table_info->{use_facet};
+                            }
+                        }
+                    }
+                }
+            }
+            elsif ( $action eq 'del' || $action eq '3' ) {
+                # 1. Delete from persistent disk .db
+                if ( -e $file_path && $self->table_write($file_path) ) {
+                    $self->recs_del( $file_path, $rid );
+                    $self->table_close($file_path);
+                }
+
+                # 2. Delete from secondary indexes on persistent disk
+                unless ( $self->config('simple') || ( $table_info && $table_info->{use_simple} ) ) {
+                    $self->records_del( $table_path, $table_info, [$rid], $tableid );
+                    $self->search_del( $table_path, $table_info, $tableid, [ [$rid] ] );
+                    $self->match_del( $table_path, $table_info, [ [$rid] ] );
+                    $self->sort_del( $table_path, $table_info, [ [$rid] ] ) if $table_info->{sort_block};
+                    $self->unique_del( $table_path, $table_info, [ [$rid] ] );
+                    $self->slug_del( $table_path, $table_info, $tableid, [ [$rid] ] ) if $table_info->{slug_block};
+
+                    if ( $table_info->{use_junk} ) {
+                        $self->records_del( $table_path, $table_info, [$rid], $tableid, ['A', 'B'] );
+                        $self->search_del( $table_path, $table_info, $tableid, [ [$rid] ], ['A', 'B'] );
+                        $self->match_del( $table_path, $table_info, [ [$rid] ], ['A', 'B'] );
+                        $self->sort_del( $table_path, $table_info, [ [$rid] ], ['A', 'B'] ) if $table_info->{sort_block};
+                        $self->facet_del( $table_path, $table_info, [ [$rid] ] ) if $table_info->{use_facet};
+                    }
+                    else {
+                        $self->facet_del( $table_path, $table_info, [ [$rid] ] ) if $table_info->{use_facet};
+                    }
+                }
+            }
+
+            $synced_count++;
+        }
+
+        # 5. Clean up processed rotated journal file and its lock
+        $self->journal_delete($jfile);
+    }
+
+    return $synced_count;
+}
+
+# Flushes all pending dirty events across all tables to persistent disk.
+# ------------------------------------------------
+sub ramdisk_sync_all {
+    my ($self) = @_;
+    return $self->ramdisk_sync();
 }
 
 1;
@@ -527,20 +854,24 @@ AmberDB::Base::Ramdisk - Transparent Physical RAM-Disk Acceleration Engine for A
 
   use AmberDB;
 
-  # 1. Global RAM-Disk Configuration
+  # 1. Global RAM-Disk Configuration (Canonical words: none, index, dual, temp, async)
   my $adb = AmberDB->new(
-      cfg  => { use_ramdisk => 1 },
+      cfg  => { use_ramdisk => "index" },
       path => { dbase_dir   => "/var/data/amberdb" }
   );
 
   # Or change dynamically at runtime:
-  $adb->config(use_ramdisk => 2);
+  $adb->config(use_ramdisk => "dual");
 
   # 2. Per-Table Configuration & Overrides
-  $adb->table_attr("catalog_category", use_ramdisk => 2); # Tier 2 (Full Mirror)
-  $adb->table_attr("audit_archive",    use_ramdisk => 0); # Tier 0 (Disk only)
+  $adb->table_attr("catalog_category", use_ramdisk => "dual");  # Tier 2 (Full Mirror)
+  $adb->table_attr("user_cart",        use_ramdisk => "async"); # Tier 4 (Write-Behind)
+  $adb->table_attr("audit_archive",    use_ramdisk => "none");  # Tier 0 (Disk only)
 
-  # 3. Standard Transparent Operations (No special methods needed)
+  # 3. Synchronize Tier 4 Dirty Events to Disk (e.g. background daemon)
+  my $synced = $adb->ramdisk_sync_all();
+
+  # 4. Standard Transparent Operations (No special methods needed)
   my @item = $adb->read_id("catalog_category", 12);
   $adb->insert_id("catalog_category", 0, @category_data);
   $adb->modify_id("catalog_category", 12, @updated_data);
@@ -549,20 +880,22 @@ AmberDB::Base::Ramdisk - Transparent Physical RAM-Disk Acceleration Engine for A
 
 C<AmberDB::Base::Ramdisk> provides transparent physical RAM-disk acceleration for AmberDB tables and indexes. It orchestrates filesystem-level memory mirroring (Linux C<tmpfs>, macOS C<APFS RAM-Disk> via C<hdiutil>, or Windows C<ImDisk>) without requiring manual cache management.
 
-All RAM-disk operations run automatically in the background and are controlled exclusively via the C<use_ramdisk> option:
+All RAM-disk operations run automatically in the background and are controlled via the C<use_ramdisk> option using integer levels or canonical names:
 
 =over 4
 
-=item * B<Tier 0 (Disabled):> Standard persistent disk access.
+=item * B<Tier 0 (none / off / 0):> Standard persistent disk access.
 
-=item * B<Tier 1 (Hybrid Index Acceleration):> Secondary index files (C<.inx>, C<.src>, C<.fld>, C<.fac>, C<.unq>, C<.slg>) are maintained in RAM-disk while master data (C<.db>) remains on persistent disk.
+=item * B<Tier 1 (index / 1):> Secondary index files (C<.inx>, C<.src>, C<.fld>, C<.fac>, C<.unq>, C<.slg>) are maintained in RAM-disk while master data (C<.db>) remains on persistent disk.
 
-=item * B<Tier 2 (Full RAM-Disk Mirror - Dual-Write):> Master data (C<.db>) and all index files are mirrored on RAM-disk. Reads run directly from memory at microsecond speeds; writes synchronously dual-write to both RAM-disk and persistent disk.
+=item * B<Tier 2 (dual / full / 2):> Master data (C<.db>) and all index files are mirrored on RAM-disk. Reads run directly from memory at microsecond speeds; writes synchronously dual-write to both RAM-disk and persistent disk.
 
-=item * B<Tier 3 (Volatile Pure RAM-Disk):> Transient simple key-value store with zero persistent disk files and sliding TTL expiration (C<ramdisk_ttl>).
+=item * B<Tier 3 (temp / ram_only / 3):> Transient simple key-value store with zero persistent disk files and sliding TTL expiration (C<ramdisk_ttl>). Configured strictly per-table.
+
+=item * B<Tier 4 (async / delay / 4):> High-throughput write-behind tier. All reads and writes occur exclusively in RAM-disk. Writes register dirty events in C<sync_events> journal with automatic event coalescing. A single-writer background daemon flushes changes to persistent disk. During active transactions (C<transact_start>), Tier 4 automatically elevates to synchronous Dual-Write to guarantee strict durability and immediate rollback.
 
 =back
 
-Developers interact with accelerated tables using only standard AmberDB methods (C<read_id>, C<search_table>, C<insert_id>, C<modify_id>, etc.).
+Developers interact with accelerated tables using only standard AmberDB methods (C<read_id>, C<search_table>, C<insert_id>, C<modify_id>, C<delete_id>, etc.).
 
 =cut

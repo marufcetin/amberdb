@@ -186,6 +186,7 @@ subtest '5. read_all with Inflate' => sub {
     my ( $total_list, $res_list ) = $adb->read_all( "catalog_product", {
         inflate => 'list',
         limit   => 10,
+        dir     => 'asc',
     });
     is( $total_list, 2, "Total count is 2" );
     is( ref($res_list), 'ARRAY', "result is ArrayRef when inflate => 'list'" );
@@ -207,7 +208,7 @@ subtest '5. read_all with Inflate' => sub {
     is( $res_hash->{2}->{price}, 200, "Product 2 price accessed via ID key" );
 
     # 3. Classic read_all without inflate (backward compatibility)
-    my ( $total_classic, @classic_records ) = $adb->read_all( "catalog_product", limit => 10 );
+    my ( $total_classic, @classic_records ) = $adb->read_all( "catalog_product", limit => 10, dir => 'asc' );
     is( $total_classic, 2, "Total classic count is 2" );
     is( scalar(@classic_records), 2, "Classic read_all returns list" );
     is( ref($classic_records[0]), 'ARRAY', "Classic element is raw arrayref" );
@@ -240,6 +241,7 @@ subtest '7. field_fetch and search_table with inflate' => sub {
     my ( $ff_cnt, $ff_list ) = $adb->field_fetch( "catalog_product", 5, 5, {
         inflate => 'list',
         limit   => 10,
+        dir     => 'asc',
     });
     is( $ff_cnt, 2, "field_fetch found 2 products in cat 5" );
     is( ref($ff_list), 'ARRAY', "field_fetch with inflate returns ArrayRef" );

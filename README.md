@@ -290,35 +290,50 @@ $adb->delete_list("catalog_product", 101, 102, 103);
 
 ## CLI Utilities
 
-AmberDB ships with standalone command-line tools in `bin/`:
+AmberDB ships with two consolidated, production-ready command-line tools in `bin/`:
 
-### 1. `bin/amberdb_backup.pl` (Native Backup & Restore)
-Create and restore compressed, portable `.amberdb` database archives:
+### 1. `bin/amberdb_setup.pl` (Setup, Infrastructure & Maintenance)
+Unified administrative entry point for setup, RAM-disk management, table upgrades, backups, and re-indexing:
 ```bash
-# Dump entire database to default archive
-perl bin/amberdb_backup.pl --dump
+# Display comprehensive usage and available actions
+perl bin/amberdb_setup.pl
 
-# Dump specific tables to custom archive
-perl bin/amberdb_backup.pl --dump --file backup/catalog.amberdb --tables products,orders
+# Full infrastructure installation & permission setup
+sudo perl bin/amberdb_setup.pl --action=install --user=eticaretim --size=256M --cron
 
-# Restore archive into database with automatic index rebuilding
-perl bin/amberdb_backup.pl --restore --file backup/catalog.amberdb --force
+# RAM-disk management (Linux tmpfs, macOS APFS, Windows ImDisk)
+perl bin/amberdb_setup.pl --action=ramdisk --start --size=512M
+perl bin/amberdb_setup.pl --action=ramdisk --status
+perl bin/amberdb_setup.pl --action=ramdisk --stop
+
+# Native backup (.amberdb dump and restore)
+perl bin/amberdb_setup.pl --action=backup --dump --file=backup/catalog.amberdb
+perl bin/amberdb_setup.pl --action=backup --restore --file=backup/catalog.amberdb --force
+
+# Table migration (upgrade legacy tables to current ABR v1 binary format)
+perl bin/amberdb_setup.pl --action=update --all
+
+# Re-index secondary binary indexes (.inx, .fld, .src, .srt)
+perl bin/amberdb_setup.pl --action=reindex
 ```
 
-### 2. `bin/convert_dbstore.pl` (Binary Re-Indexer)
-Scans and rebuilds all table indexes (`.inx`, `.fld`, `.src`, `.srt`) into packed 8-byte binary format:
+### 2. `bin/amberdb_daemon.pl` (Service Supervisor & Sync Daemon)
+Unified process controller, self-healing cron watchdog, and Tier 4 background write-behind sync engine:
 ```bash
-perl bin/convert_dbstore.pl --dbstore ./dbstore
-```
+# Start background write-behind sync daemon
+perl bin/amberdb_daemon.pl start
 
-### 3. `bin/ramdisk_amberdb.pl` (RAM-Disk Accelerator)
-Mounts/unmounts isolated RAM-disk storage for Linux (`tmpfs`), macOS (`APFS`), and Windows (`ImDisk`):
-```bash
-# Mount 512MB RAM-disk with auto-detected OS and isolated project folder
-perl bin/ramdisk_amberdb.pl --start --size 512M
+# Inspect running daemon, RAM-disk status, and journal queue
+perl bin/amberdb_daemon.pl status
 
-# Check status
-perl bin/ramdisk_amberdb.pl --status
+# Synchronous flush of all pending journal events
+perl bin/amberdb_daemon.pl flush
+
+# Gracefully stop daemon process
+perl bin/amberdb_daemon.pl stop
+
+# Cron watchdog (exits in <1ms if healthy, auto-restarts if dead)
+perl bin/amberdb_daemon.pl watchdog
 ```
 
 ---

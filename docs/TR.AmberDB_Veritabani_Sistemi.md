@@ -60,7 +60,7 @@ AmberDB, harici üçüncü parti kütüphanelere bağımlı olmaksızın kendi i
 │  AmberDB::Transact → Undo-log transaction, rollback & crash recovery       │
 │  AmberDB::Ramdisk  → RAM-Disk (tmpfs/APFS/ImDisk) Paylaşımlı Bellek        │
 │  AmberDB::Array    → Yüksek hızlı dizi yardımcıları (nodup, crop)          │
-│  AmberDB::String   → Metin işleme, HTML temizleme ve dönüştürme            │
+│  Amber::Util::String   → Metin işleme, HTML temizleme ve dönüştürme            │
 │  AmberDB::Date     → Tarih hesaplamaları ve format dönüşümleri             │
 │  AmberDB::Locale   → Dahili çok dilli sıralama ve arama motoru             │
 ├────────────────────────────────────────────────────────────────────────────┤
@@ -180,7 +180,7 @@ Tablolar için önceden bir `.table` şema dosyası oluşturmak **zorunlu değil
 
 AmberDB'de ilişkisel alanlar (`match_block` ve `rdbm` tanımlı alanlar) doğrudan metin (string) olarak değil, **bağlı tablolardaki kayıtların birincil anahtarları (ID)** olarak saklanır. 
 
-Birden fazla kategoriye veya birden fazla yazara ait ürünler için ID değerleri virgülle ayrılmış bir liste (örn: `"5,12"` veya `"7,9"`) veya dizi referansı olarak verilir. AmberDB'nin `field_to_list` mekanizması bu değerleri otomatik olarak ayrıştırarak her bir ID'yi eşleştirme ve facet filtre indekslerine bağımsız birer kayıt olarak yazar.
+Birden fazla kategoriye veya birden fazla yazara ait ürünler için ID değerleri virgülle ayrılmış bir liste (örn: `"5,12"` veya `"7,9"`) veya dizi referansı olarak verilir. AmberDB'nin `get_fieldlist` / `set_fieldlist` mekanizması bu değerleri otomatik olarak ayrıştırarak her bir ID'yi eşleştirme ve facet filtre indekslerine bağımsız birer kayıt olarak yazar.
 
 ```perl
 # =========================================================================
@@ -234,7 +234,7 @@ $adb->insert_id("catalog_product", @urun_bilgileri);
 # =========================================================================
 # ADIM 3: Çoklu Değer Eşleştirmesi (field_fetch) Nasıl Çalışır?
 # =========================================================================
-# AmberDB'nin 'field_to_list' mekanizması virgülle ayrılmış "5,12" ve "7,9" değerlerini
+# AmberDB'nin 'set_fieldlist' mekanizması virgülle ayrılmış "5,12" ve "7,9" değerlerini
 # otomatik olarak ayrıştırır ve her bir ID'yi ilgili eşleştirme indekslerine bağımsız olarak yazar.
 # Böylece aşağıdaki bağımsız sorguların her ikisi de ürünü tekil indeks aramasıyla doğrudan bulur:
 my @kat12_urunleri  = $adb->field_fetch("catalog_product", 1, "12"); # 12 nolu kategorideki ürünler
@@ -1414,7 +1414,7 @@ AmberDB, sabit sütun sınırlarını aşarak tek bir ana döküman kaydının s
 Her `insert_id`, `update_id`, `insert_list` veya `update_list` çağrısında motor, `repeat_start` (15) ve sonrasındaki tüm değişken blokları otomatik olarak işler:
 1. Her ürün/kalem bloğunun (dizi ise ilk elemanını `$_->[0]`, metin ise kendisini) çeker.
 2. Bu ID'leri virgülle birleştirip (`"101,102,103"`) otomatik olarak `repeat_ids` (12) bloğuna yazar (geliştiricinin bu alanı manuel doldurmasına gerek yoktur).
-3. Blok 12 şemada `match_block` içinde tanımlandığı için, motor `field_to_list` ile bu ID'lerin her birini `order_active.fld` eşleştirme indeksine (`"12:$id"` anahtarıyla) kaydeder.
+3. Blok 12 şemada `match_block` içinde tanımlandığı için, motor `set_fieldlist` ile bu ID'lerin her birini `order_active.fld` eşleştirme indeksine (`"12:$id"` anahtarıyla) kaydeder.
 
 > [!NOTE]
 > **Basit Modda (Şemasız) Tekrarlayan Bloklar:**  
@@ -1702,14 +1702,14 @@ $adb->insert_id("catalog_product", 0, @yeni_urun);
 $adb->update_id("catalog_product", 101, @guncel_veri);
 ```
 
-### 13.6 İşletim Sistemine Göre Başlatma Komutları
+### 13.6 RAM-Disk Yönetimi (`amberdb_setup.pl`)
 
-AmberDB, tüm desteklenen işletim sistemlerinde RAM-disk oluşturmak için `bin/` altında hazır betikler sunar:
+AmberDB, tüm işletim sistemlerinde (Linux, macOS, Windows) RAM-disk yapılandırmasını ve bakımını `amberdb_setup.pl` üzerinden tek merkezden yürütür:
 
-- **Linux (`tmpfs`):** `sudo bash bin/ramdisk_linux.sh start 512M`
-- **macOS (`APFS RAM-Disk` / `hdiutil`):** `bash bin/ramdisk_macos.sh start 512M` (bağlantı noktası: `/Volumes/AmberDB_RAM`)
-- **Windows (`ImDisk`):** `bin\ramdisk_windows.bat start 512M` (veya `powershell .\bin\ramdisk_windows.ps1 -Action start -Size 512M`)
-- **Evrensel Perl Yardımcısı:** `perl bin/ramdisk_amberdb.pl --start --size 512M`
+- **RAM-Disk Başlatma (Mount):** `perl bin/amberdb_setup.pl --action=ramdisk --start --size 512M`
+- **Durum Denetimi (Status):** `perl bin/amberdb_setup.pl --action=ramdisk --status`
+- **RAM-Disk Sonlandırma (Stop):** `perl bin/amberdb_setup.pl --action=ramdisk --stop`
+- **Tam Altyapı Kurulumu (Install):** `perl bin/amberdb_setup.pl --action=install --user=eticaretim --size 256M --cron`
 
 ### 13.7 Uçucu Tablolar ve Kayan TTL Zaman Aşımı (`ramdisk_ttl`)
 
@@ -1859,9 +1859,9 @@ my $yeni_autoid = $adb->table_autoid("catalog_product");
 $adb->table_create("catalog_product");
 ```
 
-### 15.5 Metin ve Dize İşleme Yardımcıları (`AmberDB::String`)
+### 15.5 Metin ve Dize İşleme Yardımcıları (`Amber::Util::String`)
 
-`AmberDB` doğrudan `AmberDB::String` modülünden türediği için metin temizleme, HTML dönüştürme ve veri türü tespiti gibi araçlar doğrudan `$adb` üzerinden çağrılabilir:
+`AmberDB` doğrudan `Amber::Util::String` modülünden türediği için metin temizleme, HTML dönüştürme ve veri türü tespiti gibi araçlar doğrudan `$adb` üzerinden çağrılabilir:
 
 ```perl
 # 1. Boşluk Temizleme ve Düzleştirme (trim_space)
@@ -2322,7 +2322,7 @@ Bu kayıt `.db` dosyasına **tek bir key-value** olarak yazılır ve okunduğund
 SQL'de "101 numaralı ürünü içeren tüm siparişler hangileridir?" sorusunun cevabı için `order_items` tablosu taranır, `orders` tablosuna `JOIN` atılır ve ilişkisel indeksler ile tablolar arasında çoklu disk okumaları yapılır.
 
 **AmberDB'de ise:**
-Sipariş kaydında ürün listesi Blok 3'te bir ARRAY olarak tutulur. Şemada `match_block => [3]` tanımlandığında motor, `field_to_list` ile dizideki her ürün ID'sini ayrıştırarak `orders.fld` eşleştirme indeksine `"3:$id"` anahtarıyla kaydeder.
+Sipariş kaydında ürün listesi Blok 3'te bir ARRAY olarak tutulur. Şemada `match_block => [3]` tanımlandığında motor, `set_fieldlist` ile dizideki her ürün ID'sini ayrıştırarak `orders.fld` eşleştirme indeksine `"3:$id"` anahtarıyla kaydeder.
 
 ```perl
 # 101 nolu ürünü içeren tüm sipariş bilgilerini getirme:

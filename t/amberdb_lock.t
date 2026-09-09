@@ -34,7 +34,7 @@ subtest 'Record Level Write Lock' => sub {
     ok( -e $lock_file, 'Record lock file exists on disk' );
 
     ok( $adb->flock_close( 'test_table', 101 ), 'Record lock closed' );
-    is( $adb->{_record_lock}->{'test_table_101'}, undef, 'Lock handle removed from internal pool' );
+    is( $adb->{_lock}->{'test_table_101'}, undef, 'Lock handle removed from internal pool' );
 };
 
 subtest 'Record Level Read Lock' => sub {
@@ -56,7 +56,7 @@ subtest 'Table Level Lock' => sub {
     ok( -e $lock_file, 'Table lock file exists on disk' );
 
     ok( $adb->flock_close('test_table'), 'Table lock closed' );
-    is( $adb->{_record_lock}->{'test_table'}, undef, 'Table lock handle removed from internal pool' );
+    is( $adb->{_lock}->{'test_table'}, undef, 'Table lock handle removed from internal pool' );
 };
 
 subtest 'Automatic Transaction Record Lock Integration' => sub {
@@ -68,10 +68,10 @@ subtest 'Automatic Transaction Record Lock Integration' => sub {
     is( $rid, 500, 'Inserted record 500 in transaction' );
 
     ok( $adb->{_txn}->{locks}->{'txn_lock_table_500'}, 'Record lock 500 registered in transaction' );
-    ok( $adb->{_record_lock}->{'txn_lock_table_500'}, 'Record lock file open during transaction' );
+    ok( $adb->{_lock}->{'txn_lock_table_500'}, 'Record lock file open during transaction' );
 
     $adb->transact_end();
-    is( $adb->{_record_lock}->{'txn_lock_table_500'}, undef, 'Record lock 500 automatically released after transaction commit' );
+    is( $adb->{_lock}->{'txn_lock_table_500'}, undef, 'Record lock 500 automatically released after transaction commit' );
 };
 
 subtest 'Auto Cleanup On Destroy' => sub {
@@ -85,7 +85,7 @@ subtest 'Auto Cleanup On Destroy' => sub {
     $adb2->flock_open( 'test_table', 'write', 202 );
     $adb2->flock_open( 'test_table', 'write' );
 
-    ok( $adb2->{_record_lock}->{'test_table_202'}, 'Record lock 202 active in adb2' );
+    ok( $adb2->{_lock}->{'test_table_202'}, 'Record lock 202 active in adb2' );
 
     # Trigger DESTROY / close_all
     undef $adb2;

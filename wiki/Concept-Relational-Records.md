@@ -93,7 +93,7 @@ my @product = (
 # During insert_id, AmberDB:
 # - Reads title "Sony WH-1000XM5" from block 1.
 # - Sees FK 12 at block 2, opens "catalog_categories", and reads "Wireless Audio Systems" from block 1.
-# - Combines and tokenizes words from both sources into catalog_product_1.src.
+# - Combines and tokenizes words from both sources into catalog_product.src.
 $adb->insert_id("catalog_product", @product);
 
 # 3. Searches matching external category terms resolve instantly without JOINs:

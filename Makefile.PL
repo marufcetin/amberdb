@@ -12,9 +12,8 @@ WriteMakefile(
     MIN_PERL_VERSION => '5.016',
     PL_FILES         => {},
     EXE_FILES        => [
-        'bin/amberdb_backup.pl',
-        'bin/convert_dbstore.pl',
-        'bin/ramdisk_amberdb.pl',
+        'bin/amberdb_setup.pl',
+        'bin/amberdb_daemon.pl',
     ],
     CONFIGURE_REQUIRES => {
         'ExtUtils::MakeMaker' => '0',

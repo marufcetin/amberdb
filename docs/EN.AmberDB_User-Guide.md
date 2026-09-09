@@ -60,7 +60,7 @@ AmberDB is self-contained and does not rely on heavy external dependencies:
 │  AmberDB::Transact → Undo-log transactions, rollback & recovery         │
 │  AmberDB::Ramdisk  → Native RAM-Disk (tmpfs/APFS/ImDisk) Shared Cache      │
 │  AmberDB::Array    → High-speed array utilities (nodup, crop)           │
-│  AmberDB::String   → String utilities, HTML formatting & cleaning       │
+│  Amber::Util::String   → String utilities, HTML formatting & cleaning       │
 │  AmberDB::Date     → Date calculations, timestamps, formatting          │
 │  AmberDB::Locale   → Built-in multilingual collation & word search      │
 ├─────────────────────────────────────────────────────────────────────────┤
@@ -231,7 +231,7 @@ $adb->insert_id("catalog_product", @product_data);
 # =========================================================================
 # STEP 3: How Multi-Value Lookups (field_fetch) Work
 # =========================================================================
-# AmberDB's 'field_to_list' feature automatically unpacks comma-delimited strings
+# AmberDB's 'set_fieldlist' feature automatically unpacks comma-delimited strings
 # ("5,12" and "7,9") and indexes each discrete ID into its respective .fld index.
 # Both of the following independent queries will immediately find the product via fast direct index lookup:
 my @cat12_items   = $adb->field_fetch("catalog_product", 1, "12"); # All products in Category 12
@@ -1418,7 +1418,7 @@ AmberDB breaks free from fixed column width constraints by allowing a variable n
 During every `insert_id`, `modify_id`, `insert_list`, or `modify_list` call, the engine automatically processes all repeating blocks starting from `repeat_start` (15):
 1. It extracts the identifier of each repeating block (the first element `$_->[0]` if it's an ARRAY reference, or the scalar value itself).
 2. It joins these IDs into a comma-separated string (`"101,102,103"`) and assigns it automatically to block `repeat_ids` (12) - developers do not need to populate this field manually.
-3. Because Block 12 is declared in `match_block`, the engine automatically indexes each product key into `order_active.fld` (under key `"12:$id"`) via `field_to_list`.
+3. Because Block 12 is declared in `match_block`, the engine automatically indexes each product key into `order_active.fld` (under key `"12:$id"`) via `set_fieldlist`.
 
 > [!NOTE]
 > **Repeating Blocks in Schemaless Simple Mode:**  
@@ -1704,14 +1704,14 @@ $adb->insert_id("catalog_product", 0, @new_product);
 $adb->modify_id("catalog_product", 101, @updated_data);
 ```
 
-### 13.6 RAM-Disk Launch Commands by Operating System
+### 13.6 RAM-Disk Administration (`amberdb_setup.pl`)
 
-AmberDB includes standard management scripts under `bin/` to format, mount, and manage RAM-disks:
+AmberDB provides unified RAM-disk configuration and maintenance across all platforms (Linux, macOS, Windows) via `amberdb_setup.pl`:
 
-- **Linux (`tmpfs`):** `sudo bash bin/ramdisk_linux.sh start 512M`
-- **macOS (`APFS RAM-Disk` / `hdiutil`):** `bash bin/ramdisk_macos.sh start 512M` (mounts at `/Volumes/AmberDB_RAM`)
-- **Windows (`ImDisk`):** `bin\ramdisk_windows.bat start 512M` (or `powershell .\bin\ramdisk_windows.ps1 -Action start -Size 512M`)
-- **Universal Perl Helper:** `perl bin/ramdisk_amberdb.pl --start --size 512M`
+- **Mount RAM-Disk (Start):** `perl bin/amberdb_setup.pl --action=ramdisk --start --size 512M`
+- **Inspect Status:** `perl bin/amberdb_setup.pl --action=ramdisk --status`
+- **Unmount RAM-Disk (Stop):** `perl bin/amberdb_setup.pl --action=ramdisk --stop`
+- **Full Infrastructure Setup:** `perl bin/amberdb_setup.pl --action=install --user=eticaretim --size 256M --cron`
 
 ### 13.7 Volatile Storage & Sliding TTL (`ramdisk_ttl`)
 
@@ -1861,9 +1861,9 @@ my $new_id = $adb->table_autoid("catalog_product");
 $adb->table_create("catalog_product");
 ```
 
-### 15.5 String & Text Processing Utilities (`AmberDB::String`)
+### 15.5 String & Text Processing Utilities (`Amber::Util::String`)
 
-Since `AmberDB` inherits from `AmberDB::String`, a suite of fast string sanitization, formatting, and classification helpers are directly accessible on `$adb`:
+Since `AmberDB` inherits from `Amber::Util::String`, a suite of fast string sanitization, formatting, and classification helpers are directly accessible on `$adb`:
 
 ```perl
 # 1. Whitespace Normalization & Flattener (trim_space)
@@ -2325,7 +2325,7 @@ This entire document is written to the `.db` file as a **single key-value pair**
 In SQL, answering *"Which orders contain Product 101?"* requires scanning the `order_items` index/table, joining with `orders`, and executing multiple disk/cache seeks across separate tables.
 
 **In AmberDB:**
-The order record contains the array of product items in Block 3. When `match_block => [3]` is defined in the schema, the engine automatically extracts each product ID using `field_to_list` and indexes it into `orders.fld` under the key `"3:$id"`.
+The order record contains the array of product items in Block 3. When `match_block => [3]` is defined in the schema, the engine automatically extracts each product ID using `set_fieldlist` and indexes it into `orders.fld` under the key `"3:$id"`.
 
 ```perl
 # Fetch all order records containing Product 101:

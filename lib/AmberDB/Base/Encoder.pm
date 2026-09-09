@@ -3,6 +3,7 @@ package AmberDB::Base::Encoder;
 use 5.016;
 use warnings;
 use Carp qw(croak cluck);
+use MIME::Base64 qw(encode_base64 decode_base64);
 
 our $VERSION = '5.25.0';
 
@@ -191,6 +192,12 @@ sub tsv_decode {
 
     # drop line endings: chomp
     $record =~ s/\R$//;
+
+    # FAST-PATH: Plain TSV record without escapes, entities, or nested tags
+    if ( index($record, "\\") == -1 && index($record, "<TAB") == -1 && index($record, "&#") == -1 && index($record, "ARRAY:") == -1 && index($record, "HASH:") == -1 ) {
+        my @fields = split( /\t/, $record, -1 );
+        return wantarray ? @fields : ( @fields == 1 ? $fields[0] : \@fields );
+    }
 
     # 1. ERA 2019 - 2025: <TAB> Hierarchy (<TAB0>, <TAB1>, <TAB2>, <TAB3>)
     if ( $record =~ /<TAB[0-9]+>/ ) {
@@ -478,7 +485,7 @@ sub bin_decode {
 
     $offset ||= 0;
     $limit  ||= 0;
-    $dir    ||= 'asc';
+    $dir    = ( defined $dir && $dir =~ /^(asc|desc|reverse)$/i ) ? lc($dir) : 'desc';
 
     if ( lc($dir) eq 'desc' ) {
         my ( $real_start, $real_limit );
@@ -798,6 +805,67 @@ sub bin_count {
 
     return 0 unless defined $buffer && length($buffer) >= 8;
     return int( length($buffer) / 8 );
+}
+
+# =====================================================================
+# JOURNAL ENCODING / DECODING (TSV + Base64 Delta Specification)
+# Standard 8-field Journal Entry Format:
+#   $epoch \t $type \t $tableid \t $file_path \t $key \t $action \t $pos \t $base64_payload \n
+#   - $type: 'recs' or 'index'
+#   - $action: 'add', 'edit', 'del', 'append', 'punch', 'patch', 'put'
+#   - $pos: exact byte offset (e.g. 0, 4800000, 8000000) or '' if unpositioned
+#   - $payload: Base64-encoded raw octets, or '__NULL__' if undef
+# =====================================================================
+
+sub journal_encode {
+    my ( $self, $type, $tableid, $file_path, $key, $action, $pos, $payload, $epoch ) = @_;
+
+    $epoch     //= time();
+    $type      //= 'recs';
+    $tableid   //= '';
+    $file_path //= '';
+    $key       //= '';
+    $action    //= 'put';
+    $pos       = ( defined $pos && $pos ne '' ) ? "$pos" : '';
+
+    my $b64;
+    if ( !defined $payload || $payload eq '__NULL__' ) {
+        $b64 = '__NULL__';
+    }
+    else {
+        $b64 = encode_base64( $payload, '' );
+    }
+
+    return join( "\t", $epoch, $type, $tableid, $file_path, $key, $action, $pos, $b64 );
+}
+
+sub journal_decode {
+    my ( $self, $line ) = @_;
+
+    return unless defined $line;
+    chomp $line;
+    return if $line eq '';
+
+    my ( $epoch, $type, $tableid, $file_path, $key, $action, $pos, $b64 ) = split /\t/, $line, 8;
+
+    my $payload;
+    if ( !defined $b64 || $b64 eq '__NULL__' ) {
+        $payload = undef;
+    }
+    else {
+        $payload = decode_base64( $b64 );
+    }
+
+    return {
+        epoch       => $epoch,
+        type        => $type,
+        tableid     => $tableid,
+        file_path   => $file_path,
+        key         => $key,
+        action      => $action,
+        pos         => ( defined $pos && $pos ne '' ) ? ( 0 + $pos ) : undef,
+        payload     => $payload,
+    };
 }
 
 1;

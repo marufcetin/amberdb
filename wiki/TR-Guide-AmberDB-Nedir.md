@@ -55,7 +55,7 @@ AmberDB hicbir harici agir CPAN bagimliligina ihtiyac duymaksizin kendi icinde m
 | **`AmberDB::Ramdisk`** | Isletim sistemi duzeyinde RAM-Disk (Linux `tmpfs`, macOS `APFS`, Windows `ImDisk`) paylasimli bellek hizlandirmasi, TTL kontrolleri ve bellek ici ayna yonetimi. |
 | **`AmberDB::Locale`** | 10 dilde (`gb` [varsayilan Global Base], `tr`, `en`, `de`, `fr`, `es`, `ja`, `ru`, `ar`, `az`) dil duyarlı buyuk/kucuk harf donusumu, fonetik yumusama, aksan acilimi ve Unicode Collation (UCA) siralamasi. |
 | **`AmberDB::Array`** | Yuksek hizli dizi manipule yardimcilari (sirali karsilastirma, tekrarsiz fark alma, dilimleme, crop). |
-| **`AmberDB::String`** | Metin guvenligi, HTML temizleme, ASCII normalizasyonu ve URL slug uretimi. |
+| **`Amber::Util::String`** | Metin guvenligi, HTML temizleme, ASCII normalizasyonu ve URL slug uretimi. |
 | **`AmberDB::Date`** | Tarih/saat hesaplamalari, epoch donusumleri ve yerel tarih bicimlendirme. |
 | **`AmberDB::Tools`** | Veritabani bakimi, `.amberdb` yedekleme ve geri yukleme, `reindex`, `vacuum` ve tablo butunluk denetimleri. |
 

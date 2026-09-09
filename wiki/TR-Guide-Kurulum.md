@@ -93,40 +93,44 @@ RAM-Disk Baglanti Mimarisi
 ### Neden Root / Administrator Yetkisi Gereklidir?
 RAM-Disk olusturma, isletim sisteminin cekirdek bellek alanindan ozel bir blok tahsis edilmesini ve sanal bir dosya sistemi (Linux'ta `tmpfs`, Windows'ta `ImDisk`, macOS'ta `APFS RAM-Disk` / `hdiutil`) olarak dosya agacina baglanmasini (`mount`) icerir. Isletim sistemi cekirdek guvenligi geregi, dosya sistemi baglama (mount) ve surucu olusturma islemleri **kesinlikle `root` (Linux/macOS) veya `Administrator` (Windows)** yetkisi gerektirir.
 
-### 4.1 RAM-Disk Yonetim Aracinin Kullanimi (`bin/ramdisk_amberdb.pl`)
+### 4.1 RAM-Disk Yonetim Aracinin Kullanimi (`bin/amberdb_setup.pl`)
 
-AmberDB, tum platformlarda RAM-disk yonetimini otomatize eden `bin/ramdisk_amberdb.pl` betigiyle birlikte gelir.
+AmberDB, tum platformlarda RAM-disk yonetimini otomatize eden `bin/amberdb_setup.pl` araciyla birlikte gelir.
 
 #### Durum Denetimi (Yetki Gerektirmez):
 ```bash
-perl bin/ramdisk_amberdb.pl --status
+perl bin/amberdb_setup.pl --action=ramdisk --status
 ```
 
 #### RAM-Diski Baslatma (Mount):
 ```bash
 # Linux / macOS (Sudo ile):
-sudo perl bin/ramdisk_amberdb.pl --start --size 512M
+sudo perl bin/amberdb_setup.pl --action=ramdisk --start --size 512M
 
 # Windows (Yonetici PowerShell / CMD):
-perl bin/ramdisk_amberdb.pl --start --size 512M --drive R:
+perl bin/amberdb_setup.pl --action=ramdisk --start --size 512M --drive R:
 ```
 
 #### RAM-Diski Sonlandirma (Unmount):
 ```bash
 # Linux / macOS:
-sudo perl bin/ramdisk_amberdb.pl --stop
+sudo perl bin/amberdb_setup.pl --action=ramdisk --stop
 
 # Windows:
-perl bin/ramdisk_amberdb.pl --stop
+perl bin/amberdb_setup.pl --action=ramdisk --stop
 ```
 
-### 4.2 Platforma Ozel Yardimci Betikler
+### 4.2 Otomatik Kurulum ve Servis Entegrasyonu
 
-AmberDB deposunda `bin/` altinda her isletim sistemi icin hazir betikler mevcuttur:
-- **Linux Bash:** `sudo ./bin/ramdisk_linux.sh start 512M`
-- **macOS Bash (`hdiutil`):** `./bin/ramdisk_macos.sh start 512M`
-- **Windows PowerShell:** `powershell -ExecutionPolicy Bypass -File .\bin\ramdisk_windows.ps1 -Action start -Size 512MB`
-- **Windows Batch (CMD):** `.\bin\ramdisk_windows.bat start 512M`
+`amberdb_setup.pl` tek bir komutla dizinleri, dosya izinlerini, RAM-diski ve self-healing watchdog cron yapısını yapılandırır:
+
+```bash
+# Linux / macOS (Sudo ile):
+sudo perl bin/amberdb_setup.pl --action=install --user=eticaretim --size=512M --cron
+
+# Windows (Yönetici konsolunda):
+perl bin/amberdb_setup.pl --action=install --size=512M --drive=R: --cron
+```
 
 > [!IMPORTANT]
 > **Windows'ta ImDisk Gereksinimi:**  

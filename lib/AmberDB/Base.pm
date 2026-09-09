@@ -5,6 +5,7 @@ use warnings;
 use Encode qw(is_utf8 encode decode);
 use Carp qw(croak cluck);
 use File::Spec;
+use Fcntl qw(:DEFAULT :flock);
 use parent qw(AmberDB::Locale AmberDB::Array);
 
 our $VERSION = '5.25.0';
@@ -368,10 +369,11 @@ sub config {
         },
         use_ramdisk => sub {
             my $val = shift;
-            if ( defined $val && $val == 3 ) {
-                $val = 0;
+            my $tier = $self->_normalize_ramdisk_tier($val);
+            if ( $tier == 3 ) {
+                $tier = 0;
             }
-            $self->{_cfg}->{use_ramdisk} = $val ? 0 + $val : 0;
+            $self->{_cfg}->{use_ramdisk} = $tier;
             $self->_invalidate_table_paths();
         },
     };
@@ -474,6 +476,205 @@ sub init_date {
     }
 
     return $self->{date};
+}
+
+# ============================================================================
+# JOURNAL FILE OPERATIONS (Streaming Append, Safe Read, Atomic Rotate)
+# Default Directory: $dbase_dir/journal/
+# File Naming:
+#   Active Queue:  dbstore/journal/sync_events
+#   Rotated Queue: dbstore/journal/sync_events_1741512300
+#   Transaction:   dbstore/journal/txn_1741512300_1_4820
+# ============================================================================
+
+sub journal_dir {
+    my ($self) = @_;
+    my $dir = $self->path('journal_dir')
+           || $self->path('txn_dir')
+           || ( ( $self->path('dbase_dir') || "." ) . "/journal" );
+    $dir =~ s{[\\/]+$}{};
+    unless ( -d $dir ) {
+        $self->make_path($dir);
+    }
+    return $dir;
+}
+
+sub journal_slot {
+    my ( $self, $name ) = @_;
+    $name //= 'journal';
+
+    my $jdir = $self->journal_dir();
+
+    my $prefix = '';
+    if ( $self->config('use_section') ) {
+        $prefix = ( $self->config('section') // "center" ) . "-";
+    }
+
+    my $file_name = "${prefix}${name}";
+    return wantarray ? ( $jdir, $file_name ) : "$jdir/$file_name";
+}
+
+sub _resolve_journal_path {
+    my ( $self, $target ) = @_;
+    return unless defined $target && length $target;
+
+    if ( $target =~ m{[/\\]} ) {
+        return $target;
+    }
+    return $self->journal_slot($target);
+}
+
+sub journal_append {
+    my ( $self, $slot_or_path, @entries ) = @_;
+
+    my $target_path = $self->_resolve_journal_path($slot_or_path);
+    return unless defined $target_path && length $target_path;
+    return unless @entries;
+
+    my $lock_file = "${target_path}.lock";
+    open my $lfh, '>>', $lock_file or do {
+        cluck "[DB_JOURNAL] Cannot open lock file $lock_file: $!\n";
+        return;
+    };
+    flock( $lfh, LOCK_EX );
+
+    open my $fh, '>>', $target_path or do {
+        flock( $lfh, LOCK_UN );
+        close $lfh;
+        cluck "[DB_JOURNAL] Cannot open $target_path for append: $!\n";
+        return;
+    };
+
+    foreach my $item (@entries) {
+        my $line;
+        if ( ref($item) eq 'ARRAY' ) {
+            $line = $self->journal_encode( @$item );
+        }
+        else {
+            $line = "$item";
+        }
+        chomp $line;
+        print $fh "$line\n";
+    }
+
+    $fh->flush;
+    close $fh;
+
+    flock( $lfh, LOCK_UN );
+    close $lfh;
+
+    return 1;
+}
+
+sub journal_read {
+    my ( $self, $slot_or_path ) = @_;
+
+    my $target_path = $self->_resolve_journal_path($slot_or_path);
+    return () unless defined $target_path && -e $target_path;
+
+    my $lock_file = "${target_path}.lock";
+    my $lfh;
+    if ( -e $lock_file ) {
+        open $lfh, '<', $lock_file;
+        flock( $lfh, LOCK_SH ) if $lfh;
+    }
+
+    open my $fh, '<', $target_path or do {
+        if ($lfh) { flock( $lfh, LOCK_UN ); close $lfh; }
+        cluck "[DB_JOURNAL] Cannot open $target_path for read: $!\n";
+        return ();
+    };
+
+    my @lines = <$fh>;
+    close $fh;
+
+    if ($lfh) {
+        flock( $lfh, LOCK_UN );
+        close $lfh;
+    }
+
+    my @records;
+    for my $line (@lines) {
+        my $rec = $self->journal_decode($line);
+        push @records, $rec if $rec;
+    }
+
+    return @records;
+}
+
+sub journal_rotate {
+    my ( $self, $slot_or_path, $epoch ) = @_;
+
+    my $target_path = $self->_resolve_journal_path($slot_or_path);
+    return unless defined $target_path && -e $target_path && -s $target_path;
+
+    my $lock_file = "${target_path}.lock";
+    open my $lfh, '>>', $lock_file or return;
+    flock( $lfh, LOCK_EX );
+
+    unless ( -e $target_path && -s $target_path ) {
+        flock( $lfh, LOCK_UN );
+        close $lfh;
+        return;
+    }
+
+    $epoch //= time();
+    my $base_rotated = "${target_path}_${epoch}";
+    my $rotated_path = $base_rotated;
+    my $counter = 1;
+    while ( -e $rotated_path ) {
+        $rotated_path = "${base_rotated}_${counter}";
+        $counter++;
+    }
+
+    my $ok = rename( $target_path, $rotated_path );
+
+    flock( $lfh, LOCK_UN );
+    close $lfh;
+
+    return $ok ? $rotated_path : undef;
+}
+
+sub journal_delete {
+    my ( $self, $slot_or_path ) = @_;
+
+    my $target_path = $self->_resolve_journal_path($slot_or_path);
+    return unless defined $target_path;
+
+    if ( -e $target_path ) {
+        unlink $target_path;
+    }
+    my $lock_file = "${target_path}.lock";
+    if ( -e $lock_file ) {
+        unlink $lock_file;
+    }
+    return 1;
+}
+
+sub journal_scan {
+    my ( $self, $prefix ) = @_;
+    $prefix //= 'sync_events_';
+
+    my $jdir = $self->journal_dir();
+    return () unless -d $jdir;
+
+    my $sec_prefix = '';
+    if ( $self->config('use_section') ) {
+        $sec_prefix = ( $self->config('section') // "center" ) . "-";
+    }
+    my $full_prefix = "${sec_prefix}${prefix}";
+
+    opendir my $dh, $jdir or return ();
+    my @found;
+    while ( my $f = readdir($dh) ) {
+        next if $f eq '.' || $f eq '..' || $f =~ /\.lock$/;
+        if ( index($f, $full_prefix) == 0 && $f =~ /_\d+(?:_\d+)?$/ ) {
+            push @found, "$jdir/$f";
+        }
+    }
+    closedir $dh;
+
+    return sort @found;
 }
 
 1;

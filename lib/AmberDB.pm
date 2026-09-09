@@ -35,7 +35,7 @@ sub new {
     my %input = ref( $_[0] ) eq "HASH" ? %{ $_[0] } : @_;
 
     # Load input values.
-    my $self = {};
+    my $self = bless {}, $class;
     foreach ( keys %input ) {
         $self->{$_} = $input{$_};
     }
@@ -51,8 +51,11 @@ sub new {
     $self->{_pid}   ||= {};
     $self->{_cfg}->{user}     ||= "user_system";
     $self->{_cfg}->{language} ||= "gb";
-    if ( defined $self->{_cfg}->{use_ramdisk} && $self->{_cfg}->{use_ramdisk} == 3 ) {
-        $self->{_cfg}->{use_ramdisk} = 0;
+    if ( defined $self->{_cfg}->{use_ramdisk} ) {
+        $self->{_cfg}->{use_ramdisk} = $self->_normalize_ramdisk_tier( $self->{_cfg}->{use_ramdisk} );
+        if ( $self->{_cfg}->{use_ramdisk} == 3 ) {
+            $self->{_cfg}->{use_ramdisk} = 0;
+        }
     }
 
     # data path for database.
@@ -96,13 +99,14 @@ sub new {
     $self->{_cfg}->{ramdisk_mounted} = $rd_setup->{is_mounted} ? 1 : 0;
 
     # Ensure internal containers exist
-    $self->{_db}          ||= {};
-    $self->{_dbm}         ||= {};
-    $self->{_fd}          ||= {};
-    $self->{_tie}         ||= {};
-    $self->{_record_lock} ||= {};
-    $self->{_last_autoid} ||= {};
-    $self->{_error}       ||= [];
+    $self->{_db}     ||= {};
+    $self->{_dbm}    ||= {};
+    $self->{_fd}     ||= {};
+    $self->{_tie}    ||= {};
+    $self->{_lock}   ||= {};
+    $self->{_lastid} ||= {};
+    $self->{_error}  ||= [];
+    $self->{_no_txn} ||= 0;
 
     # 1. Lock allowed keys to prevent typos or unauthorized top-level attributes
     my %seen;
@@ -111,8 +115,8 @@ sub new {
         @input_keys,
         qw(
             _dbase _table _cache _auth _pid _txn _db _dbm _fd _tie
-            _record_lock _last_autoid _error _adb _rdbm_memo say
-            _path _cfg db_ext ext date locale slug_max_len
+            _lock _lastid _error _adb _rdbm_memo say
+            _path _cfg db_ext ext date locale slug_max_len _no_txn
             day day_id dayname days hour hour_id minute minute_id
             month month_id monthname months only_time second second_id
             short str time year year_dir
@@ -133,8 +137,8 @@ sub new {
     lock_value( %$self, '_dbm' );
     lock_value( %$self, '_fd' );
     lock_value( %$self, '_tie' );
-    lock_value( %$self, '_record_lock' );
-    lock_value( %$self, '_last_autoid' );
+    lock_value( %$self, '_lock' );
+    lock_value( %$self, '_lastid' );
     lock_value( %$self, '_path' );
     lock_value( %$self, '_cfg' );
 
@@ -164,6 +168,7 @@ sub insert_id {
 
     # check inputs.
     $tableid or return;
+    $rid //= 0;
 
     # Deflate if hashref is provided as single payload or as record payload
     if ( ref($rid) eq 'HASH' && !@record ) {
@@ -176,7 +181,7 @@ sub insert_id {
     }
     elsif ( @record && ref($record[0]) eq 'HASH' ) {
         my $h = $record[0];
-        $h->{id} //= $rid if defined $rid && $rid ne '';
+        $h->{id} //= $rid if $rid;
         my $def = $self->deflate( $tableid, $h );
         if ( ref($def) eq 'ARRAY' ) {
             $rid //= $def->[0];
@@ -243,30 +248,27 @@ sub insert_id {
         return;
     }
 
-    # add new record and close table.
-    $self->recs_put( $file_path, [ $rid, @record ] );
-
-    my $use_ramdisk = $table_info ? ( $table_info->{use_ramdisk} // $table_info->{use_cache} // 0 ) : 0;
+    my $use_ramdisk = $table_info->{use_ramdisk} // $table_info->{use_cache} // 0;
+    $use_ramdisk = $self->_normalize_ramdisk_tier($use_ramdisk);
     my $ramdisk_path;
     if ($use_ramdisk) {
         $self->ramdisk_ensure($tableid);
         $ramdisk_path = $self->ramdisk_path($tableid);
-        if ( $use_ramdisk == 2 && $ramdisk_path ) {
-            my $ram_file = "$ramdisk_path.$self->{db_ext}";
-            if ( $self->table_write($ram_file) ) {
-                $self->recs_put( $ram_file, [ $rid, @record ] );
-                $self->table_close($ram_file);
-            }
-        }
     }
 
-    if ($is_txn) {
-        my $new_raw;
-        $self->{_db}->{$file_path}->get( $rid, $new_raw );
-        $self->_txn_log( $tableid, "add", $rid, $new_raw, "" );
+    my $is_async_write = ( $use_ramdisk == 4 && !$is_txn );
+    my $target_file    = ( $is_async_write && $ramdisk_path ) ? "$ramdisk_path.$self->{db_ext}" : $file_path;
+
+    $self->recs_put( [ $target_file, $tableid ], [ $rid, @record ] );
+    if ($is_async_write) {
+        $self->ramdisk_mark_dirty( $file_path, $rid, 1 );
+    }
+    elsif ( $use_ramdisk == 4 && $is_txn ) {
+        $self->ramdisk_unmark_dirty( $file_path, $rid );
     }
 
     $self->table_close($file_path);
+    $self->table_close("$ramdisk_path.$self->{db_ext}") if $ramdisk_path;
     unless ($is_txn) { $self->flock_close( $tableid, $rid ); }
 
     # for index actions and backup
@@ -276,47 +278,43 @@ sub insert_id {
     $self->set_cache( $tableid, 'keys', undef );
     $self->set_cache( $tableid, 'count', undef );
 
-    # text backup record.
-    $self->recs_back( "add", $tableid, \@record );
+    unless ($is_async_write) {
+        $self->recs_back( "add", $tableid, \@record );
+    }
 
     ( $self->config('simple') || ( $table_info && $table_info->{use_simple} ) ) and return $rid;
 
     # update .inx and secondary indexes
     my @batch = ( \@record );
-    if ( $table_info->{use_junk} && $self->junk_rules( $table_info, @record ) ) {
-        $self->junk_records_add( $table_path, $table_info, $tableid, [$rid] );
-        $self->junk_search_add( $table_path, $table_info, $tableid, \@batch );
-        $self->junk_match_add( $table_path, $table_info, \@batch );
-        if ( $use_ramdisk && $ramdisk_path ) {
-            $self->junk_records_add( $ramdisk_path, $table_info, $tableid, [$rid] );
-            $self->junk_search_add( $ramdisk_path, $table_info, $tableid, \@batch );
-            $self->junk_match_add( $ramdisk_path, $table_info, \@batch );
+    my $idx_path = ( $use_ramdisk && $ramdisk_path ) ? $ramdisk_path : $table_path;
+
+    # 1. Base stream: unconditionally write all records
+    $self->records_add( $idx_path, $table_info, $tableid, [$rid] );
+    $self->search_add( $idx_path, $table_info, $tableid, \@batch );
+    $self->match_add( $idx_path, $table_info, \@batch );
+    $self->sort_add( $idx_path, $table_info, \@batch );
+    $self->unique_add( $idx_path, $table_info, \@batch );
+    $self->slug_add( $idx_path, $table_info, $tableid, \@batch );
+
+    # 2. Tiered stream (A: Aktif, B: Pasif/Junk)
+    if ( $table_info->{use_junk} ) {
+        my $is_junk = $self->junk_rules( $table_info, @record );
+        my $tier    = $is_junk ? 'B' : 'A';
+
+        $self->records_add( $idx_path, $table_info, $tableid, [$rid], $tier );
+        $self->search_add( $idx_path, $table_info, $tableid, \@batch, $tier );
+        $self->match_add( $idx_path, $table_info, \@batch, $tier );
+        $self->sort_add( $idx_path, $table_info, \@batch, $tier ) if $table_info->{sort_block};
+
+        if ( !$is_junk ) {
+            $self->facet_add( $idx_path, $table_info, \@batch );
         }
     }
-    else {
-        $self->records_add( $table_path, $table_info, $tableid, [$rid] );
-        $self->search_add( $table_path, $table_info, $tableid, \@batch );
-        $self->match_add( $table_path, $table_info, \@batch );
-        $self->facet_add( $table_path, $table_info, \@batch );
-        if ( $use_ramdisk && $ramdisk_path ) {
-            $self->records_add( $ramdisk_path, $table_info, $tableid, [$rid] );
-            $self->search_add( $ramdisk_path, $table_info, $tableid, \@batch );
-            $self->match_add( $ramdisk_path, $table_info, \@batch );
-            $self->facet_add( $ramdisk_path, $table_info, \@batch );
-        }
-    }
-    $self->sort_add( $table_path, $table_info, \@batch );
-    $self->unique_add( $table_path, $table_info, \@batch );
-    $self->set_slug( $tableid, \@record, 1 );
-
-    if ( $use_ramdisk && $ramdisk_path ) {
-        $self->sort_add( $ramdisk_path, $table_info, \@batch );
-        $self->unique_add( $ramdisk_path, $table_info, \@batch );
-        $self->set_slug( $tableid, \@record, 1, $ramdisk_path );
+    elsif ( $table_info->{use_facet} ) {
+        $self->facet_add( $idx_path, $table_info, \@batch );
     }
 
-    # authorization
-    $self->auth_write( $tableid, $table_path, "add", $rid );
+    $self->auth_write( $tableid, $table_path, "add", $rid ) unless $is_async_write;
 
     return $rid;
 }
@@ -328,6 +326,8 @@ sub insert_id {
 sub insert_list {
 
     my ( $self, $tableid, @records ) = @_;
+
+    local $self->{_no_txn} = 1;
 
     $tableid        or return {};
     scalar @records or return {};
@@ -350,27 +350,40 @@ sub insert_list {
     my $table_info = $self->table_info($tableid);
     my $is_simple  = $self->config('simple') || ( $table_info && $table_info->{use_simple} );
 
-    # Continue with the individual method in simple mode
-    if ($is_simple) {
-        my %statu;
-        foreach my $record (@records) {
-            my $rid = $self->insert_id( $tableid, @$record );
-            $rid or next;
-            $statu{$rid} = 1;
-        }
-        return \%statu;
-    }
     my $table_path = $self->table_path($tableid);
     my $file_path  = "$table_path.$self->{db_ext}";
 
-    # Phase 1: raw writings (the file is opened once)
-    $self->table_write($file_path) or return {};
+    # If explicit numeric IDs are passed, ensure ascending order
+    my $has_numeric_ids = 0;
+    for my $r (@records) {
+        if ( ref($r) eq 'ARRAY' && defined $r->[0] && $r->[0] =~ /^\d+$/ && $r->[0] > 0 ) {
+            $has_numeric_ids = 1;
+            last;
+        }
+    }
+    if ($has_numeric_ids) {
+        @records = sort { ( $a->[0] // 0 ) <=> ( $b->[0] // 0 ) } @records;
+    }
 
-    my $db = $self->{_db}->{$file_path};
+    my $use_ramdisk = $table_info ? ( $table_info->{use_ramdisk} // $table_info->{use_cache} // 0 ) : 0;
+    $use_ramdisk = $self->_normalize_ramdisk_tier($use_ramdisk);
+    my $ramdisk_path;
+    if ($use_ramdisk) {
+        $self->ramdisk_ensure($tableid);
+        $ramdisk_path = $self->ramdisk_path($tableid);
+    }
+
+    my $is_async_write = ( $use_ramdisk == 4 );
+    my $ram_file       = $ramdisk_path ? "$ramdisk_path.$self->{db_ext}" : undef;
+    my $target_file    = ( $is_async_write && $ram_file ) ? $ram_file : $file_path;
+
+    # Phase 1: raw writings (the file is opened once)
+    $self->table_write($target_file) or return {};
+    my $db = $self->{_db}->{$target_file};
 
     # Determine schema constraints upfront
     my $has_unique = 0;
-    if ( $table_info && ref($table_info->{blocks}) eq 'ARRAY' ) {
+    if ( ref($table_info->{blocks}) eq 'ARRAY' ) {
         for my $b (@{ $table_info->{blocks} }) {
             if ( ref($b) eq 'HASH' && defined $b->{valid} && $b->{valid} =~ /unique/i ) {
                 $has_unique = 1;
@@ -378,7 +391,7 @@ sub insert_list {
             }
         }
     }
-    my $has_repeat = ($table_info && $table_info->{repeat_ids} && $table_info->{repeat_start}) ? 1 : 0;
+    my $has_repeat = ($table_info->{repeat_ids} && $table_info->{repeat_start}) ? 1 : 0;
 
     my $initial_lastid = $self->table_lastid($tableid) // 0;
     my $cached_auto    = $self->get_cache( $tableid, 'last_autoid' );
@@ -391,11 +404,14 @@ sub insert_list {
         if ( defined $aid && $aid ne '' && $aid ne '0' ) {
             $aid = $self->id_check( $tableid, $aid );
             next unless defined $aid && $aid ne '';
-            if ( $aid =~ /^\d+$/ ) {
+            if ( !$is_simple && $aid =~ /^\d+$/ ) {
                 if ( $aid <= $running_autoid ) {
                     $self->transact_error( $file_path, "ID must be greater than last ID ($running_autoid): $aid" );
                     next;
                 }
+                $running_autoid = $aid;
+            }
+            elsif ( $is_simple && $aid =~ /^\d+$/ && $aid > $running_autoid ) {
                 $running_autoid = $aid;
             }
             $record->[0] = $aid;
@@ -433,20 +449,11 @@ sub insert_list {
         push @batch,    $record;    # for indexing: $rid at [0]
     }
 
-    my $use_ramdisk = $table_info ? ( $table_info->{use_ramdisk} // $table_info->{use_cache} // 0 ) : 0;
-    my $ramdisk_path;
-    if ($use_ramdisk) {
-        $self->ramdisk_ensure($tableid);
-        $ramdisk_path = $self->ramdisk_path($tableid);
-    }
-
     if (@batch) {
-        $self->recs_put( $file_path, @batch );
-        if ( $use_ramdisk == 2 && $ramdisk_path ) {
-            my $ram_file = "$ramdisk_path.$self->{db_ext}";
-            if ( $self->table_write($ram_file) ) {
-                $self->recs_put( $ram_file, @batch );
-                $self->table_close($ram_file);
+        $self->recs_put( [ $target_file, $tableid ], @batch );
+        if ($is_async_write) {
+            foreach my $rec (@batch) {
+                $self->ramdisk_mark_dirty( $file_path, $rec->[0], 1 );
             }
         }
         if (@new_rids) {
@@ -455,9 +462,20 @@ sub insert_list {
         }
     }
     $self->table_close($file_path);
+    $self->table_close($ram_file) if $ram_file;
 
     return \%statu unless @batch;
+    return \%statu if $is_simple;
 
+    my $idx_path = ( $use_ramdisk && $ramdisk_path ) ? $ramdisk_path : $table_path;
+
+    # 1. Base stream (All records)
+    $self->records_add( $idx_path, $table_info, $tableid, \@new_rids );
+    $self->search_add( $idx_path, $table_info, $tableid, \@batch );
+    $self->match_add( $idx_path, $table_info, \@batch );
+    $self->sort_add( $idx_path, $table_info, \@batch );
+
+    # 2. Tiered stream (A: Aktif, B: Pasif/Junk)
     if ( $table_info->{use_junk} ) {
         my ( @active_batch, @junk_batch, @active_rids, @junk_rids );
         for my $rec (@batch) {
@@ -470,83 +488,42 @@ sub insert_list {
                 push @active_rids, $rec->[0];
             }
         }
+
         if (@active_batch) {
-            $self->records_add( $table_path, $table_info, $tableid, \@active_rids );
-            $self->search_add( $table_path, $table_info, $tableid, \@active_batch );
-            $self->match_add( $table_path, $table_info, \@active_batch );
-            $self->facet_add( $table_path, $table_info, \@active_batch );
-            if ( $use_ramdisk && $ramdisk_path ) {
-                $self->records_add( $ramdisk_path, $table_info, $tableid, \@active_rids );
-                $self->search_add( $ramdisk_path, $table_info, $tableid, \@active_batch );
-                $self->match_add( $ramdisk_path, $table_info, \@active_batch );
-                $self->facet_add( $ramdisk_path, $table_info, \@active_batch );
-            }
+            $self->records_add( $idx_path, $table_info, $tableid, \@active_rids, 'A' );
+            $self->search_add( $idx_path, $table_info, $tableid, \@active_batch, 'A' );
+            $self->match_add( $idx_path, $table_info, \@active_batch, 'A' );
+            $self->sort_add( $idx_path, $table_info, \@active_batch, 'A' ) if $table_info->{sort_block};
+            $self->facet_add( $idx_path, $table_info, \@active_batch ) if $table_info->{use_facet};
         }
+
         if (@junk_batch) {
-            $self->junk_records_add( $table_path, $table_info, $tableid, \@junk_rids );
-            $self->junk_search_add( $table_path, $table_info, $tableid, \@junk_batch );
-            $self->junk_match_add( $table_path, $table_info, \@junk_batch );
-            if ( $use_ramdisk && $ramdisk_path ) {
-                $self->junk_records_add( $ramdisk_path, $table_info, $tableid, \@junk_rids );
-                $self->junk_search_add( $ramdisk_path, $table_info, $tableid, \@junk_batch );
-                $self->junk_match_add( $ramdisk_path, $table_info, \@junk_batch );
-            }
+            $self->records_add( $idx_path, $table_info, $tableid, \@junk_rids, 'B' );
+            $self->search_add( $idx_path, $table_info, $tableid, \@junk_batch, 'B' );
+            $self->match_add( $idx_path, $table_info, \@junk_batch, 'B' );
+            $self->sort_add( $idx_path, $table_info, \@junk_batch, 'B' ) if $table_info->{sort_block};
         }
-        $self->sort_add( $table_path, $table_info, \@batch );
-        $self->sort_add( $ramdisk_path, $table_info, \@batch ) if $use_ramdisk && $ramdisk_path;
     }
-    else {
-        # .inx update (at once)
-        $self->records_add( $table_path, $table_info, $tableid, \@new_rids );
-
-        # Phase 2: bulk index updates (each file is opened once)
-        $self->search_add( $table_path, $table_info, $tableid, \@batch );
-        $self->match_add( $table_path, $table_info, \@batch );
-        $self->facet_add( $table_path, $table_info, \@batch );
-        $self->sort_add( $table_path, $table_info, \@batch );
-
-        if ( $use_ramdisk && $ramdisk_path ) {
-            $self->records_add( $ramdisk_path, $table_info, $tableid, \@new_rids );
-            $self->search_add( $ramdisk_path, $table_info, $tableid, \@batch );
-            $self->match_add( $ramdisk_path, $table_info, \@batch );
-            $self->facet_add( $ramdisk_path, $table_info, \@batch );
-            $self->sort_add( $ramdisk_path, $table_info, \@batch );
-        }
+    elsif ( $table_info->{use_facet} ) {
+        $self->facet_add( $idx_path, $table_info, \@batch );
     }
 
     if ($has_unique) {
-        $self->unique_add( $table_path, $table_info, \@batch );
-        $self->unique_add( $ramdisk_path, $table_info, \@batch ) if $use_ramdisk && $ramdisk_path;
+        $self->unique_add( $idx_path, $table_info, \@batch );
     }
 
-    # Per-record operations: slug, auth, backup
-    if ( $table_info->{slug_block} ) {
-        my $slg_path = "${table_path}.slg";
-        if ( $self->table_write($slg_path) ) {
+    $self->slug_add( $idx_path, $table_info, $tableid, \@batch );
+
+    unless ($is_async_write) {
+        if ( $table_info->{log_owner} ) {
             foreach my $rec (@batch) {
-                $self->set_slug( $tableid, $rec, 1 );
-            }
-            $self->table_close($slg_path);
-        }
-        if ( $use_ramdisk && $ramdisk_path ) {
-            my $r_slg = "${ramdisk_path}.slg";
-            if ( $self->table_write($r_slg) ) {
-                foreach my $rec (@batch) {
-                    $self->set_slug( $tableid, $rec, 1, $ramdisk_path );
-                }
-                $self->table_close($r_slg);
+                $self->auth_write( $tableid, $table_path, "add", $rec->[0] );
             }
         }
-    }
 
-    if ( $table_info->{log_owner} ) {
-        foreach my $rec (@batch) {
-            $self->auth_write( $tableid, $table_path, "add", $rec->[0] );
+        unless ( $self->config('no_backup') || $table_info->{no_backup} ) {
+            $self->recs_back( "add", $tableid, @batch );
         }
-    }
-
-    unless ( $self->config('no_backup') || $table_info->{no_backup} ) {
-        $self->recs_back( "add", $tableid, @batch );
     }
 
     return \%statu;
@@ -597,21 +574,42 @@ sub update_id {
         $self->{_txn}->{locks}->{"${tableid}_${rid}"} = 1;
     }
 
-    my ( $new_record, $old_record, $value );
+    my $use_ramdisk = $table_info ? ( $table_info->{use_ramdisk} // $table_info->{use_cache} // 0 ) : 0;
+    $use_ramdisk = $self->_normalize_ramdisk_tier($use_ramdisk);
+    my $ramdisk_path;
+    if ($use_ramdisk) {
+        $self->ramdisk_ensure($tableid);
+        $ramdisk_path = $self->ramdisk_path($tableid);
+    }
 
-    # Open the data file.
-    $self->table_write($file_path)
-      or do {
-          unless ($is_txn) { $self->flock_close( $tableid, $rid ); }
-          $self->transact_error( $file_path, "$file_path can't open" );
-          return;
-      };
+    my $is_async_write = ( $use_ramdisk == 4 && !$is_txn );
+    my $is_dual_write  = ( $use_ramdisk == 2 || ( $is_txn && $use_ramdisk ) );
+    my $ram_file       = $ramdisk_path ? "$ramdisk_path.$self->{db_ext}" : undef;
+    my $old_record;
 
-    # Perform the record check. (exists or not)
-    $old_record = $self->recs_get( $file_path, $rid )->{$rid};
+    # Open data file on disk unless async write
+    unless ($is_async_write) {
+        $self->table_write($file_path)
+          or do {
+              unless ($is_txn) { $self->flock_close( $tableid, $rid ); }
+              $self->transact_error( $file_path, "$file_path can't open" );
+              return;
+          };
+    }
+
+    # Perform record check (exists or not)
+    if ( $is_async_write && $ram_file && -e $ram_file ) {
+        my $rh = $self->recs_get( $ram_file, $rid );
+        $old_record = $rh ? $rh->{$rid} : undef;
+    }
+    unless ( defined $old_record ) {
+        my $rh = $self->recs_get( $file_path, $rid );
+        $old_record = $rh ? $rh->{$rid} : undef;
+    }
+
     if ( !$table_info->{force} ) {
-        if ( !$old_record ) {
-            $self->table_close($file_path);
+        if ( !defined $old_record ) {
+            $self->table_close($file_path) unless $is_async_write;
             unless ($is_txn) { $self->flock_close( $tableid, $rid ); }
             $self->transact_error( $file_path, "Record not exist: $rid" );
             return;
@@ -624,36 +622,24 @@ sub update_id {
     # Validate unique constraints across blocks
     my ( $unq_ok, $unq_err ) = $self->unique_check( $table_path, $table_info, $rid, \@record );
     if ( !$unq_ok ) {
-        $self->table_close($file_path);
+        $self->table_close($file_path) unless $is_async_write;
         unless ($is_txn) { $self->flock_close( $tableid, $rid ); }
         $self->transact_error( $file_path, $unq_err // "Unique constraint violation" );
         return;
     }
 
-    # Perform the record operation and close the file.
-    $self->recs_put( $file_path, [ $rid, @record ] );
-
-    my $use_ramdisk = $table_info ? ( $table_info->{use_ramdisk} // $table_info->{use_cache} // 0 ) : 0;
-    my $ramdisk_path;
-    if ($use_ramdisk) {
-        $self->ramdisk_ensure($tableid);
-        $ramdisk_path = $self->ramdisk_path($tableid);
-        if ( $use_ramdisk == 2 && $ramdisk_path ) {
-            my $ram_file = "$ramdisk_path.$self->{db_ext}";
-            if ( $self->table_write($ram_file) ) {
-                $self->recs_put( $ram_file, [ $rid, @record ] );
-                $self->table_close($ram_file);
-            }
-        }
+    # Perform the record operation
+    my $target_file = ( $is_async_write && $ram_file ) ? $ram_file : $file_path;
+    $self->recs_put( [ $target_file, $tableid ], [ $rid, @record ] );
+    if ($is_async_write) {
+        $self->ramdisk_mark_dirty( $file_path, $rid, 2 );
+    }
+    elsif ( $use_ramdisk == 4 && $is_txn ) {
+        $self->ramdisk_unmark_dirty( $file_path, $rid );
     }
 
-    if ($is_txn) {
-        my $new_raw;
-        $self->{_db}->{$file_path}->get( $rid, $new_raw );
-        $self->_txn_log( $tableid, "edit", $rid, $new_raw, $old_record // "" );
-    }
-
-    $self->table_close($file_path);
+    $self->table_close($file_path) unless $is_async_write;
+    $self->table_close($ram_file) if $ram_file;
     unless ($is_txn) { $self->flock_close( $tableid, $rid ); }
 
     # Cache invalidate
@@ -662,72 +648,37 @@ sub update_id {
     my @new_rec = ( $rid, @record );
 
     # text backup record.
-    $self->recs_back( "edit", $tableid, \@new_rec )
-      or cluck "[DB_TIE] Backup error (edit). $tableid\n";
+    unless ($is_async_write) {
+        $self->recs_back( "edit", $tableid, \@new_rec )
+          or cluck "[DB_TIE] Backup error (edit). $tableid\n";
+    }
 
     ( $self->config('simple') || ( $table_info && $table_info->{use_simple} ) ) and return $rid;
 
-    my @old_rec = ( $rid, $self->db_decode($old_record) );
+    my @old_rec = $old_record ? ( $rid, $self->db_decode($old_record) ) : ($rid);
 
     # Index update (search, match, facet, sort)
     my @pairs = ( [ $rid, \@old_rec, \@new_rec ] );
-    if ( $table_info->{use_junk} ) {
-        $self->junk_transition( $table_path, $table_info, $tableid, \@pairs );
-        $self->junk_transition( $ramdisk_path, $table_info, $tableid, \@pairs ) if $use_ramdisk && $ramdisk_path;
-    }
-    else {
-        $self->search_modify( $table_path, $table_info, $tableid, \@pairs );
-        $self->match_modify( $table_path, $table_info, \@pairs );
-        $self->facet_modify( $table_path, $table_info, \@pairs );
-        if ( $use_ramdisk && $ramdisk_path ) {
-            $self->search_modify( $ramdisk_path, $table_info, $tableid, \@pairs );
-            $self->match_modify( $ramdisk_path, $table_info, \@pairs );
-            $self->facet_modify( $ramdisk_path, $table_info, \@pairs );
-        }
-    }
-    $self->sort_modify( $table_path, $table_info, \@pairs );
-    $self->unique_modify( $table_path, $table_info, \@pairs );
-    if ( $use_ramdisk && $ramdisk_path ) {
-        $self->sort_modify( $ramdisk_path, $table_info, \@pairs );
-        $self->unique_modify( $ramdisk_path, $table_info, \@pairs );
-    }
+    my $idx_path = ( $use_ramdisk && $ramdisk_path ) ? $ramdisk_path : $table_path;
 
-    # Update URL slug
-    if ( $table_info->{slug_block} ) {
-        my @s_blks = ref( $table_info->{slug_block} ) eq 'ARRAY' ? @{ $table_info->{slug_block} } : ( $table_info->{slug_block} );
-        my $slug_changed = 0;
-        for my $sb (@s_blks) {
-            my $ov = $old_rec[$sb] // '';
-            my $nv = $new_rec[$sb] // '';
-            if ( $ov ne $nv ) {
-                $slug_changed = 1;
-                last;
-            }
-        }
-        if ($slug_changed) {
-            my $slug_map = $self->get_slug( $tableid, 0, $rid );
-            my $old_slug = $slug_map->{$rid};
-            my $new_slug = $self->set_slug( $tableid, \@new_rec, 1 );
-            $self->set_slug( $tableid, \@new_rec, 1, $ramdisk_path ) if $use_ramdisk && $ramdisk_path;
-            if ( $old_slug && $new_slug && $old_slug ne $new_slug ) {
-                my $slg_path = "${table_path}.slg";
-                if ( $self->table_write($slg_path) ) {
-                    $self->recs_del( $slg_path, "1:$old_slug" );
-                    $self->table_close($slg_path);
-                }
-                if ( $use_ramdisk && $ramdisk_path ) {
-                    my $r_slg = "${ramdisk_path}.slg";
-                    if ( -e $r_slg && $self->table_write($r_slg) ) {
-                        $self->recs_del( $r_slg, "1:$old_slug" );
-                        $self->table_close($r_slg);
-                    }
-                }
-            }
-        }
+    # 1. Base stream unconditional index updates
+    $self->search_modify( $idx_path, $table_info, $tableid, \@pairs );
+    $self->match_modify( $idx_path, $table_info, \@pairs );
+
+    # 2. Tiered stream updates
+    if ( $table_info->{use_junk} ) {
+        $self->junk_transition( $idx_path, $table_info, $tableid, \@pairs );
     }
+    elsif ( $table_info->{use_facet} ) {
+        $self->facet_modify( $idx_path, $table_info, \@pairs );
+    }
+    $self->sort_modify( $idx_path, $table_info, \@pairs );
+    $self->unique_modify( $idx_path, $table_info, \@pairs );
+
+    $self->slug_modify( $idx_path, $table_info, $tableid, \@pairs );
 
     # Authorization
-    $self->auth_write( $tableid, $table_path, "edit", $rid );
+    $self->auth_write( $tableid, $table_path, "edit", $rid ) unless $is_async_write;
 
     return 1;
 }
@@ -738,6 +689,8 @@ sub update_id {
 sub update_list {
 
     my ( $self, $tableid, @records ) = @_;
+
+    local $self->{_no_txn} = 1;
 
     $tableid        or return {};
     scalar @records or return {};
@@ -760,25 +713,21 @@ sub update_list {
     my $table_info = $self->table_info($tableid);
     my $is_simple  = $self->config('simple') || ( $table_info && $table_info->{use_simple} );
 
-    # Continue with the individual method in simple mode
-    if ($is_simple) {
-        my %statu;
-        foreach my $record (@records) {
-            my $rid = $self->modify_id( $tableid, @$record );
-            $rid or next;
-            $statu{$rid} = 1;
-        }
-        return \%statu;
-    }
     my $table_path = $self->table_path($tableid);
     my $file_path  = "$table_path.$self->{db_ext}";
 
     my $use_ramdisk = $table_info ? ( $table_info->{use_ramdisk} // $table_info->{use_cache} // 0 ) : 0;
+    $use_ramdisk = $self->_normalize_ramdisk_tier($use_ramdisk);
     my $ramdisk_path;
     if ($use_ramdisk) {
         $self->ramdisk_ensure($tableid);
         $ramdisk_path = $self->ramdisk_path($tableid);
     }
+
+    my $is_txn         = ( $self->{_txn} && $self->{_txn}->{active} ) ? 1 : 0;
+    my $is_async_write = ( $use_ramdisk == 4 && !$is_txn );
+    my $ram_file       = $ramdisk_path ? "$ramdisk_path.$self->{db_ext}" : undef;
+    my $target_file    = ( $is_async_write && $ram_file ) ? $ram_file : $file_path;
 
     my $has_unique = ( $table_info->{valid} && grep { /unique/i } values %{ $table_info->{valid} } ) ? 1 : 0;
     my $has_repeat = ( $table_info->{repeat} && %{ $table_info->{repeat} } ) ? 1 : 0;
@@ -793,17 +742,24 @@ sub update_list {
     return {} unless @valid_inputs;
 
     # Phase 1: raw writings
-    $self->table_write($file_path) or return {};
+    $self->table_write($target_file) or return {};
 
-    my $old_map = $self->recs_get( $file_path, @input_rids ) || {};
+    my $existing = $self->recs_get( $target_file, @input_rids );
+    if ( $is_async_write && ( !$existing || !%$existing ) ) {
+        $existing = $self->recs_get( $file_path, @input_rids ) if -e $file_path;
+    }
 
     my ( %statu, @pairs, @records_to_put );
     foreach my $item (@valid_inputs) {
         my ( $rid, @data ) = @$item;
 
-        my $old_raw = $old_map->{$rid};
-        unless ( $table_info->{force} ) {
-            unless ($old_raw) {
+        my $old_raw = $existing->{$rid};
+        if ( !defined $old_raw ) {
+            my $rid_escape = $self->key_encode($rid);
+            if ( defined $rid_escape && $rid_escape ne $rid ) {
+                $old_raw = $existing->{$rid_escape};
+            }
+            if ( !defined $old_raw ) {
                 cluck "[DB_TIE] Not exist: $rid\n";
                 next;
             }
@@ -833,91 +789,51 @@ sub update_list {
         push @pairs, [ $rid, \@old_rec, \@new_rec ];
     }
 
-if (@records_to_put) {
-    $self->recs_put( $file_path, @records_to_put );
-    if ( $use_ramdisk == 2 && $ramdisk_path ) {
-        my $ram_file = "$ramdisk_path.$self->{db_ext}";
-        if ( $self->table_write($ram_file) ) {
-            $self->recs_put( $ram_file, @records_to_put );
-            $self->table_close($ram_file);
-        }
-    }
-}
-$self->table_close($file_path);
-
-return \%statu unless @pairs;
-
-# Phase 2: bulk index updates
-if ( $table_info->{use_junk} ) {
-    $self->junk_transition( $table_path, $table_info, $tableid, \@pairs );
-    $self->junk_transition( $ramdisk_path, $table_info, $tableid, \@pairs ) if $use_ramdisk && $ramdisk_path;
-}
-else {
-    $self->search_modify( $table_path, $table_info, $tableid, \@pairs );
-    $self->match_modify( $table_path, $table_info, \@pairs );
-    $self->facet_modify( $table_path, $table_info, \@pairs );
-    if ( $use_ramdisk && $ramdisk_path ) {
-        $self->search_modify( $ramdisk_path, $table_info, $tableid, \@pairs );
-        $self->match_modify( $ramdisk_path, $table_info, \@pairs );
-        $self->facet_modify( $ramdisk_path, $table_info, \@pairs );
-    }
-}
-$self->sort_modify( $table_path, $table_info, \@pairs );
-$self->unique_modify( $table_path, $table_info, \@pairs );
-if ( $use_ramdisk && $ramdisk_path ) {
-    $self->sort_modify( $ramdisk_path, $table_info, \@pairs );
-    $self->unique_modify( $ramdisk_path, $table_info, \@pairs );
-}
-
-# Per-record operations: slug, auth, backup
-if ( $table_info->{slug_block} ) {
-    my @s_blks = ref( $table_info->{slug_block} ) eq 'ARRAY' ? @{ $table_info->{slug_block} } : ( $table_info->{slug_block} );
-    my @slug_deletes;
-
-    foreach my $pair (@pairs) {
-        my ( $rid, $old_rec, $new_rec ) = @$pair;
-        my $slug_changed = 0;
-        for my $sb (@s_blks) {
-            my $ov = $old_rec->[$sb] // '';
-            my $nv = $new_rec->[$sb] // '';
-            if ( $ov ne $nv ) {
-                $slug_changed = 1;
-                last;
+    if (@records_to_put) {
+        $self->recs_put( [ $target_file, $tableid ], @records_to_put );
+        if ($is_async_write) {
+            foreach my $rec (@records_to_put) {
+                $self->ramdisk_mark_dirty( $file_path, $rec->[0], 2 );
             }
         }
-        if ($slug_changed) {
-            my $slug_map = $self->get_slug( $tableid, 0, $rid );
-            my $old_slug = $slug_map->{$rid};
-            my $new_slug = $self->set_slug( $tableid, $new_rec, 1 );
-            $self->set_slug( $tableid, $new_rec, 1, $ramdisk_path ) if $use_ramdisk && $ramdisk_path;
-            if ( $old_slug && $new_slug && $old_slug ne $new_slug ) {
-                push @slug_deletes, "1:$old_slug";
+        elsif ( $use_ramdisk == 4 && $is_txn ) {
+            foreach my $rec (@records_to_put) {
+                $self->ramdisk_unmark_dirty( $file_path, $rec->[0] );
             }
         }
     }
-    if ( @slug_deletes ) {
-        my $slg_path = "${table_path}.slg";
-        if ( $self->table_write($slg_path) ) {
-            $self->recs_del( $slg_path, @slug_deletes );
-            $self->table_close($slg_path);
-        }
-        if ( $use_ramdisk && $ramdisk_path ) {
-            my $r_slg = "${ramdisk_path}.slg";
-            if ( -e $r_slg && $self->table_write($r_slg) ) {
-                $self->recs_del( $r_slg, @slug_deletes );
-                $self->table_close($r_slg);
-            }
-        }
-    }
-}
+    $self->table_close($file_path);
+    $self->table_close($ram_file) if $ram_file;
 
-    if ( $table_info->{log_owner} ) {
+    return \%statu unless @pairs;
+    return \%statu if $is_simple;
+
+    my $idx_path = ( $use_ramdisk && $ramdisk_path ) ? $ramdisk_path : $table_path;
+
+    # Phase 2: bulk index updates
+    # 1. Base stream unconditional index updates
+    $self->search_modify( $idx_path, $table_info, $tableid, \@pairs );
+    $self->match_modify( $idx_path, $table_info, \@pairs );
+
+    # 2. Tiered stream updates
+    if ( $table_info->{use_junk} ) {
+        $self->junk_transition( $idx_path, $table_info, $tableid, \@pairs );
+    }
+    elsif ( $table_info->{use_facet} ) {
+        $self->facet_modify( $idx_path, $table_info, \@pairs );
+    }
+    $self->sort_modify( $idx_path, $table_info, \@pairs );
+    $self->unique_modify( $idx_path, $table_info, \@pairs );
+
+    $self->slug_modify( $idx_path, $table_info, $tableid, \@pairs );
+
+    if ( $table_info->{log_owner} && !$is_async_write ) {
         foreach my $pair (@pairs) {
             $self->auth_write( $tableid, $table_path, "edit", $pair->[0] );
         }
     }
 
-    unless ( $self->config('no_backup') || $table_info->{no_backup} ) {
+    unless ( $is_async_write || $self->config('no_backup') || $table_info->{no_backup} ) {
         $self->recs_back( "edit", $tableid, map { $_->[2] } @pairs );
     }
 
@@ -1145,13 +1061,7 @@ sub update_field {
         return;
     }
 
-    $self->recs_put( $file_path, [ $rid, @fields_norm ] );
-
-    if ($is_txn) {
-        my $new_raw;
-        $self->{_db}->{$file_path}->get( $rid, $new_raw );
-        $self->_txn_log( $tableid, "edit", $rid, $new_raw, $old_record // "" );
-    }
+    $self->recs_put( [ $file_path, $tableid ], [ $rid, @fields_norm ] );
 
     $self->table_close($file_path);
     unless ($is_txn) { $self->flock_close( $tableid, $rid ); }
@@ -1174,21 +1084,7 @@ sub update_field {
     $self->sort_modify( $table_path, $table_info, \@pairs );
     $self->unique_modify( $table_path, $table_info, \@pairs );
 
-    if ( $table_info->{slug_block} ) {
-        my @s_blks = ref( $table_info->{slug_block} ) eq 'ARRAY' ? @{ $table_info->{slug_block} } : ( $table_info->{slug_block} );
-        if ( grep { $_ == $blk_idx } @s_blks ) {
-            my $slug_map = $self->get_slug( $tableid, 0, $rid );
-            my $old_slug = $slug_map->{$rid};
-            my $new_slug = $self->set_slug( $tableid, \@new_rec, 1 );
-            if ( $old_slug && $new_slug && $old_slug ne $new_slug ) {
-                my $slg_path = "${table_path}.slg";
-                if ( $self->table_write($slg_path) ) {
-                    $self->recs_del( $slg_path, "1:$old_slug" );
-                    $self->table_close($slg_path);
-                }
-            }
-        }
-    }
+    $self->slug_modify( $table_path, $table_info, $tableid, \@pairs );
 
     $self->auth_write( $tableid, $table_path, "edit", $rid );
     return 1;
@@ -1309,13 +1205,7 @@ sub insert_field {
     @fields_norm = $self->enc_validate( $tableid, \@fields_norm );
     @new_rec = ( $rid, @fields_norm );
 
-    $self->recs_put( $file_path, [ $rid, @fields_norm ] );
-
-    if ($is_txn) {
-        my $new_raw;
-        $self->{_db}->{$file_path}->get( $rid, $new_raw );
-        $self->_txn_log( $tableid, "edit", $rid, $new_raw, $old_record // "" );
-    }
+    $self->recs_put( [ $file_path, $tableid ], [ $rid, @fields_norm ] );
 
     $self->table_close($file_path);
     unless ($is_txn) { $self->flock_close( $tableid, $rid ); }
@@ -1459,59 +1349,50 @@ sub delete_field {
     @fields_norm = $self->enc_validate( $tableid, \@fields_norm );
     @new_rec = ( $rid, @fields_norm );
 
-    $self->recs_put( $file_path, [ $rid, @fields_norm ] );
-
     my $use_ramdisk = $table_info ? ( $table_info->{use_ramdisk} // $table_info->{use_cache} // 0 ) : 0;
+    $use_ramdisk = $self->_normalize_ramdisk_tier($use_ramdisk);
     my $ramdisk_path;
     if ($use_ramdisk) {
         $self->ramdisk_ensure($tableid);
         $ramdisk_path = $self->ramdisk_path($tableid);
-        if ( $use_ramdisk == 2 && $ramdisk_path ) {
-            my $ram_file = "$ramdisk_path.$self->{db_ext}";
-            if ( $self->table_write($ram_file) ) {
-                $self->recs_put( $ram_file, [ $rid, @fields_norm ] );
-                $self->table_close($ram_file);
-            }
-        }
     }
 
-    if ($is_txn) {
-        my $new_raw;
-        $self->{_db}->{$file_path}->get( $rid, $new_raw );
-        $self->_txn_log( $tableid, "edit", $rid, $new_raw, $old_record // "" );
+    my $is_async_write = ( $use_ramdisk == 4 && !$is_txn );
+    my $target_file    = ( $is_async_write && $ramdisk_path ) ? "$ramdisk_path.$self->{db_ext}" : $file_path;
+
+    $self->recs_put( [ $target_file, $tableid ], [ $rid, @fields_norm ] );
+    if ($is_async_write) {
+        $self->ramdisk_mark_dirty( $file_path, $rid, 2 );
+    }
+    elsif ( $use_ramdisk == 4 && $is_txn ) {
+        $self->ramdisk_unmark_dirty( $file_path, $rid );
     }
 
     $self->table_close($file_path);
+    $self->table_close("$ramdisk_path.$self->{db_ext}") if $ramdisk_path;
     unless ($is_txn) { $self->flock_close( $tableid, $rid ); }
 
     $self->clear_cache( $tableid, $rid );
-    $self->recs_back( "edit", $tableid, \@new_rec );
+    unless ($is_async_write) {
+        $self->recs_back( "edit", $tableid, \@new_rec );
+    }
 
     ( $self->config('simple') || ( $table_info && $table_info->{use_simple} ) ) and return 1;
 
+    my $idx_path = ( $use_ramdisk && $ramdisk_path ) ? $ramdisk_path : $table_path;
     my @pairs = ( [ $rid, \@old_rec, \@new_rec ] );
     if ( $table_info->{use_junk} ) {
-        $self->junk_transition( $table_path, $table_info, $tableid, \@pairs );
-        $self->junk_transition( $ramdisk_path, $table_info, $tableid, \@pairs ) if $use_ramdisk && $ramdisk_path;
+        $self->junk_transition( $idx_path, $table_info, $tableid, \@pairs );
     }
     else {
-        $self->search_modify( $table_path, $table_info, $tableid, \@pairs );
-        $self->match_modify( $table_path, $table_info, \@pairs );
-        $self->facet_modify( $table_path, $table_info, \@pairs );
-        if ( $use_ramdisk && $ramdisk_path ) {
-            $self->search_modify( $ramdisk_path, $table_info, $tableid, \@pairs );
-            $self->match_modify( $ramdisk_path, $table_info, \@pairs );
-            $self->facet_modify( $ramdisk_path, $table_info, \@pairs );
-        }
+        $self->search_modify( $idx_path, $table_info, $tableid, \@pairs );
+        $self->match_modify( $idx_path, $table_info, \@pairs );
+        $self->facet_modify( $idx_path, $table_info, \@pairs );
     }
-    $self->sort_modify( $table_path, $table_info, \@pairs );
-    $self->unique_modify( $table_path, $table_info, \@pairs );
-    if ( $use_ramdisk && $ramdisk_path ) {
-        $self->sort_modify( $ramdisk_path, $table_info, \@pairs );
-        $self->unique_modify( $ramdisk_path, $table_info, \@pairs );
-    }
+    $self->sort_modify( $idx_path, $table_info, \@pairs );
+    $self->unique_modify( $idx_path, $table_info, \@pairs );
 
-    $self->auth_write( $tableid, $table_path, "edit", $rid );
+    $self->auth_write( $tableid, $table_path, "edit", $rid ) unless $is_async_write;
     return 1;
 }
 
@@ -1543,58 +1424,73 @@ sub delete_id {
         $self->{_txn}->{locks}->{"${tableid}_${rid}"} = 1;
     }
 
-    # Replace record
-    # Check writability
-    $self->table_write($file_path)
-      or do {
-          unless ($is_txn) { $self->flock_close( $tableid, $rid ); }
-          $self->transact_error( $file_path, "Could not open $file_path to write" );
-          return;
-      };
+    my $use_ramdisk = $table_info ? ( $table_info->{use_ramdisk} // $table_info->{use_cache} // 0 ) : 0;
+    $use_ramdisk = $self->_normalize_ramdisk_tier($use_ramdisk);
+    my $ramdisk_path;
+    if ($use_ramdisk) {
+        $self->ramdisk_ensure($tableid);
+        $ramdisk_path = $self->ramdisk_path($tableid);
+    }
+
+    my $is_async_write = ( $use_ramdisk == 4 && !$is_txn );
+    my $is_dual_write  = ( $use_ramdisk == 2 || ( $is_txn && $use_ramdisk ) );
+
+    my $ram_file = $ramdisk_path ? "$ramdisk_path.$self->{db_ext}" : undef;
+
+    # Open table to write unless async write
+    unless ($is_async_write) {
+        $self->table_write($file_path)
+          or do {
+              unless ($is_txn) { $self->flock_close( $tableid, $rid ); }
+              $self->transact_error( $file_path, "Could not open $file_path to write" );
+              return;
+          };
+    }
 
     # If no record, return
-    my $record = $self->recs_get( $file_path, $rid )->{$rid};
+    my $record;
+    if ( $is_async_write && $ram_file && -e $ram_file ) {
+        my $rec_h = $self->recs_get( $ram_file, $rid );
+        $record   = $rec_h ? $rec_h->{$rid} : undef;
+    }
+    unless ( defined $record ) {
+        my $rec_h = $self->recs_get( $file_path, $rid );
+        $record   = $rec_h ? $rec_h->{$rid} : undef;
+    }
+
     if ( !$record ) {
-        $self->table_close($file_path);
+        $self->table_close($file_path) unless $is_async_write;
         unless ($is_txn) { $self->flock_close( $tableid, $rid ); }
         return;
     }
 
     # Delete the record
-    $self->recs_del( $file_path, $rid );
-
-    my $use_ramdisk = $table_info ? ( $table_info->{use_ramdisk} // $table_info->{use_cache} // 0 ) : 0;
-    my $ramdisk_path;
-    if ($use_ramdisk) {
-        $self->ramdisk_ensure($tableid);
-        $ramdisk_path = $self->ramdisk_path($tableid);
-        if ( $use_ramdisk == 2 && $ramdisk_path ) {
-            my $ram_file = "$ramdisk_path.$self->{db_ext}";
-            if ( -e $ram_file && $self->table_write($ram_file) ) {
-                $self->recs_del( $ram_file, $rid );
-                $self->table_close($ram_file);
-            }
-        }
+    my $target_file = ( $is_async_write && $ram_file ) ? $ram_file : $file_path;
+    $self->recs_del( [ $target_file, $tableid ], $rid );
+    if ($is_async_write) {
+        $self->ramdisk_mark_dirty( $file_path, $rid, 3 );
+    }
+    elsif ( $use_ramdisk == 4 && $is_txn ) {
+        $self->ramdisk_unmark_dirty( $file_path, $rid );
     }
 
-    if ($is_txn) {
-        $self->_txn_log( $tableid, "del", $rid, "", $record );
-    }
-
-    $self->table_close($file_path);
+    $self->table_close($file_path) unless $is_async_write;
+    $self->table_close($ram_file) if $ram_file;
     unless ($is_txn) { $self->flock_close( $tableid, $rid ); }
 
     # Cache invalidate
     $self->clear_cache($tableid, $rid);
 
     # Text backup record
-    $self->recs_back( "del", $tableid, [ $rid, "" ] )
-      or cluck "[DB_TIE] Backup error (del). $tableid\n";
+    unless ($is_async_write) {
+        $self->recs_back( "del", $tableid, [ $rid, "" ] )
+          or cluck "[DB_TIE] Backup error (del). $tableid\n";
+    }
 
     # Move to archive if keep_deleted enabled
-    if ( $table_info->{keep_deleted} ) {
+    if ( $table_info->{keep_deleted} && !$is_async_write ) {
         (         $self->table_write($del_path)
-              and $self->recs_put( $del_path, [ $rid, $record ] )
+              and $self->recs_put( [ $del_path, $tableid ], [ $rid, $record ] )
               and $self->table_close($del_path) )
           or cluck "[DB_TIE] $del_path can't open.\n";
     }
@@ -1609,59 +1505,31 @@ sub delete_id {
 
     # Clear Index (search, match, facet, sort)
     my @batch = ( \@record );
-    if ( $table_info->{use_junk} && $self->junk_rules( $table_info, @record ) ) {
-        $self->junk_records_del( $table_path, $table_info, [$rid], $tableid );
-        $self->junk_search_del( $table_path, $table_info, $tableid, \@batch );
-        $self->junk_match_del( $table_path, $table_info, \@batch );
-        if ( $use_ramdisk && $ramdisk_path ) {
-            $self->junk_records_del( $ramdisk_path, $table_info, [$rid], $tableid );
-            $self->junk_search_del( $ramdisk_path, $table_info, $tableid, \@batch );
-            $self->junk_match_del( $ramdisk_path, $table_info, \@batch );
-        }
+    my $idx_path = ( $use_ramdisk && $ramdisk_path ) ? $ramdisk_path : $table_path;
+
+    # 1. Base stream: unconditionally delete from all records
+    $self->records_del( $idx_path, $table_info, [$rid], $tableid );
+    $self->search_del( $idx_path, $table_info, $tableid, \@batch );
+    $self->match_del( $idx_path, $table_info, \@batch );
+    $self->sort_del( $idx_path, $table_info, \@batch );
+    $self->unique_del( $idx_path, $table_info, \@batch );
+
+    # 2. Tiered stream (clean from both A and B tiers)
+    if ( $table_info->{use_junk} ) {
+        $self->records_del( $idx_path, $table_info, [$rid], $tableid, ['A', 'B'] );
+        $self->search_del( $idx_path, $table_info, $tableid, \@batch, ['A', 'B'] );
+        $self->match_del( $idx_path, $table_info, \@batch, ['A', 'B'] );
+        $self->sort_del( $idx_path, $table_info, \@batch, ['A', 'B'] ) if $table_info->{sort_block};
+        $self->facet_del( $idx_path, $table_info, \@batch ) if $table_info->{use_facet};
     }
-    else {
-        $self->records_del( $table_path, $table_info, [$rid], $tableid );
-        $self->search_del( $table_path, $table_info, $tableid, \@batch );
-        $self->match_del( $table_path, $table_info, \@batch );
-        $self->facet_del( $table_path, $table_info, \@batch );
-        if ( $use_ramdisk && $ramdisk_path ) {
-            $self->records_del( $ramdisk_path, $table_info, [$rid], $tableid );
-            $self->search_del( $ramdisk_path, $table_info, $tableid, \@batch );
-            $self->match_del( $ramdisk_path, $table_info, \@batch );
-            $self->facet_del( $ramdisk_path, $table_info, \@batch );
-        }
-    }
-    $self->sort_del( $table_path, $table_info, \@batch );
-    $self->unique_del( $table_path, $table_info, \@batch );
-    if ( $use_ramdisk && $ramdisk_path ) {
-        $self->sort_del( $ramdisk_path, $table_info, \@batch );
-        $self->unique_del( $ramdisk_path, $table_info, \@batch );
+    elsif ( $table_info->{use_facet} ) {
+        $self->facet_del( $idx_path, $table_info, \@batch );
     }
 
-    # Clear URL slug
-    if ( $table_info->{slug_block} ) {
-        my $slug_map = $self->get_slug( $tableid, 0, $rid );
-        my $slug     = $slug_map->{$rid};
-        if ($slug) {
-            my $slg_path = "${table_path}.slg";
-            if ( $self->table_write($slg_path) ) {
-                $self->recs_del( $slg_path, "0:$rid" );
-                $self->recs_del( $slg_path, "1:$slug" );
-                $self->table_close($slg_path);
-            }
-            if ( $use_ramdisk && $ramdisk_path ) {
-                my $r_slg = "${ramdisk_path}.slg";
-                if ( -e $r_slg && $self->table_write($r_slg) ) {
-                    $self->recs_del( $r_slg, "0:$rid" );
-                    $self->recs_del( $r_slg, "1:$slug" );
-                    $self->table_close($r_slg);
-                }
-            }
-        }
-    }
+    $self->slug_del( $idx_path, $table_info, $tableid, [$rid] );
 
     # Authorization
-    $self->auth_write( $tableid, $table_path, "del", $rid );
+    $self->auth_write( $tableid, $table_path, "del", $rid ) unless $is_async_write;
 
     return 1;
 }
@@ -1673,6 +1541,8 @@ sub delete_list {
 
     my ( $self, $tableid, @records ) = @_;
 
+    local $self->{_no_txn} = 1;
+
     $tableid        or return {};
     scalar @records or return {};
 
@@ -1683,16 +1553,6 @@ sub delete_list {
     my $table_info = $self->table_info($tableid);
     my $is_simple  = $self->config('simple') || ( $table_info && $table_info->{use_simple} );
 
-    # Continue with individual method in simple mode
-    if ($is_simple) {
-        my %statu;
-        foreach my $record (@records) {
-            my $rid = $self->delete_id( $tableid, $record );
-            $rid or next;
-            $statu{$rid} = 1;
-        }
-        return \%statu;
-    }
     my $table_path = $self->table_path($tableid);
     my $file_path  = "$table_path.$self->{db_ext}";
     my $del_path   = "$table_path.del";
@@ -1704,16 +1564,24 @@ sub delete_list {
     }
     return {} unless @input_rids;
 
-    # Phase 1: raw deletes
-    $self->table_write($file_path) or return {};
-
-    my $raw_map = $self->recs_get( $file_path, @input_rids ) || {};
-
     my $use_ramdisk = $table_info ? ( $table_info->{use_ramdisk} // $table_info->{use_cache} // 0 ) : 0;
+    $use_ramdisk = $self->_normalize_ramdisk_tier($use_ramdisk);
     my $ramdisk_path;
     if ($use_ramdisk) {
         $self->ramdisk_ensure($tableid);
         $ramdisk_path = $self->ramdisk_path($tableid);
+    }
+
+    my $is_async_write = ( $use_ramdisk == 4 );
+    my $ram_file       = $ramdisk_path ? "$ramdisk_path.$self->{db_ext}" : undef;
+    my $target_file    = ( $is_async_write && $ram_file ) ? $ram_file : $file_path;
+
+    # Phase 1: raw deletes
+    $self->table_write($target_file) or return {};
+    my $raw_map = $self->recs_get( $target_file, @input_rids ) || {};
+    if ( $is_async_write && ( !$raw_map || !%$raw_map ) ) {
+        $raw_map = $self->recs_get( $file_path, @input_rids ) if -e $file_path;
+        $raw_map ||= {};
     }
 
     my ( %statu, @batch, @del_rids );
@@ -1728,127 +1596,67 @@ sub delete_list {
     }
 
     if (@del_rids) {
-        $self->recs_del( $file_path, @del_rids );
-        if ( $use_ramdisk == 2 && $ramdisk_path ) {
-            my $ram_file = "$ramdisk_path.$self->{db_ext}";
-            if ( -e $ram_file && $self->table_write($ram_file) ) {
-                $self->recs_del( $ram_file, @del_rids );
-                $self->table_close($ram_file);
+        $self->recs_del( [ $target_file, $tableid ], @del_rids );
+        if ($is_async_write) {
+            foreach my $rid (@del_rids) {
+                $self->ramdisk_mark_dirty( $file_path, $rid, 3 );
             }
         }
     }
     $self->table_close($file_path);
+    $self->table_close($ram_file) if $ram_file;
 
     return \%statu unless @batch;
     $self->set_cache($tableid);
+    return \%statu if $is_simple;
 
     # Archive
-    if ( $table_info->{keep_deleted} ) {
+    if ( $table_info->{keep_deleted} && !$is_async_write ) {
         if ( $self->table_write($del_path) ) {
             my @archive_records = map {
                 [ $_->[0], $self->db_encode( @{$_}[ 1 .. $#$_ ] ) ]
             } @batch;
-            $self->recs_put( $del_path, @archive_records );
+            $self->recs_put( [ $del_path, $tableid ], @archive_records );
             $self->table_close($del_path);
         }
     }
 
+    my $idx_path = ( $use_ramdisk && $ramdisk_path ) ? $ramdisk_path : $table_path;
+
     # Phase 2: bulk index clearing
+    # 1. Base stream unconditional delete
+    $self->records_del( $idx_path, $table_info, \@del_rids, $tableid );
+    $self->search_del( $idx_path, $table_info, $tableid, \@batch );
+    $self->match_del( $idx_path, $table_info, \@batch );
+    $self->sort_del( $idx_path, $table_info, \@batch );
+
+    # 2. Tiered stream cleanups
     if ( $table_info->{use_junk} ) {
-        my ( @active_batch, @junk_batch, @active_rids, @junk_rids );
-        for my $rec (@batch) {
-            if ( $self->junk_rules( $table_info, @$rec ) ) {
-                push @junk_batch, $rec;
-                push @junk_rids, $rec->[0];
-            }
-            else {
-                push @active_batch, $rec;
-                push @active_rids, $rec->[0];
-            }
-        }
-        if (@active_batch) {
-            $self->records_del( $table_path, $table_info, \@active_rids, $tableid );
-            $self->search_del( $table_path, $table_info, $tableid, \@active_batch );
-            $self->match_del( $table_path, $table_info, \@active_batch );
-            $self->facet_del( $table_path, $table_info, \@active_batch );
-            if ( $use_ramdisk && $ramdisk_path ) {
-                $self->records_del( $ramdisk_path, $table_info, \@active_rids, $tableid );
-                $self->search_del( $ramdisk_path, $table_info, $tableid, \@active_batch );
-                $self->match_del( $ramdisk_path, $table_info, \@active_batch );
-                $self->facet_del( $ramdisk_path, $table_info, \@active_batch );
-            }
-        }
-        if (@junk_batch) {
-            $self->junk_records_del( $table_path, $table_info, \@junk_rids, $tableid );
-            $self->junk_search_del( $table_path, $table_info, $tableid, \@junk_batch );
-            $self->junk_match_del( $table_path, $table_info, \@junk_batch );
-            if ( $use_ramdisk && $ramdisk_path ) {
-                $self->junk_records_del( $ramdisk_path, $table_info, \@junk_rids, $tableid );
-                $self->junk_search_del( $ramdisk_path, $table_info, $tableid, \@junk_batch );
-                $self->junk_match_del( $ramdisk_path, $table_info, \@junk_batch );
-            }
-        }
-        $self->sort_del( $table_path, $table_info, \@batch );
-        $self->sort_del( $ramdisk_path, $table_info, \@batch ) if $use_ramdisk && $ramdisk_path;
+        $self->records_del( $idx_path, $table_info, \@del_rids, $tableid, ['A', 'B'] );
+        $self->search_del( $idx_path, $table_info, $tableid, \@batch, ['A', 'B'] );
+        $self->match_del( $idx_path, $table_info, \@batch, ['A', 'B'] );
+        $self->sort_del( $idx_path, $table_info, \@batch, ['A', 'B'] ) if $table_info->{sort_block};
+        $self->facet_del( $idx_path, $table_info, \@batch ) if $table_info->{use_facet};
     }
-    else {
-        $self->records_del( $table_path, $table_info, \@del_rids, $tableid );
-        $self->search_del( $table_path, $table_info, $tableid, \@batch );
-        $self->match_del( $table_path, $table_info, \@batch );
-        $self->facet_del( $table_path, $table_info, \@batch );
-        $self->sort_del( $table_path, $table_info, \@batch );
-
-        if ( $use_ramdisk && $ramdisk_path ) {
-            $self->records_del( $ramdisk_path, $table_info, \@del_rids, $tableid );
-            $self->search_del( $ramdisk_path, $table_info, $tableid, \@batch );
-            $self->match_del( $ramdisk_path, $table_info, \@batch );
-            $self->facet_del( $ramdisk_path, $table_info, \@batch );
-            $self->sort_del( $ramdisk_path, $table_info, \@batch );
-        }
+    elsif ( $table_info->{use_facet} ) {
+        $self->facet_del( $idx_path, $table_info, \@batch );
     }
 
-    $self->unique_del( $table_path, $table_info, \@batch );
-    $self->unique_del( $ramdisk_path, $table_info, \@batch ) if $use_ramdisk && $ramdisk_path;
+    $self->unique_del( $idx_path, $table_info, \@batch );
 
-    # Clear URL slug in batch
-    if ( $table_info->{slug_block} ) {
-        my @rids = map { $_->[0] } @batch;
-        my $slug_map = $self->get_slug( $tableid, 0, @rids );
-        my $slg_path = "${table_path}.slg";
-        if ( $self->table_write($slg_path) ) {
-            my @to_del;
-            for my $rid (@rids) {
-                my $slug = $slug_map->{$rid};
-                push @to_del, "0:$rid";
-                push @to_del, "1:$slug" if $slug;
-            }
-            $self->recs_del( $slg_path, @to_del ) if @to_del;
-            $self->table_close($slg_path);
-        }
-        if ( $use_ramdisk && $ramdisk_path ) {
-            my $r_slg = "${ramdisk_path}.slg";
-            if ( -e $r_slg && $self->table_write($r_slg) ) {
-                my @to_del;
-                for my $rid (@rids) {
-                    my $slug = $slug_map->{$rid};
-                    push @to_del, "0:$rid";
-                    push @to_del, "1:$slug" if $slug;
-                }
-                $self->recs_del( $r_slg, @to_del ) if @to_del;
-                $self->table_close($r_slg);
+    $self->slug_del( $idx_path, $table_info, $tableid, \@batch );
+
+    unless ($is_async_write) {
+        # Operations: auth, backup
+        if ( $table_info->{log_owner} ) {
+            foreach my $rec (@batch) {
+                $self->auth_write( $tableid, $table_path, "del", $rec->[0] );
             }
         }
-    }
 
-    # Operations: auth, backup
-    if ( $table_info->{log_owner} ) {
-        foreach my $rec (@batch) {
-            $self->auth_write( $tableid, $table_path, "del", $rec->[0] );
+        unless ( $self->config('no_backup') || $table_info->{no_backup} ) {
+            $self->recs_back( "del", $tableid, map { [ $_->[0], "" ] } @batch );
         }
-    }
-
-    unless ( $self->config('no_backup') || $table_info->{no_backup} ) {
-        $self->recs_back( "del", $tableid, map { [ $_->[0], "" ] } @batch );
     }
 
     return \%statu;
@@ -2125,23 +1933,28 @@ sub inflate {
 
             if ( exists $rdbm_lookup{$i} && defined $val && $val ne '' ) {
                 my $cfg = $rdbm_lookup{$i};
-                my @foreign_ids = $self->field_to_list($val);
+                my @foreign_ids = $self->get_fieldlist($val);
 
                 if (@foreign_ids) {
                     my %resolved;
                     for my $fid (@foreign_ids) {
                         next unless defined $fid && $fid ne '';
+                        my @tgt_rec = $self->get_cache( $cfg->{target}, $fid );
+                        if ( !@tgt_rec ) {
+                            my $tgt_path = $self->table_path( $cfg->{target} ) . "." . ( $self->{db_ext} || 'db' );
+                            @tgt_rec = $self->table_readid( $tgt_path, $fid );
+                            $self->set_cache( $cfg->{target}, $fid, \@tgt_rec ) if @tgt_rec;
+                        }
+                        if (@tgt_rec) {
                         if ( $cfg->{mode} eq 'full' ) {
-                            my $full = $self->read_id(
-                                $cfg->{target}, $fid,
-                                { inflate => { default => 'display', _depth => $depth + 1 } }
+                                my $full = $self->inflate(
+                                    $cfg->{target}, \@tgt_rec,
+                                    { default => 'display', _depth => $depth + 1 }
                             );
                             $resolved{$fid} = $full if $full;
                         }
                         else {
                             # display mode
-                            my @tgt_rec = $self->read_id( $cfg->{target}, $fid );
-                            if (@tgt_rec) {
                                 my $disp_idx = $cfg->{display} // 1;
                                 my $disp_val = ( $disp_idx < @tgt_rec ) ? $tgt_rec[$disp_idx] : $tgt_rec[1];
                                 $resolved{$fid} = $disp_val;
@@ -2628,9 +2441,9 @@ sub read_id {
         return;
     }
 
-    my $data_path  = ( $use_ramdisk == 2 ) ? $self->ramdisk_path($tableid) : $table_path;
+    my $data_path  = ( $use_ramdisk == 2 || $use_ramdisk == 4 ) ? $self->ramdisk_path($tableid) : $table_path;
     my $file_path  = "$data_path.$self->{db_ext}";
-    if ( $use_ramdisk == 2 && !-e $file_path ) {
+    if ( ( $use_ramdisk == 2 || $use_ramdisk == 4 ) && !-e $file_path ) {
         $file_path = "$table_path.$self->{db_ext}";
     }
     if ( $use_ramdisk == 3 ) {
@@ -2982,25 +2795,41 @@ sub read_all {
     my $no_index  = $table_info->{no_index} || $opts{no_index};
     my $keys_only = $opts{keys_only}        || $self->config('keys_only');
 
+    # Determine default read direction: defaults to 'desc' (newest first: N..1)
+    my $dir = lc( $opts{dir} // $opts{order} // 'desc' );
+    $dir = ( $dir eq 'asc' || $dir eq '1' ) ? 'asc' : 'desc';
+
+    # If sort option specifies direction for primary key (e.g. sort => 'asc', sort => -0, sort => { reverse => 1 }, sort => { dir => 'asc' })
+    if ( $opts{sort} ) {
+        my $s_norm = $self->normalize_sort_opt( $opts{sort} );
+        if ( $s_norm && ( !$s_norm->{blk} || $s_norm->{blk} eq '0' || $s_norm->{blk} eq 'id' ) ) {
+            $dir = $s_norm->{dir};
+        }
+    }
+
     # 0. Sorted reading option (.inx binary key sequence)
     if ( my $s_opt = $opts{sort} ) {
         my $s_norm    = $self->normalize_sort_opt($s_opt);
         my $blk       = $s_norm->{blk};
-        my $dir       = $s_norm->{dir};
+        my $s_dir     = $s_norm->{dir};
 
-        my $key        = "$blk:keys";
-        my $index_path = ( -e "$idx_path.inx" ) ? "$idx_path.inx" : "$table_path.inx";
+        if ( $blk && $blk ne '0' && $blk ne 'id' ) {
+            my $jnkmode  = $table_info->{use_junk} ? $self->get_jnktype( $table_info, \%opts ) : 'ALL';
+            my $tier_pfx = ( $jnkmode eq 'A' ) ? 'A:' : ( $jnkmode eq 'B' ) ? 'B:' : '';
+            my $key        = "$tier_pfx$blk:keys";
+            my $index_path = ( -e "$idx_path.inx" ) ? "$idx_path.inx" : "$table_path.inx";
 
-        if ( -e $index_path && !$no_index && !$opts{range} ) {
-            my ( $total_count, @sliced_ids ) = $self->index_get( $index_path, $key, "ids", $offset, $limit, $dir );
+            if ( $jnkmode ne 'AB' && $jnkmode ne 'BA' && -e $index_path && !$no_index && !$opts{range} ) {
+                my ( $total_count, @sliced_ids ) = $self->index_get( $index_path, $key, "ids", $offset, $limit, $s_dir );
 
-            if (@sliced_ids) {
-                if ($keys_only) {
-                    return $limit ? ( $total_count, @sliced_ids ) : @sliced_ids;
+                if (@sliced_ids) {
+                    if ($keys_only) {
+                        return $limit ? ( $total_count, @sliced_ids ) : @sliced_ids;
+                    }
+
+                    my @recs = $self->read_list( $tableid, \@sliced_ids );
+                    return $format_return->( $total_count, @recs );
                 }
-
-                my @recs = $self->read_list( $tableid, \@sliced_ids );
-                return $format_return->( $total_count, @recs );
             }
         }
     }
@@ -3009,33 +2838,42 @@ sub read_all {
     if ( $table_info->{record_index} && !$no_index ) {
         my $index_path = ( -e "$idx_path.inx" ) ? "$idx_path.inx" : "$table_path.inx";
         my $use_junk   = $table_info->{use_junk};
-        my $jnkmode    = $use_junk ? $self->get_jnktype( $table_info, \%opts ) : 'A';
+        my $jnkmode    = $use_junk ? $self->get_jnktype( $table_info, \%opts ) : 'ALL';
+
+        my $has_sort = $opts{sort} && ( ref($opts{sort}) eq 'HASH' ? $opts{sort}->{blk} : $opts{sort} );
+        my $is_secondary_sort = ( $has_sort && $has_sort ne '0' && $has_sort ne 'id' && $has_sort !~ /^(asc|desc|reverse)$/i ) ? 1 : 0;
+        my $primary_key = ( $jnkmode eq 'A' ) ? 'A:keys' : ( $jnkmode eq 'B' ) ? 'B:keys' : ( $jnkmode eq 'ALL' || !$use_junk ) ? 'keys' : undef;
+
+        if ( $primary_key && !$is_secondary_sort && !$opts{range} && $limit && -e $index_path ) {
+            my ( $cnt, @paged_ids ) = $self->index_get( $index_path, $primary_key, "ids", $offset, $limit, $dir );
+            if ($keys_only) {
+                return $limit ? ( $cnt, @paged_ids ) : @paged_ids;
+            }
+            my @recs = $self->read_list( $tableid, \@paged_ids );
+            return $format_return->( $cnt, @recs );
+        }
 
         my @all_ids;
-        if ( $use_junk ) {
-            my ( @a_ids, @b_ids );
-            if ( $jnkmode =~ /A/ && -e $index_path ) {
-                ( undef, @a_ids ) = $self->index_get( $index_path, "keys" );
+        if ( -e $index_path ) {
+            if ( $jnkmode eq 'A' ) {
+                ( undef, @all_ids ) = $self->index_get( $index_path, "A:keys", "ids", 0, 0, $dir );
             }
-            if ( $jnkmode =~ /B/ && -e $index_path ) {
-                ( undef, @b_ids ) = $self->index_get( $index_path, "j:keys" );
+            elsif ( $jnkmode eq 'B' ) {
+                ( undef, @all_ids ) = $self->index_get( $index_path, "B:keys", "ids", 0, 0, $dir );
             }
-            if    ( $jnkmode eq 'A' )  { @all_ids = @a_ids }
-            elsif ( $jnkmode eq 'B' )  { @all_ids = @b_ids }
-            elsif ( $jnkmode eq 'AB' ) { @all_ids = ( @a_ids, @b_ids ) }
-            elsif ( $jnkmode eq 'BA' ) { @all_ids = ( @b_ids, @a_ids ) }
-        }
-        elsif ( -e $index_path ) {
-            my $has_sort = $opts{sort} && ( ref($opts{sort}) eq 'HASH' ? $opts{sort}->{blk} : $opts{sort} );
-            if ( !$has_sort && !$opts{range} && $limit ) {
-                my ( $cnt, @paged_ids ) = $self->index_get( $index_path, "keys", "ids", $offset, $limit );
-                if ($keys_only) {
-                    return $limit ? ( $cnt, @paged_ids ) : @paged_ids;
-                }
-                my @recs = $self->read_list( $tableid, \@paged_ids );
-                return $format_return->( $cnt, @recs );
+            elsif ( $jnkmode eq 'AB' ) {
+                my ( undef, @a_ids ) = $self->index_get( $index_path, "A:keys", "ids", 0, 0, $dir );
+                my ( undef, @b_ids ) = $self->index_get( $index_path, "B:keys", "ids", 0, 0, $dir );
+                @all_ids = ( @a_ids, @b_ids );
             }
-            ( undef, @all_ids ) = $self->index_get( $index_path, "keys" );
+            elsif ( $jnkmode eq 'BA' ) {
+                my ( undef, @a_ids ) = $self->index_get( $index_path, "A:keys", "ids", 0, 0, $dir );
+                my ( undef, @b_ids ) = $self->index_get( $index_path, "B:keys", "ids", 0, 0, $dir );
+                @all_ids = ( @b_ids, @a_ids );
+            }
+            else {
+                ( undef, @all_ids ) = $self->index_get( $index_path, "keys", "ids", 0, 0, $dir );
+            }
         }
 
         if ( my $ranges = $self->normalize_range_opts( $tableid, \%opts ) ) {
@@ -3044,7 +2882,8 @@ sub read_all {
 
         if (@all_ids) {
             my $has_sort = $opts{sort} && ( ref($opts{sort}) eq 'HASH' ? $opts{sort}->{blk} : $opts{sort} );
-            if ($has_sort) {
+            my $is_secondary_sort = ( $has_sort && $has_sort ne '0' && $has_sort ne 'id' && $has_sort !~ /^(asc|desc|reverse)$/i ) ? 1 : 0;
+            if ($is_secondary_sort) {
                 my @sorted_ids = $self->sort_by_block( $tableid, \@all_ids, $opts{sort} );
                 my ( $cnt, @paged_ids );
                 if ($limit) {
@@ -3096,11 +2935,14 @@ sub read_all {
     }
 
     # 2. Sort keys (in-memory sort_by_block if sort option requested)
-    if ( $opts{sort} ) {
+    my $has_sort = $opts{sort} && ( ref($opts{sort}) eq 'HASH' ? $opts{sort}->{blk} : $opts{sort} );
+    my $is_secondary_sort = ( $has_sort && $has_sort ne '0' && $has_sort ne 'id' && $has_sort !~ /^(asc|desc|reverse)$/i ) ? 1 : 0;
+    if ($is_secondary_sort) {
         @records = $self->sort_by_block( $tableid, \@records, $opts{sort} );
     }
     else {
-        @records = $self->db_sortid( $tableid, @records );
+        my $id_sort_type = ( $self->config('simple') || ( $table_info && $table_info->{use_simple} ) ) ? 'ascii' : 'num';
+        @records = $self->array_sort( $id_sort_type, $dir, undef, @records );
     }
 
     # 3. Apply slicing if limit is set
@@ -3366,7 +3208,7 @@ sub read_field {
     return unless -e $field_path;
 
     if ($values) {
-        my @values = $self->field_to_list( $values, 'read', $table_path, $table_info, $field );
+        my @values = $self->get_fieldlist( $values, $table_path, $table_info, $field );
 
         if ( @values == 1 ) {
             my $val = $values[0];
@@ -3507,6 +3349,9 @@ sub field_fetch {
     $offset //= $opts{offset} // $opts{start} // 0;
     $limit  //= $opts{limit}  // 0;
 
+    my $dir = lc( $opts{dir} // $opts{order} // 'desc' );
+    $dir = ( $dir eq 'asc' || $dir eq '1' ) ? 'asc' : 'desc';
+
     my ( $count, @records );
     my $format_return = sub {
         my ( $cnt, @recs ) = @_;
@@ -3527,26 +3372,22 @@ sub field_fetch {
     my $file_path  = ( $use_ramdisk == 2 && -e "$idx_path.$self->{db_ext}" ) ? "$idx_path.$self->{db_ext}" : "$table_path.$self->{db_ext}";
     return unless -e $file_path;
 
-    my @fld_fetch_ids = $self->field_to_list( $fetch, 'read', $idx_path, $table_info, $block );
+    my @fld_fetch_ids = $self->get_fieldlist( $fetch, $idx_path, $table_info, $block );
 
     my $field_path = ( -e "${idx_path}.fld" ) ? "${idx_path}.fld" : "${table_path}.fld";
-    my $unq_path   = ( -e "${idx_path}.unq" ) ? "${idx_path}.unq" : "${table_path}.unq";
 
     if ( -e $field_path ) {
+        my $use_junk = $table_info ? $table_info->{use_junk} : undef;
+        my $jnkmode  = $use_junk ? $self->get_jnktype( $table_info, \%opts ) : 'ALL';
 
         # ---------------------------------------------------------------------
         # CASE 1: Single value, default sort, pagination ($limit) requested -> O(1) Fast Slice!
         # ---------------------------------------------------------------------
-        if ( @fld_fetch_ids == 1 && !$opts{sort} && $limit && $limit > 0 ) {
+        if ( @fld_fetch_ids == 1 && !$opts{sort} && $limit && $limit > 0 && ( $jnkmode eq 'ALL' || $jnkmode eq 'A' || $jnkmode eq 'B' ) ) {
             my $val = $fld_fetch_ids[0];
-            my $key = "$block:$val";
-            my ( $total, @slice_ids ) = $self->index_get( $field_path, $key, 'ids', $offset, $limit, $opts{dir} // 'asc' );
-            if ( !$total && -e $unq_path ) {
-                my ($c) = $self->index_get( $unq_path, "$block:s:$val", 'raw' );
-                if ( defined $c && $c ne '' ) {
-                    ( $total, @slice_ids ) = $self->index_get( $field_path, "$block:$c", 'ids', $offset, $limit, $opts{dir} // 'asc' );
-                }
-            }
+            my $tier_pfx = ( $jnkmode eq 'A' ) ? 'A:' : ( $jnkmode eq 'B' ) ? 'B:' : '';
+            my $key = "$tier_pfx$block:$val";
+            my ( $total, @slice_ids ) = $self->index_get( $field_path, $key, 'ids', $offset, $limit, $dir );
             if ($total) {
                 $count = $total;
                 @records = @slice_ids;
@@ -3559,41 +3400,64 @@ sub field_fetch {
         }
 
         # ---------------------------------------------------------------------
-        # CASE 2: Multiple values or custom sort -> Collect raw buffers and union via bin_crop
+        # CASE 2: Multi-value, sort, or tiered concatenation (AB/BA) -> collect buffers
         # ---------------------------------------------------------------------
-        my @raw_buffers;
-        if ( @fld_fetch_ids == 1 ) {
-            my $val = $fld_fetch_ids[0];
-            my $key = "$block:$val";
-            my ($raw) = $self->index_get( $field_path, $key, 'raw' );
-            if ( ( !defined $raw || length($raw) < 8 ) && -e $unq_path ) {
-                my ($c) = $self->index_get( $unq_path, "$block:s:$val", 'raw' );
-                if ( defined $c && $c ne '' ) {
-                    ($raw) = $self->index_get( $field_path, "$block:$c", 'raw' );
+        my $get_tier_raw_buffers = sub {
+            my ($pfx) = @_;
+            my @buffers;
+            if ( @fld_fetch_ids == 1 ) {
+                my $val = $fld_fetch_ids[0];
+                my $key = "$pfx$block:$val";
+                my ($raw) = $self->index_get( $field_path, $key, 'raw' );
+                push @buffers, $raw if defined $raw && length($raw) >= 8;
+            }
+            else {
+                my @query_keys = map { "$pfx$block:$_" } @fld_fetch_ids;
+                my $raw_hash = $self->index_get( $field_path, \@query_keys, 'raw' );
+                for my $val (@fld_fetch_ids) {
+                    my $k = "$pfx$block:$val";
+                    my $raw = $raw_hash->{$k} if $raw_hash && ref($raw_hash) eq 'HASH';
+                    push @buffers, $raw if defined $raw && length($raw) >= 8;
                 }
             }
-            push @raw_buffers, $raw if defined $raw && length($raw) >= 8;
+            return @buffers;
+        };
+
+        if ( $jnkmode eq 'ALL' ) {
+            my @raw_buffers = $get_tier_raw_buffers->('');
+            return unless @raw_buffers;
+            @records = $self->bin_crop( { mode => 'or', dir => $dir }, \@raw_buffers );
+        }
+        elsif ( $jnkmode eq 'A' ) {
+            my @raw_buffers = $get_tier_raw_buffers->('A:');
+            return unless @raw_buffers;
+            @records = $self->bin_crop( { mode => 'or', dir => $dir }, \@raw_buffers );
+        }
+        elsif ( $jnkmode eq 'B' ) {
+            my @raw_buffers = $get_tier_raw_buffers->('B:');
+            return unless @raw_buffers;
+            @records = $self->bin_crop( { mode => 'or', dir => $dir }, \@raw_buffers );
+        }
+        elsif ( $jnkmode eq 'AB' ) {
+            my @a_bufs = $get_tier_raw_buffers->('A:');
+            my @b_bufs = $get_tier_raw_buffers->('B:');
+            my @a_recs = @a_bufs ? $self->bin_crop( { mode => 'or', dir => $dir }, \@a_bufs ) : ();
+            my @b_recs = @b_bufs ? $self->bin_crop( { mode => 'or', dir => $dir }, \@b_bufs ) : ();
+            @records = ( @a_recs, @b_recs );
+        }
+        elsif ( $jnkmode eq 'BA' ) {
+            my @a_bufs = $get_tier_raw_buffers->('A:');
+            my @b_bufs = $get_tier_raw_buffers->('B:');
+            my @a_recs = @a_bufs ? $self->bin_crop( { mode => 'or', dir => $dir }, \@a_bufs ) : ();
+            my @b_recs = @b_bufs ? $self->bin_crop( { mode => 'or', dir => $dir }, \@b_bufs ) : ();
+            @records = ( @b_recs, @a_recs );
         }
         else {
-            my @query_keys = map { "$block:$_" } @fld_fetch_ids;
-            my $raw_hash = $self->index_get( $field_path, \@query_keys, 'raw' );
-            for my $val (@fld_fetch_ids) {
-                my $k = "$block:$val";
-                my $raw = $raw_hash->{$k} if $raw_hash && ref($raw_hash) eq 'HASH';
-                if ( ( !defined $raw || length($raw) < 8 ) && -e $unq_path ) {
-                    my ($c) = $self->index_get( $unq_path, "$block:s:$val", 'raw' );
-                    if ( defined $c && $c ne '' ) {
-                        ($raw) = $self->index_get( $field_path, "$block:$c", 'raw' );
-                    }
-                }
-                push @raw_buffers, $raw if defined $raw && length($raw) >= 8;
-            }
+            my @raw_buffers = $get_tier_raw_buffers->('');
+            return unless @raw_buffers;
+            @records = $self->bin_crop( { mode => 'or', dir => $dir }, \@raw_buffers );
         }
 
-        return unless @raw_buffers;
-
-        # Union and deduplicate directly via bin_crop
-        @records = $self->bin_crop( { mode => 'or' }, \@raw_buffers );
         return unless @records;
 
         if ( my $ranges = $self->normalize_range_opts( $tableid, \%opts ) ) {
@@ -3605,8 +3469,9 @@ sub field_fetch {
         if ( $opts{sort} ) {
             @records = $self->sort_by_block( $tableid, \@records, $opts{sort} );
         }
-        else {
-            @records = $self->db_sortid( $tableid, @records );
+        elsif ( $jnkmode eq 'ALL' ) {
+            my $id_sort_type = ( $self->config('simple') || ( $table_info && $table_info->{use_simple} ) ) ? 'ascii' : 'num';
+            @records = $self->array_sort( $id_sort_type, $dir, undef, @records );
         }
 
         $count = scalar @records;
@@ -3627,7 +3492,7 @@ sub field_fetch {
 
     # If index file does not exist (unindexed fallback)...
     else {
-        my @raw_fetch = $self->field_to_list($fetch);
+        my @raw_fetch = $self->get_fieldlist($fetch);
         my %fetch = map { $_ => 1 } ( @raw_fetch, @fld_fetch_ids );
 
         $self->table_read($file_path) or return;
@@ -3638,7 +3503,7 @@ sub field_fetch {
                 my @fields = ( $key, $self->db_decode($val) );
                 $block <= $#fields or return;
                 defined $fields[$block] or return;
-                my @fld_val = $self->field_to_list( $fields[$block] );
+                my @fld_val = $self->get_fieldlist( $fields[$block] );
                 foreach my $fld_one (@fld_val) {
                     if ( $fld_one && exists( $fetch{$fld_one} ) ) {
                         push( @records, [@fields] );
@@ -3660,7 +3525,8 @@ sub field_fetch {
             @records = $self->sort_by_block_records( $tableid, \@records, $opts{sort} );
         }
         else {
-            @records = $self->db_sortid( $tableid, @records );
+            my $id_sort_type = ( $self->config('simple') || ( $table_info && $table_info->{use_simple} ) ) ? 'ascii' : 'num';
+            @records = $self->array_sort( $id_sort_type, $dir, 0, @records );
         }
         $count = scalar @records;
 
@@ -3760,7 +3626,6 @@ sub field_keyvals {
     my $idx_path   = $use_ramdisk ? $self->ramdisk_path($tableid) : $table_path;
     my $file_path  = ( $use_ramdisk == 2 && -e "$idx_path.$self->{db_ext}" ) ? "$idx_path.$self->{db_ext}" : "$table_path.$self->{db_ext}";
     my $field_path = ( -e "${idx_path}.fld" ) ? "${idx_path}.fld" : "${table_path}.fld";
-    my $unq_path   = ( -e "${idx_path}.unq" ) ? "${idx_path}.unq" : "${table_path}.unq";
 
     # read from index file and get keys.
     my %records;
@@ -3768,19 +3633,13 @@ sub field_keyvals {
         if ( defined $keyid && $keyid ne '' ) {
             my @req_keys = ref($keyid) eq 'ARRAY' ? @$keyid : ($keyid);
             for my $k_item (@req_keys) {
-                my @req_ids = $self->field_to_list( $k_item, 'read', $idx_path, $table_info, $field );
+                my @req_ids = $self->get_fieldlist( $k_item, $idx_path, $table_info, $field );
                 next unless @req_ids;
 
                 # Single key fast path
                 if ( @req_ids == 1 ) {
                     my $qk = "$field:$req_ids[0]";
                     my ($raw) = $self->index_get( $field_path, $qk, 'raw' );
-                    if ( ( !defined $raw || length($raw) < 8 ) && -e $unq_path ) {
-                        my ($c) = $self->index_get( $unq_path, "$field:s:$k_item", 'raw' );
-                        if ( defined $c && $c ne '' ) {
-                            ($raw) = $self->index_get( $field_path, "$field:$c", 'raw' );
-                        }
-                    }
                     if ( defined $raw && length($raw) >= 8 ) {
                         my ( undef, @ids ) = $self->bin_decode($raw);
                         $records{$k_item} = \@ids;
@@ -3800,14 +3659,6 @@ sub field_keyvals {
                         my $qk = "$field:$qid";
                         my $r = $raw_hash->{$qk};
                         push @raw_buffers, $r if defined $r && length($r) >= 8;
-                    }
-                }
-
-                if ( !@raw_buffers && -e $unq_path ) {
-                    my ($c) = $self->index_get( $unq_path, "$field:s:$k_item", 'raw' );
-                    if ( defined $c && $c ne '' ) {
-                        my ($raw) = $self->index_get( $field_path, "$field:$c", 'raw' );
-                        push @raw_buffers, $raw if defined $raw && length($raw) >= 8;
                     }
                 }
 
@@ -3873,10 +3724,9 @@ sub field_filter {
 
     my $table_info = $self->table_info($tableid);
 
-    my ( $type, $offset, $limit, $s_opt, %filter );
+    my ( $type, $offset, $limit, $s_opt, %filter, %opts );
 
     if ( ref( $args[0] ) eq 'HASH' ) {
-        my %opts;
         if ( @args >= 2 && ref( $args[1] ) eq 'HASH' ) {
             %opts = %{ $args[1] };
             $opts{filter} //= $args[0];
@@ -3926,21 +3776,20 @@ sub field_filter {
     my $all_cnt = scalar keys %filter;
 
     my $use_junk = $table_info->{use_junk} if $table_info;
-    my $jnkmode  = $use_junk ? $self->get_jnktype( $table_info, ( ref($args[0]) eq 'HASH' ? $args[0] : {} ) ) : 'A';
+    my $jnkmode  = $use_junk ? $self->get_jnktype( $table_info, \%opts ) : 'ALL';
 
     my $run_filter_tier = sub {
         my ($tier) = @_;
-        my $is_junk = ( $tier eq 'junk' );
+        my $pfx = ( $tier eq 'A' ) ? 'A:' : ( $tier eq 'B' ) ? 'B:' : '';
         my $unified_fld = ( -e "${idx_path}.fld" ) ? "${idx_path}.fld" : "${table_path}.fld";
 
         if ( -e $unified_fld ) {
-            my $pfx = $is_junk ? 'j:' : '';
             my @filter_groups;
             my @all_req_keys;
             my %blk_vals_map;
 
             for my $blk ( keys %filter ) {
-                my @values = $self->field_to_list( $filter{$blk}, 'read', $idx_path, $table_info, $blk );
+                my @values = $self->get_fieldlist( $filter{$blk}, $idx_path, $table_info, $blk );
                 $blk_vals_map{$blk} = \@values;
                 push @all_req_keys, map { "$pfx$blk:$_" } @values;
             }
@@ -3950,17 +3799,10 @@ sub field_filter {
             for my $blk ( keys %filter ) {
                 my @raw_buffers;
                 my @values = @{ $blk_vals_map{$blk} };
-                my $unq_path = ( -e "${idx_path}.unq" ) ? "${idx_path}.unq" : "${table_path}.unq";
 
                 for my $val (@values) {
                     my $k = "$pfx$blk:$val";
                     my $raw = $raw_hash->{$k} if $raw_hash && ref($raw_hash) eq 'HASH';
-                    if ( ( !defined $raw || length($raw) < 8 ) && -e $unq_path ) {
-                        my ($c) = $self->index_get( $unq_path, "$blk:s:$val", 'raw' );
-                        if ( defined $c && $c ne '' ) {
-                            ($raw) = $self->index_get( $unified_fld, "$pfx$blk:$c", 'raw' );
-                        }
-                    }
                     push @raw_buffers, $raw if defined $raw && length($raw) >= 8;
                 }
                 return () if $type eq 'and' && !@raw_buffers;
@@ -3974,27 +3816,32 @@ sub field_filter {
         return ();
     };
 
-    my ( @a_records, @b_records );
-    if ( $jnkmode =~ /A/ ) {
-        @a_records = $run_filter_tier->('active');
-    }
-    if ( $jnkmode =~ /B/ ) {
-        @b_records = $run_filter_tier->('junk');
-    }
-
     my $has_fld = ( -e "${idx_path}.fld" || -e "${table_path}.fld" ) ? 1 : 0;
 
     if ($has_fld) {
-        if    ( $jnkmode eq 'A' )  { @records = @a_records }
-        elsif ( $jnkmode eq 'B' )  { @records = @b_records }
-        elsif ( $jnkmode eq 'AB' ) { @records = ( @a_records, @b_records ) }
-        elsif ( $jnkmode eq 'BA' ) { @records = ( @b_records, @a_records ) }
+        if ( $jnkmode eq 'ALL' ) {
+            @records = $run_filter_tier->('ALL');
+        }
+        else {
+            my ( @a_records, @b_records );
+            if ( $jnkmode =~ /A/ ) {
+                @a_records = $run_filter_tier->('A');
+            }
+            if ( $jnkmode =~ /B/ ) {
+                @b_records = $run_filter_tier->('B');
+            }
+
+            if    ( $jnkmode eq 'A' )  { @records = @a_records }
+            elsif ( $jnkmode eq 'B' )  { @records = @b_records }
+            elsif ( $jnkmode eq 'AB' ) { @records = ( @a_records, @b_records ) }
+            elsif ( $jnkmode eq 'BA' ) { @records = ( @b_records, @a_records ) }
+        }
     }
     else {
         # Full scan fallback
         my %allowed_map;
         foreach my $blk ( keys %filter ) {
-            my @vals = $self->field_to_list( $filter{$blk} );
+            my @vals = $self->get_fieldlist( $filter{$blk} );
             $allowed_map{$blk} = { map { $_ => 1 } @vals };
         }
 
@@ -4007,7 +3854,7 @@ sub field_filter {
                         my @fields = ( $uid, $self->db_decode($val) );
                         foreach my $blk ( keys %allowed_map ) {
                             return unless $blk <= $#fields && defined $fields[$blk];
-                            my @fld_vals = $self->field_to_list( $fields[$blk] );
+                            my @fld_vals = $self->get_fieldlist( $fields[$blk] );
                             my $matched = 0;
                             foreach my $one (@fld_vals) {
                                 if ( exists $allowed_map{$blk}{$one} ) {
@@ -4029,7 +3876,7 @@ sub field_filter {
                         my @fields = ( $uid, $self->db_decode($val) );
                         foreach my $blk ( keys %allowed_map ) {
                             next unless $blk <= $#fields && defined $fields[$blk];
-                            my @fld_vals = $self->field_to_list( $fields[$blk] );
+                            my @fld_vals = $self->get_fieldlist( $fields[$blk] );
                             foreach my $one (@fld_vals) {
                                 if ( exists $allowed_map{$blk}{$one} ) {
                                     push @records, $uid;
@@ -4174,12 +4021,11 @@ sub search_table {
     if ( $table_info->{search_block} ) {
 
         my $use_junk = $table_info->{use_junk};
-        my $jnkmode  = $use_junk ? $self->get_jnktype( $table_info, \%opts ) : 'A';
+        my $jnkmode  = $use_junk ? $self->get_jnktype( $table_info, \%opts ) : 'ALL';
 
         my $run_search = sub {
             my ($tier) = @_;
-            my $is_junk = ( $tier eq 'junk' );
-            my $pfx = $is_junk ? 'j:' : '';
+            my $pfx = ( $tier eq 'A' ) ? 'A:' : ( $tier eq 'B' ) ? 'B:' : '';
             my %words = $self->get_words( $string, "read", $tableid );
             my $i     = keys %words;
             return () unless $i;
@@ -4215,7 +4061,7 @@ sub search_table {
                 my $unified_fld = ( -e "${idx_path}.fld" ) ? "${idx_path}.fld" : "${table_path}.fld";
                 for my $fld ( keys %filter_map ) {
                     if ( -e $unified_fld ) {
-                        my @mapped_vals = $self->field_to_list( $filter_map{$fld}, 'read', $idx_path, $table_info, $fld );
+                        my @mapped_vals = $self->get_fieldlist( $filter_map{$fld}, $idx_path, $table_info, $fld );
                         my @raw_fld_bufs;
                         if ( @mapped_vals == 1 ) {
                             my $k = "$pfx$fld:$mapped_vals[0]";
@@ -4282,7 +4128,7 @@ sub search_table {
                         my @filtered;
                         for my $rec (@recs) {
                             next unless @$rec > $fld;
-                            my @fld_vals = $self->field_to_list( $rec->[$fld] );
+                            my @fld_vals = $self->get_fieldlist( $rec->[$fld] );
                             if ( grep { exists $allowed{$_} } @fld_vals ) {
                                 push @filtered, $rec->[0];
                             }
@@ -4296,18 +4142,23 @@ sub search_table {
             return @tier_recs;
         };
 
-        my ( @a_records, @b_records );
-        if ( $jnkmode =~ /A/ ) {
-            @a_records = $run_search->('active');
+        if ( $jnkmode eq 'ALL' ) {
+            @records = $run_search->('ALL');
         }
-        if ( $jnkmode =~ /B/ ) {
-            @b_records = $run_search->('junk');
-        }
+        else {
+            my ( @a_records, @b_records );
+            if ( $jnkmode =~ /A/ ) {
+                @a_records = $run_search->('A');
+            }
+            if ( $jnkmode =~ /B/ ) {
+                @b_records = $run_search->('B');
+            }
 
-        if    ( $jnkmode eq 'A' )  { @records = @a_records }
-        elsif ( $jnkmode eq 'B' )  { @records = @b_records }
-        elsif ( $jnkmode eq 'AB' ) { @records = ( @a_records, @b_records ) }
-        elsif ( $jnkmode eq 'BA' ) { @records = ( @b_records, @a_records ) }
+            if    ( $jnkmode eq 'A' )  { @records = @a_records }
+            elsif ( $jnkmode eq 'B' )  { @records = @b_records }
+            elsif ( $jnkmode eq 'AB' ) { @records = ( @a_records, @b_records ) }
+            elsif ( $jnkmode eq 'BA' ) { @records = ( @b_records, @a_records ) }
+        }
 
         if ( my $ranges = $self->normalize_range_opts( $tableid, \%opts ) ) {
             @records = $self->filter_ids_by_range( $tableid, \@records, $ranges );
@@ -4422,7 +4273,7 @@ sub search_table {
                 for my $rec (@records) {
                     # $rec is [$key, fld1, fld2, ...]
                     next unless @$rec > $fld;
-                    my @fld_vals = $self->field_to_list( $rec->[$fld] );
+                    my @fld_vals = $self->get_fieldlist( $rec->[$fld] );
                     if ( grep { exists $allowed{$_} } @fld_vals ) {
                         push @filtered, $rec;
                     }
@@ -4537,22 +4388,21 @@ sub table_count {
     return $cached_count if defined $cached_count;
 
     my $count = 0;
-    # Read from index file if record_index exists, otherwise count all records
-    if ($table_info->{record_index}) {
-        if ( -e "$table_path.inx" && $self->table_read("$table_path.inx") ) {
-            my $db = $self->{_tables}{"$table_path.inx"};
-            my $raw;
-            if ( $db && $db->get( 'keys', $raw ) == 0 && defined $raw ) {
-                $count = int( bytes::length($raw) / 8 );
-                $self->table_close("$table_path.inx");
-                $self->set_cache( $tableid, 'count', $count );
-                return $count;
-            }
+    my $is_simple = $self->config('simple') || ( $table_info && $table_info->{use_simple} ) || ( $table_info && $table_info->{id_type} && $table_info->{id_type} eq 'ascii' );
+
+    # Read from index file if record_index exists and table is not in simple mode, otherwise count all records
+    if ( !$is_simple && $table_info->{record_index} ) {
+        if ( -e "$table_path.inx" ) {
             my ($cnt) = $self->index_get( "$table_path.inx", "count", "raw" );
-            $self->table_close("$table_path.inx");
             if ( defined $cnt && $cnt =~ /^\d+$/ ) {
                 $self->set_cache( $tableid, 'count', $cnt );
                 return $cnt;
+            }
+            my ($raw) = $self->index_get( "$table_path.inx", "keys", "raw" );
+            if ( length($raw) >= 8 ) {
+                $count = int( bytes::length($raw) / 8 );
+                $self->set_cache( $tableid, 'count', $count );
+                return $count;
             }
         }
 
@@ -4657,9 +4507,18 @@ sub table_lastid {
 # ------------------------------------------------
 sub table_keys {
 
-    my ( $self, $tableid ) = @_;
+    my ( $self, $tableid, @args ) = @_;
 
     $tableid or return;
+
+    my $dir = 'desc';
+    if ( @args && defined $args[0] && !ref($args[0]) && $args[0] =~ /^(asc|desc)$/i ) {
+        $dir = lc($args[0]);
+    }
+    elsif ( @args && ref($args[0]) eq 'HASH' ) {
+        $dir = lc( $args[0]->{dir} // $args[0]->{order} // 'desc' );
+    }
+    $dir = ( $dir eq 'asc' || $dir eq '1' ) ? 'asc' : 'desc';
 
     my $table_info  = $self->table_info($tableid);
     my $use_ramdisk = $table_info ? ( $table_info->{use_ramdisk} // $table_info->{use_cache} // 0 ) : 0;
@@ -4675,8 +4534,18 @@ sub table_keys {
     }
 
     # 1. In-memory RAM cache check
-    my $cached_keys = $self->get_cache( $tableid, 'keys' );
-    return @$cached_keys if defined $cached_keys;
+    my $cache_key   = "keys_$dir";
+    my $cached_keys = $self->get_cache( $tableid, $cache_key ) // ( $dir eq 'desc' ? $self->get_cache( $tableid, 'keys' ) : undef );
+    if ( defined $cached_keys && ref($cached_keys) eq 'ARRAY' ) {
+        return @$cached_keys;
+    }
+    my $alt_key  = ( $dir eq 'asc' ) ? 'keys_desc' : 'keys_asc';
+    my $alt_keys = $self->get_cache( $tableid, $alt_key ) // ( $dir eq 'asc' ? $self->get_cache( $tableid, 'keys' ) : undef );
+    if ( defined $alt_keys && ref($alt_keys) eq 'ARRAY' ) {
+        my @rev = reverse @$alt_keys;
+        $self->set_cache( $tableid, $cache_key, \@rev );
+        return @rev;
+    }
 
     if ($use_ramdisk) {
         $self->ramdisk_ensure($tableid);
@@ -4688,9 +4557,10 @@ sub table_keys {
 
     # Index check (.inx)
     if ( -e $index_path ) {
-        my ( $total, @keys_list ) = $self->index_get( $index_path, "keys" );
+        my ( $total, @keys_list ) = $self->index_get( $index_path, "keys", "ids", 0, 0, $dir );
         if (@keys_list) {
-            $self->set_cache( $tableid, 'keys', \@keys_list );
+            $self->set_cache( $tableid, $cache_key, \@keys_list );
+            $self->set_cache( $tableid, 'keys', \@keys_list ) if $dir eq 'desc';
             return @keys_list;
         }
     }
@@ -4702,8 +4572,10 @@ sub table_keys {
     @keys = $self->recs_keys($scan_path);
     $self->table_close($scan_path);
 
-    @keys = $self->db_sortid( $tableid, @keys );
-    $self->set_cache( $tableid, 'keys', \@keys );
+    my $id_sort_type = ( $self->config('simple') || ( $table_info && $table_info->{use_simple} ) ) ? 'ascii' : 'num';
+    @keys = $self->array_sort( $id_sort_type, $dir, undef, @keys );
+    $self->set_cache( $tableid, $cache_key, \@keys );
+    $self->set_cache( $tableid, 'keys', \@keys ) if $dir eq 'desc';
 
     return @keys;
 }
@@ -4926,9 +4798,9 @@ sub close_all {
         }
     }
 
-    if ( ref( $self->{_record_lock} ) eq "HASH" ) {
-        foreach my $lock_name ( keys %{ $self->{_record_lock} } ) {
-            if ( my $fh = delete $self->{_record_lock}->{$lock_name} ) {
+    if ( ref( $self->{_lock} ) eq "HASH" ) {
+        foreach my $lock_name ( keys %{ $self->{_lock} } ) {
+            if ( my $fh = delete $self->{_lock}->{$lock_name} ) {
                 flock( $fh, LOCK_UN );
                 close $fh;
             }
@@ -4964,7 +4836,7 @@ sub flock_open {
       ? "${safe_tid}_${safe_rid}"
       : "${safe_tid}";
 
-    if ( my $existing = $self->{_record_lock}->{$lock_name} ) {
+    if ( my $existing = $self->{_lock}->{$lock_name} ) {
         return $existing;
     }
 
@@ -4978,7 +4850,7 @@ sub flock_open {
     my $flags = ( $mode eq "read" ) ? LOCK_SH : LOCK_EX;
     flock( $fh, $flags );
 
-    $self->{_record_lock}->{$lock_name} = $fh;
+    $self->{_lock}->{$lock_name} = $fh;
 
     return $fh;
 }
@@ -5000,7 +4872,7 @@ sub flock_close {
       ? "${safe_tid}_${safe_rid}"
       : "${safe_tid}";
 
-    if ( my $fh = delete $self->{_record_lock}->{$lock_name} ) {
+    if ( my $fh = delete $self->{_lock}->{$lock_name} ) {
         flock( $fh, LOCK_UN );
         close $fh;
     }
@@ -5194,12 +5066,22 @@ sub recs_get {
 
 # Writes records in bulk to open DB_File handle. Each item must be in [$rid, @fields] format.
 # my $ok = $adb->recs_put($file_path, @records);
+# my $ok = $adb->recs_put([$file_path, $tableid], @records);
 # ------------------------------------------------
 sub recs_put {
 
-    my ( $self, $file_path, @records ) = @_;
+    my ( $self, $target, @records ) = @_;
 
-    return unless $file_path;
+    my ( $file_path, $tableid, $no_mirror );
+    if ( ref($target) eq 'ARRAY' ) {
+        ( $file_path, $tableid, $no_mirror ) = @$target;
+    }
+    else {
+        $file_path = $target;
+        ($tableid) = $file_path =~ m{([^/\\:]+)\.[^.]+$} if defined $file_path;
+    }
+
+    return unless $file_path && @records;
 
     # if not opened for write, open the table in write mode
     if ( !$self->{_db}->{$file_path} || !$self->{_dbm}->{$file_path} ) {
@@ -5208,15 +5090,51 @@ sub recs_put {
     }
 
     my $db = $self->{_db}->{$file_path};
+    my $is_txn = $self->is_transact($tableid);
 
     foreach my $record (@records) {
         my ( $rid, @fields ) = @{$record};    # Separate ID
+        next unless defined $rid && $rid ne '';
+
         my $k   = $self->utf_encode("$rid");
         my $val = @fields == 1 ? $fields[0] : $self->db_encode(@fields);
-        if ( defined $val && $val ne '' ) {
-            my $v   = $self->utf_encode("$val");
-            my $ret = $db->put( $k, $v );
-            warn "[DB_TIE] $file_path can't put $rid record.\n" if $ret < 0;
+        next unless defined $val && $val ne '';
+
+        if ( $is_txn && !$self->{_txn}->{logged}->{"$file_path\x1e$rid"}++ ) {
+            my $old_raw;
+            my $ret = $db->get( $k, $old_raw );
+            my $action  = ( $ret == 0 && defined $old_raw ) ? 'edit' : 'add';
+            my $old_val = ( $ret == 0 && defined $old_raw ) ? $old_raw : '__NULL__';
+            $self->_txn_log( 'recs', $tableid, $file_path, $rid, $action, $old_val );
+        }
+
+        my $v   = $self->utf_encode("$val");
+        my $ret = $db->put( $k, $v );
+        warn "[DB_TIE] $file_path can't put $rid record.\n" if $ret < 0;
+    }
+
+    # RAM-disk Tier 2 (mirror) or (Tier 4 in active transaction) dual-write
+    if ( !$no_mirror && $tableid && $self->ramdisk_is_mounted() ) {
+        my $table_info  = eval { $self->table_info($tableid) };
+        my $use_ramdisk = $table_info ? $self->_normalize_ramdisk_tier( $table_info->{use_ramdisk} // $table_info->{use_cache} // 0 ) : 0;
+        if ( $use_ramdisk == 2 || ( $use_ramdisk == 4 && $is_txn ) ) {
+            my $ram_dir   = $self->ramdisk_dir();
+            my $is_in_ram = ( $ram_dir && index( $file_path, $ram_dir ) == 0 ) ? 1 : 0;
+            my ($ext)     = $file_path =~ m{\.([^.]+)$};
+            my $mirror_file;
+            if ( $ext && $ext =~ /^(?:\Q$self->{db_ext}\E|inx|src|fld|fac|unq|slg)$/ ) {
+                if ($is_in_ram) {
+                    my $tbl_path = $self->table_path($tableid);
+                    $mirror_file = "$tbl_path.$ext" if $tbl_path;
+                }
+                else {
+                    my $r_path = $self->ramdisk_path($tableid);
+                    $mirror_file = "$r_path.$ext" if $r_path;
+                }
+                if ( $mirror_file && $mirror_file ne $file_path ) {
+                    $self->recs_put( [ $mirror_file, $tableid, 1 ], @records );
+                }
+            }
         }
     }
 
@@ -5225,12 +5143,22 @@ sub recs_put {
 
 # Deletes provided IDs from open DB_File handle.
 # my $ok = $adb->recs_del($file_path, @recs); # ID's
+# my $ok = $adb->recs_del([$file_path, $tableid], @recs);
 # ------------------------------------------------
 sub recs_del {
 
-    my ( $self, $file_path, @recs ) = @_;
+    my ( $self, $target, @recs ) = @_;
 
-    return unless $file_path;
+    my ( $file_path, $tableid, $no_mirror );
+    if ( ref($target) eq 'ARRAY' ) {
+        ( $file_path, $tableid, $no_mirror ) = @$target;
+    }
+    else {
+        $file_path = $target;
+        ($tableid) = $file_path =~ m{([^/\\:]+)\.[^.]+$} if defined $file_path;
+    }
+
+    return unless $file_path && @recs;
 
     # if not opened for write, open the table in write mode
     if ( !$self->{_db}->{$file_path} || !$self->{_dbm}->{$file_path} ) {
@@ -5239,11 +5167,47 @@ sub recs_del {
     }
 
     my $db = $self->{_db}->{$file_path};
+    my $is_txn = $self->is_transact($tableid);
 
     foreach my $rid (@recs) {
+        next unless defined $rid && $rid ne '';
         my $k = $self->utf_encode("$rid");
+
+        if ( $is_txn && !$self->{_txn}->{logged}->{"$file_path\x1e$rid"}++ ) {
+            my $old_raw;
+            my $ret = $db->get( $k, $old_raw );
+            if ( $ret == 0 && defined $old_raw ) {
+                $self->_txn_log( 'recs', $tableid, $file_path, $rid, 'del', $old_raw );
+            }
+        }
+
         my $ret = $db->del($k);
         warn "[DB_TIE] $file_path can't delete $rid.\n" if $ret < 0;
+    }
+
+    # RAM-disk Tier 2 (mirror) or (Tier 4 in active transaction) dual-write
+    if ( !$no_mirror && $tableid && $self->ramdisk_is_mounted() ) {
+        my $table_info  = eval { $self->table_info($tableid) };
+        my $use_ramdisk = $table_info ? $self->_normalize_ramdisk_tier( $table_info->{use_ramdisk} // $table_info->{use_cache} // 0 ) : 0;
+        if ( $use_ramdisk == 2 || ( $use_ramdisk == 4 && $is_txn ) ) {
+            my $ram_dir   = $self->ramdisk_dir();
+            my $is_in_ram = ( $ram_dir && index( $file_path, $ram_dir ) == 0 ) ? 1 : 0;
+            my ($ext)     = $file_path =~ m{\.([^.]+)$};
+            my $mirror_file;
+            if ( $ext && $ext =~ /^(?:\Q$self->{db_ext}\E|inx|src|fld|fac|unq|slg)$/ ) {
+                if ($is_in_ram) {
+                    my $tbl_path = $self->table_path($tableid);
+                    $mirror_file = "$tbl_path.$ext" if $tbl_path;
+                }
+                else {
+                    my $r_path = $self->ramdisk_path($tableid);
+                    $mirror_file = "$r_path.$ext" if $r_path;
+                }
+                if ( $mirror_file && $mirror_file ne $file_path ) {
+                    $self->recs_del( [ $mirror_file, $tableid, 1 ], @recs );
+                }
+            }
+        }
     }
 
     return 1;
@@ -5274,7 +5238,7 @@ sub recs_del {
 sub index_get {
     my ( $self, $table_path, $key, @args ) = @_;
 
-    return unless defined $table_path && defined $key;
+    return "" unless defined $table_path && defined $key;
 
     # -------------------------------------------------------------------------
     # PLURAL PATHS: Search across multiple index files (e.g. across search blocks)
@@ -5330,7 +5294,7 @@ sub index_get {
 
         for my $k_orig ( @$key ) {
             next unless defined $k_orig && $k_orig ne '';
-            my $k_enc = $is_unq ? $self->utf_encode("$k_orig") : "$k_orig";
+            my $k_enc = $self->utf_encode("$k_orig");
             my $raw;
             my $status = $db->get( $k_enc, $raw );
             next unless $status == 0 && defined $raw && $raw ne '';
@@ -5342,7 +5306,7 @@ sub index_get {
 
             my $len = bytes::length($raw);
             if ( $len >= 8 && $len % 8 == 0 ) {
-                my ( $cnt, @ids ) = $self->bin_decode( $raw, $offset // 0, $limit // 0, $dir // 'asc' );
+                my ( $cnt, @ids ) = $self->bin_decode( $raw, $offset // 0, $limit // 0, $dir // 'desc' );
                 $result{$k_orig} = \@ids;
             }
             else {
@@ -5373,7 +5337,7 @@ sub index_get {
     my $db = $self->table_read($table_path);
     return ( $is_bin_index ? ( 0, () ) : () ) unless $db;
 
-    my $k = ( $table_path =~ /\.unq$/ ) ? $self->utf_encode("$key") : "$key";
+    my $k = $self->utf_encode("$key");
 
     my $raw;
     my $status = $db->get( $k, $raw );
@@ -5383,10 +5347,13 @@ sub index_get {
         if ( $k eq 'count' && $db->get( 'keys', $keys_raw ) == 0 && defined $keys_raw ) {
             return ( int( bytes::length($keys_raw) / 8 ) );
         }
-        elsif ( $k eq 'j:count' && $db->get( 'j:keys', $keys_raw ) == 0 && defined $keys_raw ) {
+        elsif ( $k eq 'A:count' && $db->get( 'A:keys', $keys_raw ) == 0 && defined $keys_raw ) {
             return ( int( bytes::length($keys_raw) / 8 ) );
         }
-        elsif ( $k =~ /^(\d+):count$/ && $db->get( "$1:keys", $keys_raw ) == 0 && defined $keys_raw ) {
+        elsif ( $k eq 'B:count' && $db->get( 'B:keys', $keys_raw ) == 0 && defined $keys_raw ) {
+            return ( int( bytes::length($keys_raw) / 8 ) );
+        }
+        elsif ( $k =~ /^([A-Za-z0-9_:]+):count$/ && $db->get( "$1:keys", $keys_raw ) == 0 && defined $keys_raw ) {
             return ( int( bytes::length($keys_raw) / 8 ) );
         }
         return ( $is_bin_index ? ( 0, () ) : () );
@@ -5400,7 +5367,6 @@ sub index_get {
     # Auto-detection if type not explicitly specified:
     if ( !$type ) {
         if (   $k eq 'count'
-            || $k eq 'j:count'
             || $k =~ /:count$/
             || $k eq 'lastid'
             || $table_path =~ /\.slg$/
@@ -5411,10 +5377,10 @@ sub index_get {
         }
     }
 
-    # 2. Binary ID sequence index payloads (.inx 'keys' / 'j:keys' / '$blk:keys', .fld, .src, .fac 'active')
+    # 2. Binary ID sequence index payloads (.inx 'keys' / '$tier:keys' / '$blk:keys', .fld, .src, .fac 'active')
     my $len = bytes::length($raw);
-    if ( $k eq 'keys' || $k eq 'j:keys' || $k =~ /:keys$/ || $k eq 'allkeys' || $k eq 'active' || ( $len >= 8 && $len % 8 == 0 ) ) {
-        return $self->bin_decode( $raw, $offset // 0, $limit // 0, $dir // 'asc' );
+    if ( $k eq 'keys' || $k =~ /:keys$/ || $k eq 'allkeys' || $k eq 'active' || ( $len >= 8 && $len % 8 == 0 ) ) {
+        return $self->bin_decode( $raw, $offset // 0, $limit // 0, $dir // 'desc' );
     }
 
     # 3. Fallback for legacy text index payload (.fld, .src, .inx)
@@ -5427,12 +5393,23 @@ sub index_get {
 # Plural Usage:
 #   $adb->index_put($table_path, \%key_vals);         # puts multiple keys at once
 #   $adb->index_put($table_path, \%key_vals, 'ids');  # explicit 'ids' type
+#   $adb->index_put([$table_path, $tableid], \%key_vals, $type);
 # Singular Usage (Backward-Compatible):
 #   $adb->index_put($table_path, $key, \@ids);
 #   $adb->index_put($table_path, $key, $val, 'raw');
+#   $adb->index_put([$table_path, $tableid], $key, $val, $type);
 # ------------------------------------------------
 sub index_put {
-    my ( $self, $table_path, $key, $val, $type ) = @_;
+    my ( $self, $target, $key, $val, $type ) = @_;
+
+    my ( $table_path, $tableid, $no_mirror );
+    if ( ref($target) eq 'ARRAY' ) {
+        ( $table_path, $tableid, $no_mirror ) = @$target;
+    }
+    else {
+        $table_path = $target;
+        ($tableid) = $table_path =~ m{([^/\\:]+)\.[^.]+$} if defined $table_path;
+    }
 
     return unless $table_path && defined $key;
 
@@ -5455,13 +5432,24 @@ sub index_put {
         my $db = $self->{_db}->{$table_path};
         return 0 unless $db;
 
+        my $is_txn = $self->is_transact($tableid);
         my $put_count = 0;
+
         for my $k_orig ( keys %$kv_map ) {
             next unless defined $k_orig && $k_orig ne '';
             my $v_item = $kv_map->{$k_orig};
             next unless defined $v_item;
 
-            my $k = $is_unq ? $self->utf_encode("$k_orig") : "$k_orig";
+            my $k = $self->utf_encode("$k_orig");
+
+            # Transaction logging: capture before-image once per transaction
+            if ( $is_txn && !$self->{_txn}->{logged}->{"$table_path\x1e$k_orig"}++ ) {
+                my $old_raw;
+                my $ret     = $db->get( $k, $old_raw );
+                my $action  = ( $ret == 0 && defined $old_raw ) ? 'edit' : 'add';
+                my $old_hex = ( $ret == 0 && defined $old_raw ) ? unpack("H*", $old_raw) : '__NULL__';
+                $self->_txn_log( 'index', $tableid, $table_path, $k_orig, $action, $old_hex );
+            }
 
             my $v_encoded;
             if ( ref($v_item) eq 'ARRAY' ) {
@@ -5489,6 +5477,32 @@ sub index_put {
                 warn "[DB_TIE] $table_path can't put key $k.\n";
             }
         }
+
+        # RAM-disk Tier 2 (mirror) or (Tier 4 in active transaction) dual-write
+        if ( !$no_mirror && $tableid && $self->ramdisk_is_mounted() ) {
+            my $table_info  = eval { $self->table_info($tableid) };
+            my $use_ramdisk = $table_info ? $self->_normalize_ramdisk_tier( $table_info->{use_ramdisk} // $table_info->{use_cache} // 0 ) : 0;
+            if ( $use_ramdisk == 2 || ( $use_ramdisk == 4 && $is_txn ) ) {
+                my $ram_dir   = $self->ramdisk_dir();
+                my $is_in_ram = ( $ram_dir && index( $table_path, $ram_dir ) == 0 ) ? 1 : 0;
+                my ($ext)     = $table_path =~ m{\.([^.]+)$};
+                my $mirror_path;
+                if ( $ext && $ext =~ /^(?:\Q$self->{db_ext}\E|inx|src|fld|fac|unq|slg)$/ ) {
+                    if ($is_in_ram) {
+                        my $tbl_path = $self->table_path($tableid);
+                        $mirror_path = "$tbl_path.$ext" if $tbl_path;
+                    }
+                    else {
+                        my $r_path = $self->ramdisk_path($tableid);
+                        $mirror_path = "$r_path.$ext" if $r_path;
+                    }
+                    if ( $mirror_path && $mirror_path ne $table_path ) {
+                        $self->index_put( [ $mirror_path, $tableid, 1 ], $kv_map, $type );
+                    }
+                }
+            }
+        }
+
         return $put_count;
     }
 
@@ -5505,7 +5519,17 @@ sub index_put {
     my $db = $self->{_db}->{$table_path};
     return unless $db;
 
-    my $k = $is_unq ? $self->utf_encode("$key") : "$key";
+    my $is_txn = $self->is_transact($tableid);
+    my $k = $self->utf_encode("$key");
+
+    # Transaction logging: capture before-image once per transaction
+    if ( $is_txn && !$self->{_txn}->{logged}->{"$table_path\x1e$key"}++ ) {
+        my $old_raw;
+        my $ret     = $db->get( $k, $old_raw );
+        my $action  = ( $ret == 0 && defined $old_raw ) ? 'edit' : 'add';
+        my $old_hex = ( $ret == 0 && defined $old_raw ) ? unpack("H*", $old_raw) : '__NULL__';
+        $self->_txn_log( 'index', $tableid, $table_path, $key, $action, $old_hex );
+    }
 
     $type = lc( $type // '' );
 
@@ -5531,18 +5555,53 @@ sub index_put {
     my $ret = $db->put( $k, $v_encoded );
     warn "[DB_TIE] $table_path can't put key $k.\n" if $ret < 0;
 
+    # RAM-disk Tier 2 (mirror) or (Tier 4 in active transaction) dual-write
+    if ( !$no_mirror && $tableid && $self->ramdisk_is_mounted() ) {
+        my $table_info  = eval { $self->table_info($tableid) };
+        my $use_ramdisk = $table_info ? $self->_normalize_ramdisk_tier( $table_info->{use_ramdisk} // $table_info->{use_cache} // 0 ) : 0;
+        if ( $use_ramdisk == 2 || ( $use_ramdisk == 4 && $is_txn ) ) {
+            my $ram_dir   = $self->ramdisk_dir();
+            my $is_in_ram = ( $ram_dir && index( $table_path, $ram_dir ) == 0 ) ? 1 : 0;
+            my ($ext)     = $table_path =~ m{\.([^.]+)$};
+            my $mirror_path;
+            if ( $ext && $ext =~ /^(?:\Q$self->{db_ext}\E|inx|src|fld|fac|unq|slg)$/ ) {
+                if ($is_in_ram) {
+                    my $tbl_path = $self->table_path($tableid);
+                    $mirror_path = "$tbl_path.$ext" if $tbl_path;
+                }
+                else {
+                    my $r_path = $self->ramdisk_path($tableid);
+                    $mirror_path = "$r_path.$ext" if $r_path;
+                }
+                if ( $mirror_path && $mirror_path ne $table_path ) {
+                    $self->index_put( [ $mirror_path, $tableid, 1 ], $key, $val, $type );
+                }
+            }
+        }
+    }
+
     return $ret == 0 ? 1 : 0;
 }
 
 # Deletes single or multiple index keys.
 # Plural Usage:
 #   $adb->index_del($table_path, \@keys);
-#   $adb->index_del($table_path, @keys);
+#   $adb->index_del([$table_path, $tableid], \@keys);
 # Singular Usage:
 #   $adb->index_del($table_path, $key);
+#   $adb->index_del([$table_path, $tableid], $key);
 # ------------------------------------------------
 sub index_del {
-    my ( $self, $table_path, $key, @more_keys ) = @_;
+    my ( $self, $target, $key, @more_keys ) = @_;
+
+    my ( $table_path, $tableid, $no_mirror );
+    if ( ref($target) eq 'ARRAY' ) {
+        ( $table_path, $tableid, $no_mirror ) = @$target;
+    }
+    else {
+        $table_path = $target;
+        ($tableid) = $table_path =~ m{([^/\\:]+)\.[^.]+$} if defined $table_path;
+    }
 
     return unless $table_path && defined $key;
 
@@ -5564,8 +5623,46 @@ sub index_del {
         }
         my $db = $self->{_db}->{$table_path};
         return unless $db;
-        my $k = $is_unq ? $self->utf_encode("$key") : "$key";
+
+        my $is_txn = $self->is_transact($tableid);
+        my $k = $self->utf_encode("$key");
+
+        if ( $is_txn && !$self->{_txn}->{logged}->{"$table_path\x1e$key"}++ ) {
+            my $old_raw;
+            my $ret = $db->get( $k, $old_raw );
+            if ( $ret == 0 && defined $old_raw ) {
+                my $old_hex = unpack("H*", $old_raw);
+                $self->_txn_log( 'index', $tableid, $table_path, $key, 'del', $old_hex );
+            }
+        }
+
         my $ret = $db->del($k);
+
+        # RAM-disk Tier 2 (mirror) or (Tier 4 in active transaction) dual-write
+        if ( !$no_mirror && $tableid && $self->ramdisk_is_mounted() ) {
+            my $table_info  = eval { $self->table_info($tableid) };
+            my $use_ramdisk = $table_info ? $self->_normalize_ramdisk_tier( $table_info->{use_ramdisk} // $table_info->{use_cache} // 0 ) : 0;
+            if ( $use_ramdisk == 2 || ( $use_ramdisk == 4 && $is_txn ) ) {
+                my $ram_dir   = $self->ramdisk_dir();
+                my $is_in_ram = ( $ram_dir && index( $table_path, $ram_dir ) == 0 ) ? 1 : 0;
+                my ($ext)     = $table_path =~ m{\.([^.]+)$};
+                my $mirror_path;
+                if ( $ext && $ext =~ /^(?:\Q$self->{db_ext}\E|inx|src|fld|fac|unq|slg)$/ ) {
+                    if ($is_in_ram) {
+                        my $tbl_path = $self->table_path($tableid);
+                        $mirror_path = "$tbl_path.$ext" if $tbl_path;
+                    }
+                    else {
+                        my $r_path = $self->ramdisk_path($tableid);
+                        $mirror_path = "$r_path.$ext" if $r_path;
+                    }
+                    if ( $mirror_path && $mirror_path ne $table_path ) {
+                        $self->index_del( [ $mirror_path, $tableid, 1 ], $key );
+                    }
+                }
+            }
+        }
+
         return $ret == 0 ? 1 : 0;
     }
 
@@ -5578,13 +5675,50 @@ sub index_del {
     my $db = $self->{_db}->{$table_path};
     return 0 unless $db;
 
+    my $is_txn = $self->is_transact($tableid);
     my $del_count = 0;
     for my $k_item (@keys_to_del) {
         next unless defined $k_item && $k_item ne '';
-        my $k = $is_unq ? $self->utf_encode("$k_item") : "$k_item";
+        my $k = $self->utf_encode("$k_item");
+
+        if ( $is_txn && !$self->{_txn}->{logged}->{"$table_path\x1e$k_item"}++ ) {
+            my $old_raw;
+            my $ret = $db->get( $k, $old_raw );
+            if ( $ret == 0 && defined $old_raw ) {
+                my $old_hex = unpack("H*", $old_raw);
+                $self->_txn_log( 'index', $tableid, $table_path, $k_item, 'del', $old_hex );
+            }
+        }
+
         my $ret = $db->del($k);
         $del_count++ if $ret == 0;
     }
+
+    # RAM-disk Tier 2 (mirror) or (Tier 4 in active transaction) dual-write
+    if ( !$no_mirror && $tableid && $self->ramdisk_is_mounted() ) {
+        my $table_info  = eval { $self->table_info($tableid) };
+        my $use_ramdisk = $table_info ? $self->_normalize_ramdisk_tier( $table_info->{use_ramdisk} // $table_info->{use_cache} // 0 ) : 0;
+        if ( $use_ramdisk == 2 || ( $use_ramdisk == 4 && $is_txn ) ) {
+            my $ram_dir   = $self->ramdisk_dir();
+            my $is_in_ram = ( $ram_dir && index( $table_path, $ram_dir ) == 0 ) ? 1 : 0;
+            my ($ext)     = $table_path =~ m{\.([^.]+)$};
+            my $mirror_path;
+            if ( $ext && $ext =~ /^(?:\Q$self->{db_ext}\E|inx|src|fld|fac|unq|slg)$/ ) {
+                if ($is_in_ram) {
+                    my $tbl_path = $self->table_path($tableid);
+                    $mirror_path = "$tbl_path.$ext" if $tbl_path;
+                }
+                else {
+                    my $r_path = $self->ramdisk_path($tableid);
+                    $mirror_path = "$r_path.$ext" if $r_path;
+                }
+                if ( $mirror_path && $mirror_path ne $table_path ) {
+                    $self->index_del( [ $mirror_path, $tableid, 1 ], \@keys_to_del );
+                }
+            }
+        }
+    }
+
     return $del_count;
 }
 
@@ -5756,7 +5890,7 @@ sub auth_write {
     }
     push @record,
       [ $user, $action, $self->{date}->{minute_id} ];
-    $self->recs_put( $file_path, [ $rid, @record ] );
+    $self->recs_put( [ $file_path, $tableid ], [ $rid, @record ] );
     $self->table_close($file_path);
 
     return 1;
@@ -6065,12 +6199,11 @@ AmberDB manages the RAM-disk layer entirely in the background. Developers do not
 
 =item * B<Standard CRUD Workflow:> Continue using standard AmberDB methods (C<read_id>, C<search_table>, C<insert_id>, C<modify_id>). The engine automatically reads from memory at microsecond speeds and dual-writes to permanent storage.
 
-=item * B<Cross-Platform CLI Suite:> Standardized scripts under C<bin/> initialize and mount RAM-disks across all supported operating systems:
+=item * B<Unified CLI Administration:> Use C<amberdb_setup.pl> to manage infrastructure, RAM-disk mounts, permissions, migrations, and service automation across all operating systems:
 
-  - Universal:       perl bin/ramdisk_amberdb.pl --start --size 512M
-  - Linux (tmpfs):   sudo bash bin/ramdisk_linux.sh start 512M
-  - macOS (APFS):    bash bin/ramdisk_macos.sh start 512M
-  - Windows (ImDisk): bin\ramdisk_windows.bat start 512M
+  - Mount RAM-disk:   perl bin/amberdb_setup.pl --action=ramdisk --start --size 512M
+  - Status check:     perl bin/amberdb_setup.pl --action=ramdisk --status
+  - Full Provision:   perl bin/amberdb_setup.pl --action=install --user=eticaretim --size 256M --cron --service
 
 =back
 
@@ -6351,6 +6484,17 @@ Returns an array of all record IDs present in the table (retrieved from memory c
 Returns the highest / auto-increment primary key ID currently allocated in the table:
 
     my $last_id = $adb->table_lastid("catalog_product");
+
+=head2 table_info($table_id)
+
+Loads and returns the table schema definition (hash reference). Automatically ensures metadata fields:
+- C<table>: table identifier (e.g. C<"catalog_product">)
+- C<dbase>: database prefix (e.g. C<"catalog">)
+
+    my $tb_info = $adb->table_info("catalog_product");
+    
+    print $tb_info->{table}; # "catalog_product"
+    print $tb_info->{dbase}; # "catalog"
 
 =head2 table_attr($table_id, [$key_or_attributes])
 

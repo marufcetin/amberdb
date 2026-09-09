@@ -219,10 +219,10 @@ subtest 'Transaction Rollback with RAM-Disk' => sub {
 subtest 'ramdisk_setup helper scripts naming & detection' => sub {
     plan tests => 10;
     my $info = $adb->ramdisk_setup();
-    like( $info->{script_pl}, qr/ramdisk_amberdb\.pl$/, 'script_pl points to ramdisk_amberdb.pl' );
-    like( $info->{script_bat}, qr/ramdisk_windows\.bat$/, 'script_bat points to ramdisk_windows.bat' );
-    like( $info->{script_ps1}, qr/ramdisk_windows\.ps1$/, 'script_ps1 points to ramdisk_windows.ps1' );
-    like( $info->{script_sh}, qr/ramdisk_(macos|linux)\.sh$/, 'script_sh points to ramdisk_(macos|linux).sh' );
+    like( $info->{script_pl}, qr/amberdb_setup\.pl$/, 'script_pl points to amberdb_setup.pl' );
+    like( $info->{script_bat}, qr/setup_windows\.bat$/, 'script_bat points to setup_windows.bat' );
+    like( $info->{script_ps1}, qr/setup_windows\.ps1$/, 'script_ps1 points to setup_windows.ps1' );
+    like( $info->{script_sh}, qr/setup_(macos|linux)\.sh$/, 'script_sh points to setup_(macos|linux).sh' );
 
     # Config registration during AmberDB->new
     is( $adb->config('ramdisk_mounted'), 1, 'config ramdisk_mounted is 1 under test emulation' );

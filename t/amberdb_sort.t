@@ -289,7 +289,7 @@ SCHEMA
 };
 
 subtest 'Primary Key Binary Index (.inx) O(1) Seeking' => sub {
-    plan tests => 4;
+    plan tests => 6;
 
     my $temp_dir = tempdir( CLEANUP => 1 );
     my $conf_dir = File::Spec->catdir( $temp_dir, 'conf' );
@@ -321,14 +321,22 @@ SCHEMA
     my $table_path = $adb->table_path('orders');
     ok( -e "$table_path.inx", '.inx binary primary key sequence file created' );
 
-    # Page 1: start = 0, limit = 5
+    # Page 1: start = 0, limit = 5 (default DESC / newest first: 50..46)
     my ( $cnt1, @p1 ) = $adb->read_all( 'orders', 0, 5 );
     is( $cnt1, 50, 'Total count 50 returned correctly' );
-    is_deeply( [ map { $_->[0] } @p1 ], [ 1 .. 5 ], 'First page (1..5) sliced via bin_decode on .inx' );
+    is_deeply( [ map { $_->[0] } @p1 ], [ 50, 49, 48, 47, 46 ], 'First page (50..46) sliced via bin_decode on .inx (default DESC)' );
 
-    # Page 3: start = 10, limit = 5
+    # Page 3: start = 10, limit = 5 (default DESC)
     my ( undef, @p3 ) = $adb->read_all( 'orders', 10, 5 );
-    is_deeply( [ map { $_->[0] } @p3 ], [ 11 .. 15 ], 'Middle page (11..15) sliced via bin_decode on .inx' );
+    is_deeply( [ map { $_->[0] } @p3 ], [ 40, 39, 38, 37, 36 ], 'Middle page (40..36) sliced via bin_decode on .inx (default DESC)' );
+
+    # Page 1 with explicit dir => 'asc' (oldest first: 1..5)
+    my ( undef, @p1_asc ) = $adb->read_all( 'orders', 0, 5, dir => 'asc' );
+    is_deeply( [ map { $_->[0] } @p1_asc ], [ 1 .. 5 ], 'First page with dir => asc returns 1..5' );
+
+    # Page 3 with explicit dir => 'asc' (oldest first: 11..15)
+    my ( undef, @p3_asc ) = $adb->read_all( 'orders', 10, 5, dir => 'asc' );
+    is_deeply( [ map { $_->[0] } @p3_asc ], [ 11 .. 15 ], 'Middle page with dir => asc returns 11..15' );
 };
 
 subtest 'convert_tables Batch Conversion' => sub {

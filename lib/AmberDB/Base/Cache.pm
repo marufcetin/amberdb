@@ -56,6 +56,11 @@ sub set_cache {
     # If vals omitted, delete key
     if ( !@vals || !defined $vals[0] ) {
         delete $self->{_cache}{$group}{$key};
+        if ( $key eq 'keys' || $key =~ /^keys_/ ) {
+            delete $self->{_cache}{$group}{keys};
+            delete $self->{_cache}{$group}{keys_desc};
+            delete $self->{_cache}{$group}{keys_asc};
+        }
         return 1;
     }
 
@@ -79,6 +84,11 @@ sub clear_cache {
     }
 
     delete $self->{_cache}{$group}{$key};
+    if ( $key eq 'keys' || $key =~ /^keys_/ ) {
+        delete $self->{_cache}{$group}{keys};
+        delete $self->{_cache}{$group}{keys_desc};
+        delete $self->{_cache}{$group}{keys_asc};
+    }
     return 1;
 }
 

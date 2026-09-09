@@ -72,7 +72,7 @@ sub facet_add {
             for my $rec (@active_records) {
                 my $rid = $rec->[0];
                 next unless defined $rec->[$blk] && $rec->[$blk] ne '';
-                my @ids = $self->field_to_list( $rec->[$blk], 'write', $table_path, $table_info, $blk );
+                my @ids = $self->set_fieldlist( $rec->[$blk], $table_path, $table_info, $blk );
                 if (@ids) {
                     $self->index_put( $fac_path, "$blk:$rid", join( "\t", @ids ), 'raw' );
                 }
@@ -157,7 +157,7 @@ sub facet_modify {
             for my $p (@became_active) {
                 my ( $rid, undef, $new_rec ) = @$p;
                 next unless defined $new_rec->[$blk] && $new_rec->[$blk] ne '';
-                my @ids = $self->field_to_list( $new_rec->[$blk], 'write', $table_path, $table_info, $blk );
+                my @ids = $self->set_fieldlist( $new_rec->[$blk], $table_path, $table_info, $blk );
                 if (@ids) {
                     $self->index_put( $fac_path, "$blk:$rid", join( "\t", @ids ), 'raw' );
                 }
@@ -185,7 +185,7 @@ sub facet_modify {
             for my $p (@changed_pairs) {
                 my ( $rid, undef, $new_rec ) = @$p;
                 if ( defined $new_rec->[$blk] && $new_rec->[$blk] ne '' ) {
-                    my @ids = $self->field_to_list( $new_rec->[$blk], 'write', $table_path, $table_info, $blk );
+                    my @ids = $self->set_fieldlist( $new_rec->[$blk], $table_path, $table_info, $blk );
                     if (@ids) {
                         $self->index_put( $fac_path, "$blk:$rid", join( "\t", @ids ), 'raw' );
                     }
@@ -347,7 +347,6 @@ sub field_fltkeys {
     my %count_map;
 
     if ( -e $fac_path ) {
-        my $has_unq  = -e $unq_path;
         my @keys     = map { "$target_block:$_" } @base_ids;
         my $res      = $self->recs_get( $fac_path, @keys );
         for my $id (@base_ids) {
@@ -355,12 +354,22 @@ sub field_fltkeys {
             next unless defined $raw && $raw ne '';
             my @vals = ( index( $raw, "\t" ) == -1 ) ? ($raw) : split /\t/, $raw;
             for my $v (@vals) {
-                if ($has_unq) {
-                    my ($text) = $self->index_get( $unq_path, "$target_block:n:$v", 'raw' );
-                    $v = $text if defined $text && $text ne '';
-                }
                 $count_map{$v}++;
             }
+        }
+    }
+
+    if ( -e $unq_path && %count_map ) {
+        my @val_ids = keys %count_map;
+        my @n_keys = map { "$target_block:n:$_" } @val_ids;
+        my $names = $self->index_get( $unq_path, \@n_keys, 'raw' );
+        if ( $names && ref($names) eq 'HASH' && %$names ) {
+            my %named_map;
+            for my $vid (@val_ids) {
+                my $name = $names->{"$target_block:n:$vid"} // $vid;
+                $named_map{$name} = $count_map{$vid};
+            }
+            return \%named_map;
         }
     }
 
@@ -445,10 +454,8 @@ sub field_allfltkeys {
     my %all_counts;
     return \%all_counts unless -e $fac_path;
 
-    my $has_unq  = -e $unq_path;
-
-    for my $blk (@$blks) {
-        if (@scan_ids) {
+    if (@scan_ids) {
+        for my $blk (@$blks) {
             my @keys = map { "$blk:$_" } @scan_ids;
             my $res  = $self->recs_get( $fac_path, @keys );
             for my $id (@scan_ids) {
@@ -456,33 +463,44 @@ sub field_allfltkeys {
                 next unless defined $raw && $raw ne '';
                 my @vals = ( index( $raw, "\t" ) == -1 ) ? ($raw) : split /\t/, $raw;
                 for my $v (@vals) {
-                    if ($has_unq) {
-                        my ($text) = $self->index_get( $unq_path, "$blk:n:$v", 'raw' );
-                        $v = $text if defined $text && $text ne '';
-                    }
                     $all_counts{$blk}{$v}++;
                 }
             }
         }
-        else {
-            $self->recs_scan(
-                $fac_path,
-                sub {
-                    my ( $k, $raw ) = @_;
-                    return unless defined $raw && $raw ne '';
-                    return unless $k =~ /^(\d+):(\d+)$/;
-                    my ( $k_blk, $rid ) = ( $1, $2 );
-                    return unless $k_blk eq $blk;
-                    my @vals = ( index( $raw, "\t" ) == -1 ) ? ($raw) : split /\t/, $raw;
-                    for my $v (@vals) {
-                        if ($has_unq) {
-                            my ($text) = $self->index_get( $unq_path, "$blk:n:$v", 'raw' );
-                            $v = $text if defined $text && $text ne '';
-                        }
-                        $all_counts{$blk}{$v}++;
-                    }
+    }
+    else {
+        my %wanted_blks = map { ( ref($_) eq 'HASH' ? $_->{blk} : $_ ) => 1 } @$blks;
+        $self->recs_scan(
+            $fac_path,
+            sub {
+                my ( $k, $raw ) = @_;
+                return unless defined $raw && $raw ne '';
+                return unless $k =~ /^(\d+):(\d+)$/;
+                my ( $k_blk, $rid ) = ( $1, $2 );
+                return unless $wanted_blks{$k_blk};
+                my @vals = ( index( $raw, "\t" ) == -1 ) ? ($raw) : split /\t/, $raw;
+                for my $v (@vals) {
+                    $all_counts{$k_blk}{$v}++;
                 }
-            );
+            }
+        );
+    }
+
+    if ( -e $unq_path && %all_counts ) {
+        for my $blk ( keys %all_counts ) {
+            my $cnt_map = $all_counts{$blk};
+            next unless $cnt_map && ref($cnt_map) eq 'HASH' && %$cnt_map;
+            my @val_ids = keys %$cnt_map;
+            my @n_keys  = map { "$blk:n:$_" } @val_ids;
+            my $names   = $self->index_get( $unq_path, \@n_keys, 'raw' );
+            if ( $names && ref($names) eq 'HASH' && %$names ) {
+                my %named_map;
+                for my $vid (@val_ids) {
+                    my $name = $names->{"$blk:n:$vid"} // $vid;
+                    $named_map{$name} = $cnt_map->{$vid};
+                }
+                $all_counts{$blk} = \%named_map;
+            }
         }
     }
 
@@ -717,12 +735,12 @@ sub facet_menu {
             my $unq_file = "${table_path}.unq";
             if ( -e $unq_file && @vals ) {
                 my @n_keys = map { "$blk:n:$_" } @vals;
-                my $res = $self->recs_get( $unq_file, map { $self->utf_encode("$_") } @n_keys );
-                if ($res) {
+                my $res = $self->index_get( $unq_file, \@n_keys, 'raw' );
+                if ( $res && ref($res) eq 'HASH' ) {
                     for my $val (@vals) {
-                        my $k = $self->utf_encode("$blk:n:$val");
-                        if ( defined $res->{$k} && $res->{$k} ne '' ) {
-                            $name_map{$val} = $res->{$k};
+                        my $text = $res->{"$blk:n:$val"};
+                        if ( defined $text && $text ne '' ) {
+                            $name_map{$val} = $text;
                         }
                     }
                 }

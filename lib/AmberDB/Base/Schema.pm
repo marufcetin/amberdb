@@ -300,6 +300,7 @@ sub dbase_info {
 
     if ( -e $target_path ) {
         $target_path =~ s{\\}{/}g;
+        $target_path = "./$target_path" unless $target_path =~ m{^(?:\./|/|[a-zA-Z]:)};
         my $do_data = do $target_path;
         if ($do_data) {
             $self->{_dbase}->{$dbase} = $do_data;
@@ -332,11 +333,25 @@ sub normalize_blocks {
     return {} unless ref($schema) eq 'HASH';
 
     # ------------------------------------------------------------------------
+    # Pipeline Step 0: Table Identity & Metadata
+    # Ensure table name and database group are present in schema.
+    # ------------------------------------------------------------------------
+    if ( defined $table && length $table ) {
+        $schema->{table} = $table unless defined $schema->{table} && length $schema->{table};
+        my ($dbase) = ( $table =~ /^([a-z0-9]+)_/i );
+        $dbase //= "";
+        $schema->{dbase} = $dbase unless defined $schema->{dbase} && length $schema->{dbase};
+    }
+
+    # ------------------------------------------------------------------------
     # Pipeline Step 1: Global Configuration Inheritance
     # ------------------------------------------------------------------------
-    if ( !defined $schema->{use_ramdisk} && !defined $schema->{use_cache} ) {
+    if ( defined $schema->{use_ramdisk} ) {
+        $schema->{use_ramdisk} = $self->_normalize_ramdisk_tier( $schema->{use_ramdisk} );
+    }
+    elsif ( !defined $schema->{use_cache} ) {
         my $global_ram = $self->config('use_ramdisk');
-        $global_ram = ( defined $global_ram && $global_ram =~ /^\d+$/ ) ? int($global_ram) : 0;
+        $global_ram = $self->_normalize_ramdisk_tier($global_ram);
         $global_ram = 0 if $global_ram == 3;
         $schema->{use_ramdisk} = $global_ram;
     }
@@ -473,15 +488,17 @@ sub table_info {
     my ( $self, $arg ) = @_;
 
     return {} unless $arg;
+    return {} if $self->config('simple');
+
     my ( $table, $table_path ) = $self->schema_arg( $arg, "table" );
     $table && $table_path or return {};
 
-    my $dbase = ( $table =~ /^([a-z0-9]+)_/ )[0];
     if ( $self->{_table}->{$table} && %{ $self->{_table}->{$table} } ) {
         return { %{ $self->{_table}->{$table} } };
     }
 
-    return {} if $self->config('simple');
+    my ($dbase) = ( $table =~ /^([a-z0-9]+)_/i );
+    $dbase //= "";
 
     my $ramdisk_schema = $self->path('schema_rdir');
     my $target_path    = $table_path;
@@ -491,6 +508,7 @@ sub table_info {
 
     if ( -e $target_path ) {
         $target_path =~ s{\\}{/}g;
+        $target_path = "./$target_path" unless $target_path =~ m{^(?:\./|/|[a-zA-Z]:)};
         my $do_data = do $target_path;
         if ($do_data) {
             $self->normalize_blocks( $table, $do_data );
@@ -508,24 +526,30 @@ sub table_info {
         else {
             if ($@) {
                 cluck "[AMBERDB_SCHEMA] Syntax error in table schema file '$target_path': $@\n";
+                return {};
             }
         }
     }
     else {
-        my $schema = $self->{_table}->{$table} || {};
+        my $schema = $self->{_table}->{$table} ||= {};
         $self->normalize_blocks( $table, $schema );
-        if ( %$schema ) {
-            $self->{_table}->{$table} = $schema;
-            if ( $schema->{use_ramdisk} && !$schema->{_ramdisk_ensured} ) {
-                $schema->{_ramdisk_ensured} = 1;
-                $self->ramdisk_ensure($table);
-            }
+        $self->{_table}->{$table} = $schema;
+        if ( $schema->{use_ramdisk} && !$schema->{_ramdisk_ensured} ) {
+            $schema->{_ramdisk_ensured} = 1;
+            $self->ramdisk_ensure($table);
         }
     }
 
-    $self->dbase_info($dbase) if $dbase;
+    if ( $self->{_table}->{$table} && %{ $self->{_table}->{$table} } ) {
+        $self->{_table}->{$table}->{table} //= $table;
+        $self->{_table}->{$table}->{dbase} //= $dbase if $dbase;
 
-    return { %{ $self->{_table}->{$table} || {} } };
+        $self->dbase_info($dbase) if $dbase;
+
+        return { %{ $self->{_table}->{$table} } };
+    }
+
+    return {};
 }
 
 # my $table_path = $adb->table_path($table);
@@ -683,7 +707,11 @@ sub table_attr {
     my $needs_path_refresh = 0;
 
     foreach my $key ( keys %attrs ) {
-        $self->{_table}->{$table}->{$key} = $attrs{$key};
+        my $val = $attrs{$key};
+        if ( $key eq 'use_ramdisk' ) {
+            $val = $self->_normalize_ramdisk_tier($val);
+        }
+        $self->{_table}->{$table}->{$key} = $val;
         $needs_path_refresh = 1 if $key =~ /^(year|section|lang|table_dir|use_ramdisk)$/;
     }
 

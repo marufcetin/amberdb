@@ -2,7 +2,7 @@ package AmberDB::Locale::Currency;
 
 use 5.016;
 use warnings;
-#use utf8; # bu aktif edildiğinde tüm sitede wide character hatasına sebep oluyor
+use utf8;
 use Carp qw(croak cluck);
 
 our $VERSION = '5.25.0';

@@ -14,7 +14,7 @@ Revision history for AmberDB
           * Excluded entire lib/AmberDB/Base/ directory and AmberDB::Base namespace from CPAN indexing in Makefile.PL (no_index), keeping MetaCPAN documentation clean and focused on public standalone interfaces.
           * Consolidated public submodule architecture in AmberDB POD to focus exclusively on standalone components (AmberDB::Date, AmberDB::Locale, AmberDB::Tools).
           * Integrated ISO 4217 Currency Dictionary documentation into AmberDB::Locale and removed standalone POD from internal AmberDB::Locale::Currency to prevent separate CPAN indexing.
-          * Deprecated and removed unused legacy AmberDB::String module; consolidated trim_space utility into AmberDB::Base.
+          * Deprecated and removed unused legacy Amber::Util::String module; consolidated trim_space utility into AmberDB::Base.
 
         - [TRANSPARENT PHYSICAL RAM-DISK ACCELERATION & CROSS-PLATFORM ORCHESTRATION]
           * Cross-Platform Support (Linux, macOS, Windows): Standardized bin/ramdisk_* suite (ramdisk_amberdb.pl, ramdisk_windows.bat/ps1, ramdisk_macos.sh, ramdisk_linux.sh) with native support for Linux tmpfs, macOS APFS RAM-Disk (hdiutil), and Windows ImDisk with project namespace isolation.
@@ -67,14 +67,29 @@ Revision history for AmberDB
             - Automatically synchronizes summary repeat_ids fields.
           * Low-level binary primitives: Added bin_mod and bin_del for granular manipulation of 8-byte packed binary buffers.
 
+        - [3-STREAM DUAL-TIER JUNK INDEXING ARCHITECTURE]
+          * Separated indexing into three distinct streams: Base (all records without prefix), Tier A (A: prefix, active records), and Tier B (B: prefix, junk/passive records).
+          * Replaced legacy asymmetric j: prefix with clean, symmetric A: and B: tiers.
+          * Supports query modes A, B, AB, BA, and ALL/none, with query-level jnktype override and dynamic table_attr toggle.
+          * Hardened transaction engine (WAL) rollback to maintain full 3-stream parity across Base, Tier A, and Tier B streams on insert, modify, and delete rollbacks.
+          * Unified indexing methods (records_add/del, match_*, search_*, sort_*) with a direct $tier parameter, eliminating separate duplicate methods without extra helpers or aliases.
+          * Renamed re-indexing script from bin/convert_dbstore.pl to bin/dbstore_reindex.pl for clarity.
+          * NOTE: Upgrading to this architecture requires re-indexing existing tables via bin/dbstore_reindex.pl or AmberDB::Tools->set_index.
+
+        - [BUG FIXES] Index Read Order & Direction:
+          * Fixed read order regression in read_all, field_fetch, and table_keys: restored default descending order (N..1, newest records first) to fix pagination drift.
+          * Added explicit dir => 'asc'|'desc' (alias order) option across read_all and field_fetch.
+
         - [TEST SUITE & COMPATIBILITY]
+          * Added dedicated test suite t/amberdb_junk_tiered.t covering 3-stream dual-tier indexing (CRUD, transitions, hybrid modes, Tools rebuild).
+          * Added dedicated test suite t/amberdb_read_order.t verifying default descending (N..1) read order and explicit direction flags.
           * Added dedicated test suite t/amberdb_inflate_deflate.t covering single/batch inflate, deflate, RDBM resolution, and repeat blocks.
           * Added dedicated test suite t/amberdb_field_ops.t covering update_field, insert_field, delete_field, and constraint guards.
           * Added dedicated test suite xt/amberdb_ramdisk.t covering physical RAM-disk operations, isolated under author tests (xt/) to ensure standard installation tests pass without pre-mounted RAM-disk filesystems.
           * Added dedicated test suite t/amberdb_schema_types.t covering all 9 schema types and type conversions.
           * Refactored t/amberdb_cache.t to comprehensively test L1 in-memory caching and persistent staging buffers.
           * Added default language ('gb') verification tests in t/amberdb_encapsulation.t and t/amberdb-locale_09_gb.t.
-          * 100% test pass rate across all 51 standard installation test files (473 assertions) and extended author test suite (xt/).
+          * 100% test pass rate across all 52 standard installation test files (478 assertions) and extended author test suite (xt/).
 
 5.24.1  2026-09-05
         - Standardized 'offset' pagination parameter with backward-compatible 'start' alias (read_all, field_fetch, search_table, field_filter, bin_decode, bin_crop, facet_menu).
@@ -173,7 +188,7 @@ Revision history for AmberDB
           * Cleaned up legacy id_type occurrences across all 41 test files and concurrency stress tests (xt/amberdb_concurrency_stress.t).
         - [DISTRIBUTION & METADATA] Decoupled Internal Module Versions and CPAN no_index:
           * Stripped redundant $VERSION definitions from 15 internal/engine-only modules (Base, Cache, Transact, Index, Index::Facet, Index::Junk, Locale::Currency, Locale::Lang::*) to streamline release maintenance.
-          * Retained explicit $VERSION in public, standalone modules (AmberDB, AmberDB::Array, AmberDB::Date, AmberDB::Locale, AmberDB::String, AmberDB::Tools).
+          * Retained explicit $VERSION in public, standalone modules (AmberDB, AmberDB::Array, AmberDB::Date, AmberDB::Locale, Amber::Util::String, AmberDB::Tools).
           * Added comprehensive META_MERGE no_index configuration in Makefile.PL covering internal directories, namespaces, and packages.
         - [DATA STRUCTURES & UTILITIES] Non-Destructive hash_diff in AmberDB::Array:
           * Implemented hash_diff($hash1, $hash2) in AmberDB::Array with safe shallow copying, ensuring input hash structures are never mutated.

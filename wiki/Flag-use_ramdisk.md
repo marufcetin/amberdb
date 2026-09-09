@@ -4,8 +4,8 @@
 
 > **Category:** Configuration Flags  
 > **Scope:** Engine Option (Global) / Table Schema Option (Per-Table)  
-> **Valid Values:** `0`, `1`, `2`, `3`  
-> **Default:** `0`
+> **Valid Values:** `0` (`none`), `1` (`index`), `2` (`dual`), `3` (`temp`), `4` (`async`)  
+> **Default:** `0` (`none`)
 
 ---
 
@@ -17,10 +17,11 @@ The system runs completely in the background: developers interact with accelerat
 
 ### Acceleration Tiers
 
-* **`0` (Disabled):** Standard persistent disk access.
-* **`1` (Hybrid Index-Only Acceleration):** Secondary index files (`.inx`, `.src`, `.fld`, `.fac`, `.unq`, `.slg`) are mirrored on RAM-disk. Master record data (`.db`) remains on physical disk. Searches, filtering, and lookups run at memory speeds with minimal RAM footprint.
-* **`2` (Full RAM-Disk Mirror - Dual-Write):** Both master data (`.db`) and all index files are mirrored on RAM-disk. Reads are served directly from RAM-disk at microsecond speeds; writes dual-write synchronously to both RAM-disk and persistent disk.
-* **`3` (Volatile Pure RAM-Disk - Simple Key-Value):** Data exists **strictly on RAM-disk** (`.db`). No physical disk files and no secondary index files are created (`use_simple => 1`). Designed for ephemeral sessions, shopping carts, and transient tokens. Supports sliding TTL expiration (`ramdisk_ttl`). *Note: Tier 3 is valid per-table only.*
+* **`0` or `'none'` (Disabled):** Standard persistent disk access.
+* **`1` or `'index'` (Hybrid Index-Only Acceleration):** Secondary index files (`.inx`, `.src`, `.fld`, `.fac`, `.unq`, `.slg`) are mirrored on RAM-disk. Master record data (`.db`) remains on physical disk. Searches, filtering, and lookups run at memory speeds with minimal RAM footprint.
+* **`2` or `'dual'` (Full RAM-Disk Mirror - Dual-Write):** Both master data (`.db`) and all index files are mirrored on RAM-disk. Reads are served directly from RAM-disk at microsecond speeds; writes dual-write synchronously to both RAM-disk and persistent disk.
+* **`3` or `'temp'` (Volatile Pure RAM-Disk - Simple Key-Value):** Data exists **strictly on RAM-disk** (`.db`). No physical disk files and no secondary index files are created (`use_simple => 1`). Designed for ephemeral sessions, shopping carts, and transient tokens. Supports sliding TTL expiration (`ramdisk_ttl`). *Note: Tier 3 is valid per-table only.*
+* **`4` or `'async'` (Asynchronous Write-Behind):** All reads and writes are served from RAM-disk at microsecond speeds. Writes to permanent disk are deferred and tracked as dirty events in `amberdb_sync_events.db`. A background sync worker (`ramdisk_sync()`) flushes changes to disk periodically with single-writer lock protection and write coalescing (collapsing 500 updates into 1 disk write). *Note: During an active transaction (`transact_start`), all tables and indexes automatically elevate to synchronous dual-write mode.*
 
 ---
 

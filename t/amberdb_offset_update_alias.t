@@ -188,7 +188,7 @@ subtest '8. recs_cutting and bin_decode' => sub {
     is_deeply( \@slice, [ 20, 30, 40 ], 'recs_cutting slice is [20, 30, 40]' );
 
     my $buf = $adb->bin_encode( [ 101, 102, 103, 104, 105 ] );
-    my ( $bin_tot, @bin_slice ) = $adb->bin_decode( $buf, 2, 2 );
+    my ( $bin_tot, @bin_slice ) = $adb->bin_decode( $buf, 2, 2, 'asc' );
     is( $bin_tot, 5, 'bin_decode total count is 5' );
     is_deeply( \@bin_slice, [ 103, 104 ], 'bin_decode sliced IDs [103, 104]' );
 };

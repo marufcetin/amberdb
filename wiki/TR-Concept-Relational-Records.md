@@ -95,7 +95,7 @@ my @urun = (
 # insert_id aninda AmberDB:
 # - Blok 1'deki "Sony WH-1000XM5" metnini alir.
 # - Blok 2'deki 12 degerini gorup "catalog_categories" dosyasini acar, 12 ID'li kaydin 1. blogundaki "Kablosuz Ses Sistemleri" metnini okur.
-# - Her iki metnin kelimelerini birlestirerek catalog_product_1.src indeksine yazar.
+# - Her iki metnin kelimelerini birlestirerek catalog_product.src indeksine yazar.
 $adb->insert_id("catalog_product", @urun);
 
 # 3. Artik kullanici "Sony Ses Sistemleri" aradiginda urun SIFIR JOIN ile aninda bulunur:
