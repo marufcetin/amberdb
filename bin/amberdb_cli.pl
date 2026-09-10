@@ -31,18 +31,68 @@ use AmberDB::Tools;
 
 $| = 1;
 
-my $default_db = "dbstore";
-make_path($default_db) unless -d $default_db;
-$default_db = eval { abs_path($default_db) } // $default_db;
+# ============================================================================
+# RESOLVE DBASE_DIR FROM CLI ARGUMENTS
+# 1- Connect'ten sonraki string: amberdb connect /path/to/dbstore
+# 2- Argümanlı: --db=dbstore veya --dbase_dir=/path/to
+# Argümandan gelmiyorsa: bulunduğu dizinde dbstore oluşturur.
+# ============================================================================
 
-our $adb = AmberDB->new( path => { dbase_dir => $default_db } );
-$adb->set_datadir($default_db);
+my $target_db;
+my $from_cli_args = 0;
+
+# 1. Connect'ten sonraki string (örn: amberdb connect /path/to/dbstore)
+for (my $i = 0; $i < @ARGV; $i++) {
+    my $arg = $ARGV[$i];
+    if ( $arg =~ /^--?(?:action=)?connect$/i ) {
+        for (my $j = $i + 1; $j < @ARGV; $j++) {
+            my $next = $ARGV[$j];
+            next if $next =~ /^-/;
+            next if $next =~ /=/;
+            next if $next =~ /^(?:json|pretty|tsv|dumper|perl|raw|table|time)$/i;
+            $target_db = $next;
+            $from_cli_args = 1;
+            last;
+        }
+        last;
+    }
+}
+
+# 2. Argümanlı: --db=dbstore veya --dbase_dir=/path/to (ayrıca -d, db=, path-dbase_dir=)
+if ( !defined $target_db ) {
+    for (my $i = 0; $i < @ARGV; $i++) {
+        my $arg = $ARGV[$i];
+        if ( $arg =~ /^--(?:db|dbase_dir)=(.*)$/i || $arg =~ /^(?:path-dbase_dir|db)=(.*)$/i ) {
+            $target_db = $1 if defined $1 && length $1;
+            $from_cli_args = 1;
+            last;
+        }
+        elsif ( ( $arg =~ /^--(?:db|dbase_dir)$/i || $arg =~ /^-d$/i ) && $i + 1 < @ARGV && $ARGV[$i + 1] !~ /^-/ ) {
+            $target_db = $ARGV[$i + 1];
+            $from_cli_args = 1;
+            last;
+        }
+    }
+}
+
+# Argümandan gelmiyorsa: bulunduğu dizinde dbstore oluşturur
+if ( !defined $target_db || !length $target_db ) {
+    $target_db = "dbstore";
+    make_path($target_db) unless -d $target_db;
+}
+else {
+    make_path($target_db) unless -d $target_db;
+}
+$target_db = eval { abs_path($target_db) } // $target_db;
+
+our $adb = AmberDB->new( path => { dbase_dir => $target_db } );
+$adb->set_datadir($target_db);
 our $tools = AmberDB::Tools->new($adb);
 
-my $workspace_db   = $adb->path('dbase_dir');
-my $workspace_sess = $adb->path('session_dir');
+my $local_db   = "dbstore";
+my $local_sess = "$local_db/session";
 
-my $explicit_db      = 0;
+my $explicit_db      = $from_cli_args;
 my $has_cfg_updates  = 0;
 my $has_path_updates = 0;
 
@@ -66,8 +116,8 @@ sub session_file {
         "$sess_dir/cli_$tok.json",
         "$db_dir/session/cli_$tok",
         "$db_dir/ramdisk/session/cli_$tok",
-        ( $workspace_sess && $workspace_sess ne $sess_dir ? "$workspace_sess/cli_$tok" : () ),
-        ( $workspace_db   && $workspace_db ne $db_dir     ? "$workspace_db/session/cli_$tok" : () ),
+        "$local_sess/cli_$tok",
+        "$local_sess/cli_$tok.json",
     );
     for my $f (@candidates) {
         return $f if defined $f && -f $f;
@@ -101,15 +151,17 @@ sub save_session {
         }
     }
 
-    # If active database is outside workspace_db, mirror session so subsequent CLI calls find it
-    if ( $workspace_sess && $workspace_sess ne ( $adb->path('session_dir') // '' ) ) {
-        make_path($workspace_sess) unless -d $workspace_sess;
-        my $mf = "$workspace_sess/cli_$tok";
+    # If active database session_dir is outside local_sess, mirror session so subsequent CLI calls in this workspace find it
+    my $abs_local = eval { abs_path($local_sess) } // $local_sess;
+    my $abs_curr  = eval { abs_path($adb->path('session_dir')) } // $adb->path('session_dir');
+    if ( $abs_local ne $abs_curr ) {
+        make_path($local_sess) unless -d $local_sess;
+        my $mf = "$local_sess/cli_$tok";
         if ( open my $mfh, '>', $mf ) {
             print $mfh encode_json($data);
             close $mfh;
         }
-        my $mlf = "$workspace_sess/cli_last_token";
+        my $mlf = "$local_sess/cli_last_token";
         if ( open my $mlfh, '>', $mlf ) {
             print $mlfh $tok;
             close $mlfh;
@@ -146,15 +198,14 @@ sub delete_session {
         "$sess_dir/cli_$tok",
         "$db_dir/session/cli_$tok",
         "$db_dir/ramdisk/session/cli_$tok",
-        ( $workspace_sess ? "$workspace_sess/cli_$tok" : () ),
-        ( $workspace_db   ? "$workspace_db/session/cli_$tok" : () ),
+        "$local_sess/cli_$tok",
     );
     for my $f (@candidates) {
         unlink $f if defined $f && -f $f;
     }
     my $lf = last_token_file();
     unlink $lf if $lf && -f $lf;
-    unlink "$workspace_sess/cli_last_token" if $workspace_sess && -f "$workspace_sess/cli_last_token";
+    unlink "$local_sess/cli_last_token" if -f "$local_sess/cli_last_token";
 }
 
 sub resolve_active_token {
