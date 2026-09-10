@@ -66,28 +66,28 @@ subtest '3. Dash tolerance & global config update' => sub {
 
     # Connect to get token
     my $out_conn = `"$perl_bin" -Ilib "$cli_path" connect path-dbase_dir="$test_dbdir" format=json`;
-    my $conn = decode_json($out_conn);
-    my $token = $conn->{token};
+    my $conn = eval { decode_json($out_conn) };
+    my $token = $conn ? $conn->{token} : '';
 
     # Update with --cfg-no_write=1 (double dash)
-    my $upd1 = `"$perl_bin" -Ilib "$cli_path" --token=$token --cfg-no_write=1 format=json`;
-    my $data1 = decode_json($upd1);
-    is($data1->{cfg}->{no_write}, 1, "Double dash --cfg-no_write=1 updated");
+    my $upd1 = `"$perl_bin" -Ilib "$cli_path" --token=$token --cfg-no_write=1 format=json 2>&1`;
+    my $data1 = eval { decode_json($upd1) };
+    is(eval { $data1->{cfg}->{no_write} }, 1, "Double dash --cfg-no_write=1 updated") or diag("upd1 output: $upd1");
 
     # Update with -cfg-no_write=0 (single dash)
-    my $upd2 = `"$perl_bin" -Ilib "$cli_path" -token=$token -cfg-no_write=0 format=json`;
-    my $data2 = decode_json($upd2);
-    is($data2->{cfg}->{no_write}, 0, "Single dash -cfg-no_write=0 updated");
+    my $upd2 = `"$perl_bin" -Ilib "$cli_path" -token=$token -cfg-no_write=0 format=json 2>&1`;
+    my $data2 = eval { decode_json($upd2) };
+    is(eval { $data2->{cfg}->{no_write} }, 0, "Single dash -cfg-no_write=0 updated") or diag("upd2 output: $upd2");
 
     # Update with cfg-no_write=1 (no dash)
-    my $upd3 = `"$perl_bin" -Ilib "$cli_path" token=$token cfg-no_write=1 format=json`;
-    my $data3 = decode_json($upd3);
-    is($data3->{cfg}->{no_write}, 1, "No dash cfg-no_write=1 updated");
+    my $upd3 = `"$perl_bin" -Ilib "$cli_path" token=$token cfg-no_write=1 format=json 2>&1`;
+    my $data3 = eval { decode_json($upd3) };
+    is(eval { $data3->{cfg}->{no_write} }, 1, "No dash cfg-no_write=1 updated") or diag("upd3 output: $upd3");
 
     # Clean disconnect
-    my $disc = `"$perl_bin" -Ilib "$cli_path" token=$token disconnect format=json`;
-    my $ddata = decode_json($disc);
-    is($ddata->{status}, 'disconnected', "Disconnected successfully");
+    my $disc = `"$perl_bin" -Ilib "$cli_path" token=$token disconnect format=json 2>&1`;
+    my $ddata = eval { decode_json($disc) };
+    is(eval { $ddata->{status} }, 'disconnected', "Disconnected successfully") or diag("disc output: $disc");
 };
 
 # ---------------------------------------------------------------------------

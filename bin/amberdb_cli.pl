@@ -31,7 +31,7 @@ use AmberDB::Tools;
 
 $| = 1;
 
-my $default_db = -d "dbstore" ? "dbstore" : ( -d "dbase" ? "dbase" : "." );
+my $default_db = -d "dbase" ? "dbase" : "dbstore";
 $default_db = eval { abs_path($default_db) } // $default_db;
 
 our $adb = AmberDB->new( path => { dbase_dir => $default_db } );
@@ -61,8 +61,15 @@ sub session_file {
         "$dir/cli_$tok.json",
         $adb->path('dbase_dir') . "/session/cli_$tok",
         $adb->path('dbase_dir') . "/ramdisk/session/cli_$tok",
-        ( -d "dbstore" ? abs_path("dbstore") . "/session/cli_$tok" : () ),
-        ( -d "dbstore/ramdisk" ? abs_path("dbstore/ramdisk") . "/session/cli_$tok" : () ),
+        "dbstore/session/cli_$tok",
+        "dbstore/ramdisk/session/cli_$tok",
+        "dbase/session/cli_$tok",
+        "dbase/ramdisk/session/cli_$tok",
+        "./session/cli_$tok",
+        ( eval { abs_path("dbstore") } ? abs_path("dbstore") . "/session/cli_$tok" : () ),
+        ( eval { abs_path("dbstore/ramdisk") } ? abs_path("dbstore/ramdisk") . "/session/cli_$tok" : () ),
+        ( eval { abs_path("dbase") } ? abs_path("dbase") . "/session/cli_$tok" : () ),
+        ( eval { abs_path(".") } ? abs_path(".") . "/session/cli_$tok" : () ),
     );
     for my $f (@candidates) {
         return $f if defined $f && -f $f;
@@ -84,9 +91,21 @@ sub save_session {
     print $fh encode_json($data);
     close $fh;
 
-    # Also save to current session_dir if different from $file
+    # Always mirror to local workspace session directory so subsequent CLI commands in this workspace find it
+    my $local_db   = "dbstore";
+    my $local_sess = "$local_db/session/cli_$tok";
+    if ( $local_sess ne $file ) {
+        my $ldir = dirname($local_sess);
+        make_path($ldir) unless -d $ldir;
+        if ( open my $lfh, '>', $local_sess ) {
+            print $lfh encode_json($data);
+            close $lfh;
+        }
+    }
+
+    # Also save to current session_dir if different from $file and $local_sess
     my $curr_file = $adb->path('session_dir') . "/cli_$tok";
-    if ( $curr_file ne $file ) {
+    if ( $curr_file ne $file && $curr_file ne $local_sess ) {
         my $cdir = dirname($curr_file);
         make_path($cdir) unless -d $cdir;
         if ( open my $cfh, '>', $curr_file ) {
@@ -95,23 +114,15 @@ sub save_session {
         }
     }
 
-    # If current dbase is outside default dbstore, mirror to local dbstore so subsequent CLI calls find it
-    if ( -d "dbstore" ) {
-        my $dbstore_sess = abs_path("dbstore") . "/session/cli_$tok";
-        if ( $dbstore_sess ne $file && $dbstore_sess ne $curr_file ) {
-            my $ddir = dirname($dbstore_sess);
-            make_path($ddir) unless -d $ddir;
-            if ( open my $dfh, '>', $dbstore_sess ) {
-                print $dfh encode_json($data);
-                close $dfh;
-            }
-        }
-    }
-
     my $lf = last_token_file();
     if ( $lf && open my $lfh, '>', $lf ) {
         print $lfh $tok;
         close $lfh;
+    }
+    my $local_last = "$local_db/session/cli_last_token";
+    if ( $local_last ne ($lf // '') && open my $llh, '>', $local_last ) {
+        print $llh $tok;
+        close $llh;
     }
 }
 
@@ -135,20 +146,24 @@ sub delete_session {
         ( $adb ? $adb->path('session_dir') . "/cli_$tok" : () ),
         ( $adb ? $adb->path('dbase_dir') . "/session/cli_$tok" : () ),
         ( $adb ? $adb->path('dbase_dir') . "/ramdisk/session/cli_$tok" : () ),
-        ( -d "dbstore" ? abs_path("dbstore") . "/session/cli_$tok" : () ),
-        ( -d "dbstore/ramdisk" ? abs_path("dbstore/ramdisk") . "/session/cli_$tok" : () ),
+        "dbstore/session/cli_$tok",
+        "dbstore/ramdisk/session/cli_$tok",
+        "dbase/session/cli_$tok",
+        "dbase/ramdisk/session/cli_$tok",
+        "./session/cli_$tok",
+        ( eval { abs_path("dbstore") } ? abs_path("dbstore") . "/session/cli_$tok" : () ),
+        ( eval { abs_path("dbstore/ramdisk") } ? abs_path("dbstore/ramdisk") . "/session/cli_$tok" : () ),
+        ( eval { abs_path("dbase") } ? abs_path("dbase") . "/session/cli_$tok" : () ),
     );
     for my $f (@candidates) {
         unlink $f if defined $f && -f $f;
     }
     my $lf = last_token_file();
     if ( $lf && -f $lf ) {
-        open my $fh, '<', $lf;
-        my $last = <$fh>;
-        close $fh;
-        $last =~ s/\s+$// if defined $last;
-        unlink $lf if defined $last && $last eq $tok;
+        unlink $lf;
     }
+    unlink "dbstore/session/cli_last_token" if -f "dbstore/session/cli_last_token";
+    unlink "dbase/session/cli_last_token"   if -f "dbase/session/cli_last_token";
 }
 
 sub resolve_active_token {

@@ -1,4 +1,7 @@
 AGENTS.md
+bin/amberdb
+bin/amberdb.bat
+bin/amberdb_cli.pl
 bin/amberdb_daemon.pl
 bin/amberdb_setup.pl
 bin/commands.md
@@ -78,6 +81,7 @@ t/amberdb_backup.t
 t/amberdb_bin_crop.t
 t/amberdb_bin_ops.t
 t/amberdb_cache.t
+t/amberdb_cli.t
 t/amberdb_date.t
 t/amberdb_ecommerce_facet.t
 t/amberdb_encapsulation.t
