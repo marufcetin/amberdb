@@ -312,5 +312,32 @@ subtest '10. Execution elapsed time parameter (time, time=1, --time)' => sub {
     unlike($out_notime, qr/\[Time:/, "No time line printed when time option is omitted");
 };
 
+# ---------------------------------------------------------------------------
+subtest '11. Positional connect database directory' => sub {
+    plan tests => 6;
+
+    # 1. Positional connect to custom path
+    my $out_pos = `"$perl_bin" -Ilib "$cli_path" connect "$test_dbdir" format=json`;
+    my $conn_pos = eval { decode_json($out_pos) };
+    is($conn_pos->{status}, 'connected', "Positional connect to path succeeded");
+    my $tok_pos = $conn_pos->{token};
+    ok(defined $tok_pos && $tok_pos =~ /^\d{4}$/, "Positional connect token generated: $tok_pos");
+    is($conn_pos->{path}->{dbase_dir}, $test_dbdir, "Connected data dir matches positional path");
+
+    my $disc_pos = `"$perl_bin" -Ilib "$cli_path" token=$tok_pos disconnect format=json`;
+    my $dd_pos = eval { decode_json($disc_pos) };
+    is($dd_pos->{status}, 'disconnected', "Positional connect disconnected cleanly");
+
+    # 2. Positional connect with 'dbstore'
+    my $out_dbstore = `"$perl_bin" -Ilib "$cli_path" connect dbstore format=json`;
+    my $conn_dbstore = eval { decode_json($out_dbstore) };
+    is($conn_dbstore->{status}, 'connected', "Connect dbstore succeeded");
+    my $tok_db = $conn_dbstore->{token};
+
+    my $disc_db = `"$perl_bin" -Ilib "$cli_path" token=$tok_db disconnect format=json`;
+    my $dd_db = eval { decode_json($disc_db) };
+    is($dd_db->{status}, 'disconnected', "Connect dbstore disconnected cleanly");
+};
+
 done_testing();
 

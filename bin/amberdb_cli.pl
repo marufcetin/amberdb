@@ -31,12 +31,16 @@ use AmberDB::Tools;
 
 $| = 1;
 
-my $default_db = -d "dbase" ? "dbase" : "dbstore";
+my $default_db = "dbstore";
+make_path($default_db) unless -d $default_db;
 $default_db = eval { abs_path($default_db) } // $default_db;
 
 our $adb = AmberDB->new( path => { dbase_dir => $default_db } );
 $adb->set_datadir($default_db);
 our $tools = AmberDB::Tools->new($adb);
+
+my $workspace_db   = $adb->path('dbase_dir');
+my $workspace_sess = $adb->path('session_dir');
 
 my $explicit_db      = 0;
 my $has_cfg_updates  = 0;
@@ -55,31 +59,26 @@ sub session_file {
     my ($tok) = @_;
     return unless defined $tok && length $tok;
     return unless $adb;
-    my $dir = $adb->path('session_dir');
+    my $sess_dir = $adb->path('session_dir');
+    my $db_dir   = $adb->path('dbase_dir');
     my @candidates = (
-        "$dir/cli_$tok",
-        "$dir/cli_$tok.json",
-        $adb->path('dbase_dir') . "/session/cli_$tok",
-        $adb->path('dbase_dir') . "/ramdisk/session/cli_$tok",
-        "dbstore/session/cli_$tok",
-        "dbstore/ramdisk/session/cli_$tok",
-        "dbase/session/cli_$tok",
-        "dbase/ramdisk/session/cli_$tok",
-        "./session/cli_$tok",
-        ( eval { abs_path("dbstore") } ? abs_path("dbstore") . "/session/cli_$tok" : () ),
-        ( eval { abs_path("dbstore/ramdisk") } ? abs_path("dbstore/ramdisk") . "/session/cli_$tok" : () ),
-        ( eval { abs_path("dbase") } ? abs_path("dbase") . "/session/cli_$tok" : () ),
-        ( eval { abs_path(".") } ? abs_path(".") . "/session/cli_$tok" : () ),
+        "$sess_dir/cli_$tok",
+        "$sess_dir/cli_$tok.json",
+        "$db_dir/session/cli_$tok",
+        "$db_dir/ramdisk/session/cli_$tok",
+        ( $workspace_sess && $workspace_sess ne $sess_dir ? "$workspace_sess/cli_$tok" : () ),
+        ( $workspace_db   && $workspace_db ne $db_dir     ? "$workspace_db/session/cli_$tok" : () ),
     );
     for my $f (@candidates) {
         return $f if defined $f && -f $f;
     }
-    return "$dir/cli_$tok";
+    return "$sess_dir/cli_$tok";
 }
 
 sub last_token_file {
     return unless $adb;
-    return $adb->path('session_dir') . "/cli_last_token";
+    my $sess_dir = $adb->path('session_dir');
+    return "$sess_dir/cli_last_token";
 }
 
 sub save_session {
@@ -91,21 +90,9 @@ sub save_session {
     print $fh encode_json($data);
     close $fh;
 
-    # Always mirror to local workspace session directory so subsequent CLI commands in this workspace find it
-    my $local_db   = "dbstore";
-    my $local_sess = "$local_db/session/cli_$tok";
-    if ( $local_sess ne $file ) {
-        my $ldir = dirname($local_sess);
-        make_path($ldir) unless -d $ldir;
-        if ( open my $lfh, '>', $local_sess ) {
-            print $lfh encode_json($data);
-            close $lfh;
-        }
-    }
-
-    # Also save to current session_dir if different from $file and $local_sess
+    # Also save to current session_dir if different from $file
     my $curr_file = $adb->path('session_dir') . "/cli_$tok";
-    if ( $curr_file ne $file && $curr_file ne $local_sess ) {
+    if ( $curr_file ne $file ) {
         my $cdir = dirname($curr_file);
         make_path($cdir) unless -d $cdir;
         if ( open my $cfh, '>', $curr_file ) {
@@ -114,15 +101,25 @@ sub save_session {
         }
     }
 
+    # If active database is outside workspace_db, mirror session so subsequent CLI calls find it
+    if ( $workspace_sess && $workspace_sess ne ( $adb->path('session_dir') // '' ) ) {
+        make_path($workspace_sess) unless -d $workspace_sess;
+        my $mf = "$workspace_sess/cli_$tok";
+        if ( open my $mfh, '>', $mf ) {
+            print $mfh encode_json($data);
+            close $mfh;
+        }
+        my $mlf = "$workspace_sess/cli_last_token";
+        if ( open my $mlfh, '>', $mlf ) {
+            print $mlfh $tok;
+            close $mlfh;
+        }
+    }
+
     my $lf = last_token_file();
     if ( $lf && open my $lfh, '>', $lf ) {
         print $lfh $tok;
         close $lfh;
-    }
-    my $local_last = "$local_db/session/cli_last_token";
-    if ( $local_last ne ($lf // '') && open my $llh, '>', $local_last ) {
-        print $llh $tok;
-        close $llh;
     }
 }
 
@@ -141,29 +138,23 @@ sub load_session {
 sub delete_session {
     my ($tok) = @_;
     return unless defined $tok && length $tok;
+    return unless $adb;
+    my $sess_dir = $adb->path('session_dir');
+    my $db_dir   = $adb->path('dbase_dir');
     my @candidates = (
         session_file($tok),
-        ( $adb ? $adb->path('session_dir') . "/cli_$tok" : () ),
-        ( $adb ? $adb->path('dbase_dir') . "/session/cli_$tok" : () ),
-        ( $adb ? $adb->path('dbase_dir') . "/ramdisk/session/cli_$tok" : () ),
-        "dbstore/session/cli_$tok",
-        "dbstore/ramdisk/session/cli_$tok",
-        "dbase/session/cli_$tok",
-        "dbase/ramdisk/session/cli_$tok",
-        "./session/cli_$tok",
-        ( eval { abs_path("dbstore") } ? abs_path("dbstore") . "/session/cli_$tok" : () ),
-        ( eval { abs_path("dbstore/ramdisk") } ? abs_path("dbstore/ramdisk") . "/session/cli_$tok" : () ),
-        ( eval { abs_path("dbase") } ? abs_path("dbase") . "/session/cli_$tok" : () ),
+        "$sess_dir/cli_$tok",
+        "$db_dir/session/cli_$tok",
+        "$db_dir/ramdisk/session/cli_$tok",
+        ( $workspace_sess ? "$workspace_sess/cli_$tok" : () ),
+        ( $workspace_db   ? "$workspace_db/session/cli_$tok" : () ),
     );
     for my $f (@candidates) {
         unlink $f if defined $f && -f $f;
     }
     my $lf = last_token_file();
-    if ( $lf && -f $lf ) {
-        unlink $lf;
-    }
-    unlink "dbstore/session/cli_last_token" if -f "dbstore/session/cli_last_token";
-    unlink "dbase/session/cli_last_token"   if -f "dbase/session/cli_last_token";
+    unlink $lf if $lf && -f $lf;
+    unlink "$workspace_sess/cli_last_token" if $workspace_sess && -f "$workspace_sess/cli_last_token";
 }
 
 sub resolve_active_token {
@@ -582,6 +573,12 @@ for my $raw (@raw_tokens) {
         elsif ( !defined $opt_action ) {
             $opt_action = $arg;
         }
+        elsif ( lc($opt_action) eq 'connect' && !@pos_args && $arg !~ /^(?:json|pretty|tsv|dumper|perl|raw|table|time)$/i ) {
+            my $abs = eval { abs_path($arg) } // $arg;
+            make_path($abs) unless -d $abs;
+            $adb->set_datadir($abs);
+            $explicit_db = 1;
+        }
         else {
             push @pos_args, $arg;
         }
@@ -708,6 +705,16 @@ if ( $opt_help || ( defined $opt_action && $opt_action eq 'help' ) ) {
 # ============================================================================
 
 if ( defined $opt_action && $opt_action eq 'connect' ) {
+    if ( @pos_args && !$explicit_db ) {
+        my $target = shift @pos_args;
+        if ( defined $target && length $target && $target !~ /^format=/i ) {
+            my $abs = eval { abs_path($target) } // $target;
+            make_path($abs) unless -d $abs;
+            $adb->set_datadir($abs);
+            $explicit_db = 1;
+        }
+    }
+
     my $token = generate_token();
     my $sess_data = {
         token       => $token,
