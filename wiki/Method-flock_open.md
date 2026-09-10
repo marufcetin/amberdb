@@ -12,8 +12,8 @@
 
 `flock_open()` acquires an OS-level file lock at either the table-level or record-level using Perl's native `flock`.
 
-- **Table-Level Locking:** If `$record_id` is omitted, locks `dbstore/tables/${table_id}.lock`.
-- **Record-Level Locking:** If `$record_id` is passed, locks `dbstore/tables/${table_id}_${record_id}.lock`.
+- **Table-Level Locking:** If `$record_id` is omitted, locks `dbstore/table/${table_id}.lock`.
+- **Record-Level Locking:** If `$record_id` is passed, locks `dbstore/table/${table_id}_${record_id}.lock`.
 - **Lock Modes:** `"read"` (shared `LOCK_SH`) or `"write"` (exclusive `LOCK_EX`, default).
 
 ---

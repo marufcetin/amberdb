@@ -13,7 +13,7 @@
 
 `table_dir` defines a custom storage subdirectory under `dbase_dir` (and under `ramdisk_dir` when RAM-disk acceleration is active) for a specific database table's files.
 
-By default, AmberDB stores all table data (`.db`) and index files under `dbstore/tables/` (and `dbstore/ramdisk/tables/`). Specifying `table_dir` allows applications to partition and isolate tables into specialized subfolders:
+By default, AmberDB stores all table data (`.db`) and index files under `dbstore/table/` (and `dbstore/ramdisk/table/`). Specifying `table_dir` allows applications to partition and isolate tables into specialized subfolders:
 
 - **Named Subfolder (e.g. `table_dir => 'orders'`):**  
   Stored under `dbstore/orders/$table.*` on permanent disk and `dbstore/ramdisk/orders/$table.*` on RAM-disk.

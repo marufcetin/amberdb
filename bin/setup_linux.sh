@@ -31,7 +31,7 @@ else
     PROJECT_NAME="$(basename "$PROJECT_DIR")"
 fi
 
-if [ -d "$PROJECT_DIR/tables" ]; then
+if [ -d "$PROJECT_DIR/table" ]; then
     DB_DIR="$PROJECT_DIR"
     APP_DIR="$(dirname "$PROJECT_DIR")"
 elif [ -d "$PROJECT_DIR/dbstore" ]; then
@@ -230,7 +230,7 @@ if [ "$ACTION" == "stop" ] || [ "$ACTION" == "--stop" ] || [ "$ACTION" == "ramdi
         umount "$LOCAL_RAM" 2>/dev/null || umount -l "$LOCAL_RAM" 2>/dev/null
     fi
 
-    mkdir -p "$LOCAL_RAM"/{tables,conf,schema,lock,pids}
+    mkdir -p "$LOCAL_RAM"/{tables,config,schema,lock,pids}
     if [ -n "$RUN_USER" ]; then
         chown -R "$RUN_USER" "$LOCAL_RAM" 2>/dev/null || true
     fi
@@ -248,7 +248,7 @@ if [ "$ACTION" == "start" ] || [ "$ACTION" == "--start" ] || [ "$ACTION" == "ram
         mount -t tmpfs -o size="$SIZE",mode=0777 tmpfs "$LOCAL_RAM"
     fi
 
-    mkdir -p "$LOCAL_RAM"/{tables,conf,schema,lock,pids}
+    mkdir -p "$LOCAL_RAM"/{table,config,schema,lock,pids}
     chmod -R 0777 "$LOCAL_RAM" 2>/dev/null || true
     if [ -n "$RUN_USER" ]; then
         chown -R "$RUN_USER" "$LOCAL_RAM" 2>/dev/null || true
@@ -258,11 +258,11 @@ if [ "$ACTION" == "start" ] || [ "$ACTION" == "--start" ] || [ "$ACTION" == "ram
     echo "[SUCCESS] Linux tmpfs RAM-Disk mounted and configured for AmberDB!"
     echo "  Project:      $PROJECT_NAME"
     echo "  RAM Storage:  $LOCAL_RAM ($SIZE)"
-    echo "  |-- tables/   (DB & Index acceleration files)"
-    echo "  |-- conf/     (Compiled config files)"
+    echo "  |-- table/    (DB & Index acceleration files)"
+    echo "  |-- config/   (Compiled config files)"
     echo "  |-- schema/   (Table & DBase schema files)"
     echo "  |-- lock/     (Flock lock files)"
-    echo "  \\-- pids/     (Process & mutex files)"
+    echo "  \\-- pids/    (Process & mutex files)"
     echo ""
     exit 0
 fi

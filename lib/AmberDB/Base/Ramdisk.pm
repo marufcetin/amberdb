@@ -207,9 +207,9 @@ sub ramdisk_setup {
 
     # Populate and create RAM-disk paths ONLY if RAM-disk is confirmed mounted
     if ($is_mounted) {
-        $tbl_dir    = ( length( $self->path('table_rdir') // '' ) )  ? $self->path('table_rdir')  : "$ramdisk_dir/tables";
+        $tbl_dir    = ( length( $self->path('table_rdir') // '' ) )  ? $self->path('table_rdir')  : "$ramdisk_dir/table";
         $schema_dir = ( length( $self->path('schema_rdir') // '' ) ) ? $self->path('schema_rdir') : "$ramdisk_dir/schema";
-        $conf_dir   = ( length( $self->path('conf_rdir') // '' ) )   ? $self->path('conf_rdir')   : "$ramdisk_dir/conf";
+        $conf_dir   = ( length( $self->path('conf_rdir') // '' ) )   ? $self->path('conf_rdir')   : "$ramdisk_dir/config";
 
         $self->{_path}->{ramdisk_dir} = $ramdisk_dir;
         $self->{_path}->{table_rdir}  = $tbl_dir;
@@ -258,7 +258,7 @@ sub ramdisk_setup {
 
 # my $ramdisk_path = $adb->ramdisk_path($tableid, [$with_ext]);
 # Symmetric counterpart to table_path($tableid, [$with_ext]).
-# Resolves root directory and base path for table in ramdisk/tables/$tableid.
+# Resolves root directory and base path for table in ramdisk/table/$tableid.
 # Supports custom table_dir (e.g. table_dir => 'siparis', table_dir => '').
 # ------------------------------------------------
 sub ramdisk_path {
@@ -283,7 +283,7 @@ sub ramdisk_path {
         $self->make_path($target_dir);
     }
     else {
-        $target_dir = $self->{_path}->{table_rdir} || $self->path('table_rdir') || "$ramdisk_dir/tables";
+        $target_dir = $self->{_path}->{table_rdir} || $self->path('table_rdir') || "$ramdisk_dir/table";
     }
 
     my $target  = "$target_dir/$tableid";
@@ -500,7 +500,7 @@ sub ramdisk_delete {
 }
 
 # my $ok = $adb->ramdisk_preload($tableid);
-# Preloads records and metadata from tables/ into ramdisk/ based on use_ramdisk (1: indexes, 2: data+indexes).
+# Preloads records and metadata from table/ into ramdisk/ based on use_ramdisk (1: indexes, 2: data+indexes).
 # Uses atomic temporary writes (.tmp.$$) to prevent multi-process race conditions.
 # ------------------------------------------------
 sub ramdisk_preload {

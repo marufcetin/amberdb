@@ -39,7 +39,7 @@ subtest 'Method Existence & Path Symmetry' => sub {
     my $t_path = $adb->table_path('sample_tbl');
     my $r_path = $adb->ramdisk_path('sample_tbl');
     ok( $r_path, 'ramdisk_path resolved successfully' );
-    like( $r_path, qr/ramdisk[\\\/]tables[\\\/]sample_tbl$/, 'ramdisk_path points to ramdisk/tables/sample_tbl' );
+    like( $r_path, qr/ramdisk[\\\/]table[\\\/]sample_tbl$/, 'ramdisk_path points to ramdisk/table/sample_tbl' );
 };
 
 subtest 'use_ramdisk => 1 (Hybrid Index-Only Acceleration)' => sub {

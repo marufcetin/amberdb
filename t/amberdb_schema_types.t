@@ -14,7 +14,7 @@ my $tmp_dir = tempdir( CLEANUP => 1 );
 subtest '1. Schema Setup with 8 Core Types' => sub {
     my $db_dir     = "$tmp_dir/db_types";
     my $schema_dir = "$db_dir/schema";
-    my $table_dir  = "$db_dir/tables";
+    my $table_dir  = "$db_dir/table";
     mkdir($db_dir);
     mkdir($schema_dir);
     mkdir($table_dir);

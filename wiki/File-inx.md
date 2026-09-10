@@ -3,7 +3,7 @@
 [Turkce Dokumantasyon](TR-File-inx) | [English Documentation](File-inx)
 
 > **Category:** File Formats & Storage  
-> **Location:** `dbstore/tables/${table_id}.inx`  
+> **Location:** `dbstore/table/${table_id}.inx`  
 > **Format:** Contiguous Fixed-Width Binary Array (8 bytes per ID)
 
 ---

@@ -1,6 +1,6 @@
 Revision history for AmberDB
 
-5.25.0  2026-09-06
+5.25.0  2026-09-10
         - [CORE ENGINE MODULARIZATION & NAMESPACE RESTRUCTURING] Grouped Internal Engine Modules Under AmberDB::Base::*:
           * Migrated and reorganized core engine components into AmberDB::Base namespace:
             - AmberDB::Base::Encoder (Serialization, multi-era format decoding, binary index packing)
@@ -80,7 +80,20 @@ Revision history for AmberDB
           * Fixed read order regression in read_all, field_fetch, and table_keys: restored default descending order (N..1, newest records first) to fix pagination drift.
           * Added explicit dir => 'asc'|'desc' (alias order) option across read_all and field_fetch.
 
+        - [STORAGE MIGRATION & UPGRADE INSTRUCTIONS FOR EXISTING DEPLOYMENTS]
+          * Upgrading Existing Installations (< 5.25.0):
+            - Existing deployments upgrading from prior AmberDB releases must migrate their database storage layout and formats using the unified amberdb_setup.pl utility:
+                perl bin/amberdb_setup.pl --action=update-storage --dbase_dir=<path_to_dbase> --all
+              Or check and apply full engine + storage updates:
+                perl bin/amberdb_setup.pl --action=update --dbase_dir=<path_to_dbase>
+            - Automated Migration Stages in v5.25.0:
+              * Directory Migration (tables/ -> table/): Automatically merges files into standard 'table/' layout. If 'table/' already exists, files are merged safely; any name collisions are preserved and renamed with a date stamp (<basename>_<YYYY-MM-DD>.<ext>, e.g., catalog_product_2026-08-25.db, catalog_product_2026-08-25.inx) with secondary collision counters (_1, _2) to guarantee zero data loss.
+              * Binary Record Format (ABR v5): Upgrades all legacy table formats (TSV, FlatDB, HTML entities) to native 5-byte magic packed binary records.
+              * Secondary Index Rebuilding: Reconstructs and repacks all secondary indexes (.inx, .fld, .unq, .fac, .slg, .srt) for the dual-tier 3-stream indexing architecture.
+              * Standard Directory Layout: Synchronizes and verifies all required runtime directories (table, schema, journal, lock, session, config, ramdisk) and stamps config/storage_version.json with 5.25.0.
+
         - [TEST SUITE & COMPATIBILITY]
+          * Added dedicated test suite t/amberdb_migrate_5_25_conflict.t covering tables/ to table/ migration, date-stamped conflict resolution, and amberdb_setup.pl update-storage execution.
           * Added dedicated test suite t/amberdb_junk_tiered.t covering 3-stream dual-tier indexing (CRUD, transitions, hybrid modes, Tools rebuild).
           * Added dedicated test suite t/amberdb_read_order.t verifying default descending (N..1) read order and explicit direction flags.
           * Added dedicated test suite t/amberdb_inflate_deflate.t covering single/batch inflate, deflate, RDBM resolution, and repeat blocks.
@@ -89,7 +102,7 @@ Revision history for AmberDB
           * Added dedicated test suite t/amberdb_schema_types.t covering all 9 schema types and type conversions.
           * Refactored t/amberdb_cache.t to comprehensively test L1 in-memory caching and persistent staging buffers.
           * Added default language ('gb') verification tests in t/amberdb_encapsulation.t and t/amberdb-locale_09_gb.t.
-          * 100% test pass rate across all 52 standard installation test files (478 assertions) and extended author test suite (xt/).
+          * 100% test pass rate across all 57 standard installation test files (534 assertions) and extended author test suite (xt/).
 
 5.24.1  2026-09-05
         - Standardized 'offset' pagination parameter with backward-compatible 'start' alias (read_all, field_fetch, search_table, field_filter, bin_decode, bin_crop, facet_menu).
@@ -178,7 +191,7 @@ Revision history for AmberDB
           * Removed legacy id_type schema attribute across all modules and test suites; standard relational tables strictly enforce positive integer numeric IDs.
         - [STORAGE & PER-TABLE SIMPLE MODE] Hybrid Multi-Model Architecture with use_simple => 1:
           * Introduced per-table use_simple => 1 attribute allowing key-value tables with arbitrary string keys up to 255 bytes (UUIDs, session tokens, emails, slugs, etc.) alongside standard relational tables.
-          * Preserved canonical physical table path ($dbase_dir/tables/$table.db) for use_simple tables in standard database mode.
+          * Preserved canonical physical table path ($dbase_dir/table/$table.db) for use_simple tables in standard database mode.
           * Selective schema sanitization: tables with use_simple => 1 strip indexing, columnar, and caching definitions (blocks, match_block, search_block, facet_block, sort_block, record_index, use_cache, cache_ttl) to achieve zero index/cache I/O overhead while preserving behavioral features (keep_deleted, force, no_transact, no_backup, use_menu, log_owner).
           * Enabled keep_deleted => 1 archiving (.del) on use_simple tables.
         - [RDBM & INTEGRITY] Foreign Key and Cross-Table Isolation:

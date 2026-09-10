@@ -85,7 +85,7 @@ subtest 'AmberDB Sort Integration CRUD & Pagination' => sub {
     plan tests => 15;
 
     my $temp_dir = tempdir( CLEANUP => 1 );
-    my $conf_dir = File::Spec->catdir( $temp_dir, 'conf' );
+    my $conf_dir = File::Spec->catdir( $temp_dir, 'config' );
     my $schema_dir = File::Spec->catdir( $temp_dir, 'schema' );
     mkdir $conf_dir;
     mkdir $schema_dir;
@@ -192,7 +192,7 @@ subtest 'field_fetch & search_table Sorting Integration' => sub {
     plan tests => 15;
 
     my $temp_dir = tempdir( CLEANUP => 1 );
-    my $conf_dir = File::Spec->catdir( $temp_dir, 'conf' );
+    my $conf_dir = File::Spec->catdir( $temp_dir, 'config' );
     my $schema_dir = File::Spec->catdir( $temp_dir, 'schema' );
     mkdir $conf_dir;
     mkdir $schema_dir;
@@ -292,7 +292,7 @@ subtest 'Primary Key Binary Index (.inx) O(1) Seeking' => sub {
     plan tests => 6;
 
     my $temp_dir = tempdir( CLEANUP => 1 );
-    my $conf_dir = File::Spec->catdir( $temp_dir, 'conf' );
+    my $conf_dir = File::Spec->catdir( $temp_dir, 'config' );
     my $schema_dir = File::Spec->catdir( $temp_dir, 'schema' );
     mkdir $conf_dir;
     mkdir $schema_dir;
@@ -342,7 +342,7 @@ SCHEMA
 subtest 'convert_tables Batch Conversion' => sub {
     plan tests => 2;
     my $temp_dir = tempdir( CLEANUP => 1 );
-    my $conf_dir = File::Spec->catdir( $temp_dir, 'conf' );
+    my $conf_dir = File::Spec->catdir( $temp_dir, 'config' );
     my $schema_dir = File::Spec->catdir( $temp_dir, 'schema' );
     mkdir $conf_dir;
     mkdir $schema_dir;
@@ -371,7 +371,7 @@ SCHEMA
     my $tools = AmberDB::Tools->new($adb);
     my $converted = $tools->convert_tables();
     ok( $converted->{products}, 'convert_tables processed products table' );
-    ok( -e File::Spec->catfile( $temp_dir, 'products.fld' ) || -e File::Spec->catfile( $temp_dir, 'tables', 'products.fld' ) || -e File::Spec->catfile( $temp_dir, 'products_1.fld' ), 'products.fld re-created with binary payload' );
+    ok( -e File::Spec->catfile( $temp_dir, 'products.fld' ) || -e File::Spec->catfile( $temp_dir, 'table', 'products.fld' ) || -e File::Spec->catfile( $temp_dir, 'tables', 'products.fld' ) || -e File::Spec->catfile( $temp_dir, 'products_1.fld' ), 'products.fld re-created with binary payload' );
 };
 
 done_testing();

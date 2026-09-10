@@ -560,9 +560,14 @@ sub table_path {
     $table = $self->sanitize_table($table);
     return "" unless defined $table && length $table;
 
-    # return if processed earlier
-    return $self->{_table}->{$table}->{_path} . ($with_ext ? ".$self->{db_ext}" : "")
-        if $self->{_table}->{$table}->{_path};
+    # return if processed earlier and still exists on disk
+    if ( $self->{_table}->{$table}->{_path} ) {
+        my $ext = $self->{db_ext} || "db";
+        if ( -e ( $self->{_table}->{$table}->{_path} . ".$ext" ) ) {
+            return $self->{_table}->{$table}->{_path} . ($with_ext ? ".$ext" : "");
+        }
+        delete $self->{_table}->{$table}->{_path};
+    }
 
     # load table info first
     $self->table_info($table);
@@ -633,7 +638,7 @@ sub table_path {
 
             delete( $self->{_table}->{$table}->{year} )
               if ( $self->{_table}->{$table}->{year} );
-            $yeardir = "tables";
+            $yeardir = "table";
         }
         $dbase_dir .= "/$yeardir" if $yeardir;
 

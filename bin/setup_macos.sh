@@ -31,7 +31,7 @@ fi
 
 VOLUME_NAME="AmberDB_RAM"
 VOLUME_PATH="/Volumes/$VOLUME_NAME"
-if [ -d "$PROJECT_DIR/tables" ]; then
+if [ -d "$PROJECT_DIR/table" ]; then
     DB_DIR="$PROJECT_DIR"
     APP_DIR="$(dirname "$PROJECT_DIR")"
 elif [ -d "$PROJECT_DIR/dbstore" ]; then
@@ -202,7 +202,7 @@ if [ "$ACTION" == "stop" ] || [ "$ACTION" == "--stop" ] || [ "$ACTION" == "ramdi
     # 1. Remove local symlink and restore empty dirs
     if [ -L "$LOCAL_RAM" ]; then
         rm -f "$LOCAL_RAM"
-        mkdir -p "$LOCAL_RAM"/{tables,conf,schema,lock,pids}
+        mkdir -p "$LOCAL_RAM"/{tables,config,schema,lock,pids}
     fi
 
     # 2. Clean project folder from RAM disk
@@ -241,7 +241,7 @@ if [ "$ACTION" == "start" ] || [ "$ACTION" == "--start" ] || [ "$ACTION" == "ram
     fi
 
     # 2. Create isolated project folder on RAM volume
-    mkdir -p "$PROJECT_RAM"/{tables,conf,schema,lock,pids}
+    mkdir -p "$PROJECT_RAM"/{table,config,schema,lock,pids}
 
     # 3. Link dbstore/ramdisk to /Volumes/AmberDB_RAM/<ProjectName>
     if [ -e "$LOCAL_RAM" ]; then
@@ -255,11 +255,11 @@ if [ "$ACTION" == "start" ] || [ "$ACTION" == "--start" ] || [ "$ACTION" == "ram
     echo "  Project:      $PROJECT_NAME"
     echo "  RAM Storage:  $PROJECT_RAM"
     echo "  Local Link:   $LOCAL_RAM -> $PROJECT_RAM"
-    echo "  |-- tables/   (DB & Index acceleration files)"
-    echo "  |-- conf/     (Compiled config files)"
+    echo "  |-- table/    (DB & Index acceleration files)"
+    echo "  |-- config/   (Compiled config files)"
     echo "  |-- schema/   (Table & DBase schema files)"
     echo "  |-- lock/     (Flock lock files)"
-    echo "  \\-- pids/     (Process & mutex files)"
+    echo "  \\-- pids/    (Process & mutex files)"
     echo ""
     exit 0
 fi

@@ -19,7 +19,7 @@ my $db_dir  = "$tmp_dir/main_db";
 my $sch_dir = "$tmp_dir/schema";
 mkdir $db_dir;
 mkdir $sch_dir;
-mkdir "$db_dir/tables";
+mkdir "$db_dir/table";
 
 # Create standard schema for products
 my $prod_sch = "$sch_dir/products.table";
@@ -79,9 +79,9 @@ subtest '1. Schema Sanitization & Path Verification' => sub {
     ok( !exists $s_info->{use_cache}, 'use_cache stripped for use_simple table' );
     ok( !exists $s_info->{cache_ttl}, 'cache_ttl stripped for use_simple table' );
 
-    # Table path must be within standard tables/ directory, NOT root dbase_dir
+    # Table path must be within standard table/ directory, NOT root dbase_dir
     my $path = $adb->table_path('sessions');
-    like( $path, qr{[/\\]tables[/\\]sessions$}, 'table_path is in dbase_dir/tables/ directory' );
+    like( $path, qr{[/\\]table[/\\]sessions$}, 'table_path is in dbase_dir/table/ directory' );
 };
 
 # ============================================================
@@ -133,11 +133,11 @@ subtest '3. keep_deleted Behavior & Zero Index File Guarantee' => sub {
     ok( !@after_del, 'Deleted record not returned by read_id' );
 
     # Check that .del archive file exists and contains the deleted record
-    my $del_file = "$db_dir/tables/sessions.del";
+    my $del_file = "$db_dir/table/sessions.del";
     ok( -e $del_file, 'sessions.del archive created by keep_deleted' );
 
     # Check that NO index files exist for sessions
-    my @all_files = glob("$db_dir/tables/*");
+    my @all_files = glob("$db_dir/table/*");
     my @index_files = grep { /sessions\.(inx|fld|src|srt|fac|slg)$/ } @all_files;
     is_deeply( \@index_files, [], 'No index files (.inx, .fld, .src, .srt, .fac, .slg) created for sessions' );
 };

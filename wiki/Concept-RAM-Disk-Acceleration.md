@@ -20,11 +20,11 @@ RAM-Disk Multi-Process Shared Memory Architecture
  Perl Worker Process 1       Perl Worker Process 2       Perl Worker Process N     
                                                                         
              Shared RAM-Disk Filesystem (/dev/shm, ImDisk R:, or /Volumes/AmberDB_RAM)
-             dbstore/ramdisk/tables/catalog_category.db & .inx (In-Memory Hash)
+             dbstore/ramdisk/table/catalog_category.db & .inx (In-Memory Hash)
                                       
                                        Automatic Transparent Sync (use_ramdisk)
                                       
-             Persistent Physical Storage Disk (dbstore/tables/*.db)
+             Persistent Physical Storage Disk (dbstore/table/*.db)
 ```
 
 ---
@@ -44,11 +44,11 @@ Configured in table schema (`schema/*.table`) or at runtime via `$adb->table_att
 
 ## 3. Custom Table Storage Directory (`table_dir`)
 
-By default, AmberDB places table files in `dbstore/tables/` and RAM-disk tables in `dbstore/ramdisk/tables/`. The `table_dir` schema parameter allows custom directory routing:
+By default, AmberDB places table files in `dbstore/table/` and RAM-disk tables in `dbstore/ramdisk/table/`. The `table_dir` schema parameter allows custom directory routing:
 
 - **`table_dir => 'siparis'`:** Stored under `dbstore/siparis/$table` (Disk) and `dbstore/ramdisk/siparis/$table` (RAM-Disk).
-- **`table_dir => ''`:** Overwrites the default `tables/` prefix, placing the table directly in `dbstore/$table` (Disk) and `ramdisk/$table` (RAM-Disk).
-- **Unspecified:** Retains default `tables/` structure.
+- **`table_dir => ''`:** Overwrites the default `table/` prefix, placing the table directly in `dbstore/$table` (Disk) and `ramdisk/$table` (RAM-Disk).
+- **Unspecified:** Retains default `table/` structure.
 
 ```perl
 # Route table to custom directory

@@ -13,7 +13,7 @@
 
 `table_dir`, belirli bir veritabanı tablosunun fiziksel dosyaları için `dbase_dir` (ve RAM-disk devredeyken `ramdisk_dir`) altında özel bir alt depolama dizini tanımlar.
 
-AmberDB varsayılan olarak tüm tablo verilerini (`.db`) ve indeks dosyalarını `dbstore/tables/` (ve `dbstore/ramdisk/tables/`) altında saklar. `table_dir` kullanılarak tablolar özel alt klasörlere bölümlendirilebilir ve izole edilebilir:
+AmberDB varsayılan olarak tüm tablo verilerini (`.db`) ve indeks dosyalarını `dbstore/table/` (ve `dbstore/ramdisk/table/`) altında saklar. `table_dir` kullanılarak tablolar özel alt klasörlere bölümlendirilebilir ve izole edilebilir:
 
 - **Özel İsimli Alt Klasör (örn: `table_dir => 'siparis'`):**  
   Tablo diskte `dbstore/siparis/$table.*` ve RAM-diskte `dbstore/ramdisk/siparis/$table.*` altında saklanır.

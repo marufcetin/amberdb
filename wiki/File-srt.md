@@ -3,7 +3,7 @@
 [Turkce Dokumantasyon](TR-File-srt) | [English Documentation](File-srt)
 
 > **Category:** File Formats & Storage  
-> **Location:** `dbstore/tables/${table_id}_${block_idx}.srt`  
+> **Location:** `dbstore/table/${table_id}_${block_idx}.srt`  
 > **Format:** Pre-Sorted Contiguous 8-Byte Binary Array
 
 ---

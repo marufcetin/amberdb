@@ -59,7 +59,7 @@ $daemonScript = Join-Path $scriptDir "amberdb_daemon.pl"
 $libDir       = Join-Path $appDir "lib"
 
 # Subfolders required by AmberDB
-$subdirs = @("tables", "conf", "schema", "lock", "pids")
+$subdirs = @("tables", "config", "schema", "lock", "pids")
 
 function Check-Admin {
     $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -321,8 +321,8 @@ if ($act -eq "start" -or $act -eq "ramdisk-start" -or $act -eq "mount") {
     Write-Host "  Project:      $ProjectName"
     Write-Host "  RAM Storage:  $projectRam"
     Write-Host "  Local Link:   $ramdiskDir -> $projectRam"
-    Write-Host '  |-- tables/   (DB and Index acceleration files)'
-    Write-Host '  |-- conf/     (Compiled config files)'
+    Write-Host '  |-- table/    (DB and Index acceleration files)'
+    Write-Host '  |-- config/   (Compiled config files)'
     Write-Host '  |-- schema/   (Table and DBase schema files)'
     Write-Host '  |-- lock/     (Flock lock files)'
     Write-Host "  \-- pids/     (Process and mutex files)`n"

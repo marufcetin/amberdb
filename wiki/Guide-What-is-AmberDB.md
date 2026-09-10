@@ -38,7 +38,7 @@ AmberDB Unified NoSQL Architecture
  Operating System Layer (DB_File Hash + POSIX flock + Page Cache)
                      |
                      v
- Physical Storage (dbstore/tables/*.db, .inx, .fld, .src, .fac, .srt)
+ Physical Storage (dbstore/table/*.db, .inx, .fld, .src, .fac, .srt)
 ```
 
 ---

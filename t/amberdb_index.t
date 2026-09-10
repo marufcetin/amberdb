@@ -183,7 +183,7 @@ subtest 'insert_id -> .inx -> read_all integration' => sub {
     plan tests => 11;
 
     my $temp_dir   = tempdir( CLEANUP => 1 );
-    my $conf_dir   = File::Spec->catdir( $temp_dir, 'conf' );
+    my $conf_dir   = File::Spec->catdir( $temp_dir, 'config' );
     my $schema_dir = File::Spec->catdir( $temp_dir, 'schema' );
     mkdir $conf_dir;
     mkdir $schema_dir;
@@ -244,7 +244,7 @@ subtest 'set_readall rebuild -> read_all' => sub {
     plan tests => 6;
 
     my $temp_dir   = tempdir( CLEANUP => 1 );
-    my $conf_dir   = File::Spec->catdir( $temp_dir, 'conf' );
+    my $conf_dir   = File::Spec->catdir( $temp_dir, 'config' );
     my $schema_dir = File::Spec->catdir( $temp_dir, 'schema' );
     mkdir $conf_dir;
     mkdir $schema_dir;
@@ -297,7 +297,7 @@ subtest 'delete_id -> .inx -> read_all reflects deletion' => sub {
     plan tests => 5;
 
     my $temp_dir   = tempdir( CLEANUP => 1 );
-    my $conf_dir   = File::Spec->catdir( $temp_dir, 'conf' );
+    my $conf_dir   = File::Spec->catdir( $temp_dir, 'config' );
     my $schema_dir = File::Spec->catdir( $temp_dir, 'schema' );
     mkdir $conf_dir;
     mkdir $schema_dir;

@@ -579,7 +579,7 @@ Simple Mode can be activated in four distinct ways:
    );
    ```
 
-> **Directory Layout Note:** In standard mode, tables reside under `$dbase_dir/tables/`. In Simple Mode, the engine creates and reads database files directly inside the root of `dbase_dir` (`$dbase_dir/<table_name>.<ext>`). To open existing standard-mode tables in simple mode, set `dbase_dir` directly to `dbstore/tables`.
+> **Directory Layout Note:** In standard mode, tables reside under `$dbase_dir/table/`. In Simple Mode, the engine creates and reads database files directly inside the root of `dbase_dir` (`$dbase_dir/<table_name>.<ext>`). To open existing standard-mode tables in simple mode, set `dbase_dir` directly to `dbstore/table`.
 
 ---
 
@@ -704,7 +704,7 @@ Since Simple Mode requires no schema files, creating a high-performance in-memor
 ```perl
 # 1. Persistent disk instance (For durable storage)
 my $db_disk = AmberDB->new(
-    path => { dbase_dir => "/var/data/app/dbstore/tables" },
+    path => { dbase_dir => "/var/data/app/dbstore/table" },
     cfg  => { simple => 1 },
 );
 
@@ -745,11 +745,11 @@ Benefits of this dual-instance design:
 | **Secondary Indexes (`.inx, .fld, .src, .srt, .fac`)** | Generated & Maintained | **Disabled (Zero Index Cost)** |
 | **URL Slug Mapping (`.slg`)** | Auto Generated | Disabled |
 | **Audit Logs (`.aut`) & Archive (`.del`)** | Schema-Driven | Disabled |
-| **Directory Hierarchy** | `tables/`, `schema/`, `backup/`, etc. | **Flat Single Directory (`$dbase_dir/<table_name>.db`)** |
+| **Directory Hierarchy** | `table/`, `schema/`, `backup/`, etc. | **Flat Single Directory (`$dbase_dir/<table_name>.db`)** |
 | **Secondary Indexes (`.inx, .fld, .src, .srt, .fac`)** | Generated & Maintained | **Disabled (Zero Index Cost)** |
 | **URL Slug Mapping (`.slg`)** | Auto Generated | Disabled |
 | **Audit Logs (`.aut`) & Archive (`.del`)** | Schema-Driven | Disabled |
-| **Directory Hierarchy** | `tables/`, `schema/`, `backup/`, etc. | **Flat Single Directory (`$dbase_dir/<table_name>.db`)** |
+| **Directory Hierarchy** | `table/`, `schema/`, `backup/`, etc. | **Flat Single Directory (`$dbase_dir/<table_name>.db`)** |
 
 ---
 
@@ -1064,13 +1064,13 @@ AmberDB stores tables, indexes, and schema definitions in dedicated physical dir
 
 | Directory | Purpose |
 |---|---|
-| `dbstore/tables/` | Base data (`.db`) and binary indexes (`.inx`, `.fld`, `.src`, `.fac`, `.srt`, `.slg`) |
+| `dbstore/table/` | Base data (`.db`) and binary indexes (`.inx`, `.fld`, `.src`, `.fac`, `.srt`, `.slg`) |
 | `dbstore/schema/` | Schema files (`.table`) and group configs (`.dbase`) |
-| `dbstore/conf/` | Plain-text `.conf` configuration and property files |
+| `dbstore/config/` | Plain-text `.conf` configuration and property files |
 | `dbstore/backup/` | Daily CSV audit backups (`dbgun/YYYYMMDD/`) |
 | `dbstore/ramdisk/` | **Unified Shared RAM-Disk (Linux tmpfs, Windows ImDisk, macOS APFS RAM-Disk) Root:** |
-| `dbstore/ramdisk/tables/` | Mirrored hot `.db` and `.inx` tables in RAM for `use_ramdisk => 1, 2, 3` |
-| `dbstore/ramdisk/conf/` | Compiled high-speed config cache (`*.pl` hash references) |
+| `dbstore/ramdisk/table/` | Mirrored hot `.db` and `.inx` tables in RAM for `use_ramdisk => 1, 2, 3` |
+| `dbstore/ramdisk/config/` | Compiled high-speed config cache (`*.pl` hash references) |
 | `dbstore/ramdisk/schema/` | Cached / pre-compiled table schemas in RAM (`*.table`, `*.dbase`) |
 | `dbstore/ramdisk/lock/` | Process and table-level `flock` lock files in RAM (`*.lock`) |
 | `dbstore/ramdisk/pids/` | Process lock files and login error state logs (`*.pid`, `*.error`) |
@@ -1728,7 +1728,7 @@ $adb->table_attr("session", {
 
 ### 13.8 Custom Storage Subfolder (`table_dir`)
 
-Tables default to `tables/`. Use `table_dir` to specify custom folder organization:
+Tables default to `table/`. Use `table_dir` to specify custom folder organization:
 
 ```perl
 # Route orders table to 'orders' subfolder:
@@ -1736,7 +1736,7 @@ Tables default to `tables/`. Use `table_dir` to specify custom folder organizati
 # RAM-Disk: ramdisk/orders/orders.db
 $adb->table_attr("orders", table_dir => 'orders');
 
-# Route directly to root (overwrite default 'tables/' prefix):
+# Route directly to root (overwrite default 'table/' prefix):
 $adb->table_attr("root_table", table_dir => '');
 ```
 

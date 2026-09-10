@@ -3,7 +3,7 @@
 [Turkce Dokumantasyon](TR-File-fac) | [English Documentation](File-fac)
 
 > **Kategori:** Dosya Formatlari ve Depolama  
-> **Konum:** `dbstore/tables/${tablo_adi}_${blok_indisi}.fac`  
+> **Konum:** `dbstore/table/${tablo_adi}_${blok_indisi}.fac`  
 > **Format:** Kolon Tabanli Ileri Yonlu Sabit Genislikli Bitset Dizisi
 
 ---

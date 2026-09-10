@@ -3,7 +3,7 @@
 [Turkce Dokumantasyon](TR-File-srt) | [English Documentation](File-srt)
 
 > **Kategori:** Dosya Formatlari ve Depolama  
-> **Konum:** `dbstore/tables/${tablo_adi}_${blok_indisi}.srt`  
+> **Konum:** `dbstore/table/${tablo_adi}_${blok_indisi}.srt`  
 > **Format:** Onceden Siralanmis Bitisik 8-Bayt Ikili Dizi
 
 ---

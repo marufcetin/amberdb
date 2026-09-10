@@ -584,7 +584,7 @@ Basit mod 4 farklı şekilde etkinleştirilebilir:
    );
    ```
 
-> **Dizin Yapısı Notu:** Standart modda tablolar `$dbase_dir/tables/` altında yer alırken, Basit Modda hiçbir alt dizin hiyerarşisi aranmaz; tablolar doğrudan kök `$dbase_dir/<tablo>.<uzanti>` olarak oluşturulur ve açılır. Standart moddaki bir tabloyu basit modda açmak için `dbase_dir` yolu olarak doğrudan `dbstore/tables` dizini verilmelidir.
+> **Dizin Yapısı Notu:** Standart modda tablolar `$dbase_dir/table/` altında yer alırken, Basit Modda hiçbir alt dizin hiyerarşisi aranmaz; tablolar doğrudan kök `$dbase_dir/<tablo>.<uzanti>` olarak oluşturulur ve açılır. Standart moddaki bir tabloyu basit modda açmak için `dbase_dir` yolu olarak doğrudan `dbstore/table` dizini verilmelidir.
 
 ---
 
@@ -709,7 +709,7 @@ Basit mod şemaya ihtiyaç duymadığından, yüksek performanslı bir bellek ö
 ```perl
 # 1. Kalıcı disk nesnesi (Kalıcı veriler için)
 my $db_kalici = AmberDB->new(
-    path => { dbase_dir => "/var/data/eticaret/dbstore/tables" },
+    path => { dbase_dir => "/var/data/eticaret/dbstore/table" },
     cfg  => { simple => 1 },
 );
 
@@ -1070,13 +1070,13 @@ AmberDB tabloları, şemaları ve geçici/kalıcı dosyaları, belirlenen `dbsto
 
 | Dizin | Görevi |
 |---|---|
-| `dbstore/tables/` | Kalıcı `.db` ana veri, `.inx` kayıt indeksi, `.fld` eşleştirme, `.src` arama, `.fac` facet, `.srt` sıralama ve `.slg` slug dosyaları |
+| `dbstore/table/` | Kalıcı `.db` ana veri, `.inx` kayıt indeksi, `.fld` eşleştirme, `.src` arama, `.fac` facet, `.srt` sıralama ve `.slg` slug dosyaları |
 | `dbstore/schema/` | Kalıcı `.table` tablo şemaları ve `.dbase` grup yapılandırma dosyaları |
-| `dbstore/conf/` | Kalıcı `.conf` düz metin ayar ve konfigürasyon dosyaları |
+| `dbstore/config/` | Kalıcı `.conf` düz metin ayar ve konfigürasyon dosyaları |
 | `dbstore/backup/` | Günlük CSV denetim yedekleri (`dbgun/YYYYMMDD/`) |
 | `dbstore/ramdisk/` | **Birleşik RAM-Disk (Linux tmpfs, Windows ImDisk, macOS APFS RAM-Disk) Kök Dizini:** |
-| `dbstore/ramdisk/tables/` | `use_ramdisk => 1, 2, 3` için RAM'e aynalanmış sıcak `.db` ve `.inx` tabloları |
-| `dbstore/ramdisk/conf/` | Derlenmiş hızlı yapılandırma önbelleği (`*.pl` hash referansları) |
+| `dbstore/ramdisk/table/` | `use_ramdisk => 1, 2, 3` için RAM'e aynalanmış sıcak `.db` ve `.inx` tabloları |
+| `dbstore/ramdisk/config/` | Derlenmiş hızlı yapılandırma önbelleği (`*.pl` hash referansları) |
 | `dbstore/ramdisk/schema/` | RAM'de önbelleğe alınmış / derlenmiş tablo şemaları (`*.table`, `*.dbase`) |
 | `dbstore/ramdisk/lock/` | Yalnızca RAM'de yaşayan kayıt ve tablo seviyesi `flock` kilitleri (`*.lock`) |
 | `dbstore/ramdisk/pids/` | Yalnızca RAM'de yaşayan süreç kilitleri, login attempt hataları (`*.pid`, `*.error`) |

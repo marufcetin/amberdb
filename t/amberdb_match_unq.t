@@ -86,7 +86,7 @@ subtest 'rdbm match_block numeric indexing (Case 1)' => sub {
     plan tests => 6;
 
     my $temp_dir   = tempdir( CLEANUP => 1 );
-    my $conf_dir   = File::Spec->catdir( $temp_dir, 'conf' );
+    my $conf_dir   = File::Spec->catdir( $temp_dir, 'config' );
     my $schema_dir = File::Spec->catdir( $temp_dir, 'schema' );
     mkdir $conf_dir;
     mkdir $schema_dir;
@@ -147,7 +147,7 @@ subtest 'non-rdbm string match_block with .unq and lastid (Case 2)' => sub {
     plan tests => 13;
 
     my $temp_dir   = tempdir( CLEANUP => 1 );
-    my $conf_dir   = File::Spec->catdir( $temp_dir, 'conf' );
+    my $conf_dir   = File::Spec->catdir( $temp_dir, 'config' );
     my $schema_dir = File::Spec->catdir( $temp_dir, 'schema' );
     mkdir $conf_dir;
     mkdir $schema_dir;
@@ -224,7 +224,7 @@ subtest 'modify_id, delete_id and index rebuild' => sub {
     plan tests => 8;
 
     my $temp_dir   = tempdir( CLEANUP => 1 );
-    my $conf_dir   = File::Spec->catdir( $temp_dir, 'conf' );
+    my $conf_dir   = File::Spec->catdir( $temp_dir, 'config' );
     my $schema_dir = File::Spec->catdir( $temp_dir, 'schema' );
     mkdir $conf_dir;
     mkdir $schema_dir;
@@ -298,7 +298,7 @@ subtest 'batch match_add handle lifecycle and whitespace cleaning' => sub {
     plan tests => 6;
 
     my $temp_dir   = tempdir( CLEANUP => 1 );
-    my $conf_dir   = File::Spec->catdir( $temp_dir, 'conf' );
+    my $conf_dir   = File::Spec->catdir( $temp_dir, 'config' );
     my $schema_dir = File::Spec->catdir( $temp_dir, 'schema' );
     mkdir $conf_dir;
     mkdir $schema_dir;
@@ -372,7 +372,7 @@ subtest 'valid => "unique" constraint check in insert/modify/delete' => sub {
     plan tests => 8;
 
     my $temp_dir   = tempdir( CLEANUP => 1 );
-    my $conf_dir   = File::Spec->catdir( $temp_dir, 'conf' );
+    my $conf_dir   = File::Spec->catdir( $temp_dir, 'config' );
     my $schema_dir = File::Spec->catdir( $temp_dir, 'schema' );
     mkdir $conf_dir;
     mkdir $schema_dir;
@@ -443,7 +443,7 @@ subtest 'RDBM Foreign String auto-resolution via foreign .unq' => sub {
     plan tests => 8;
 
     my $temp_dir   = tempdir( CLEANUP => 1 );
-    my $conf_dir   = File::Spec->catdir( $temp_dir, 'conf' );
+    my $conf_dir   = File::Spec->catdir( $temp_dir, 'config' );
     my $schema_dir = File::Spec->catdir( $temp_dir, 'schema' );
     mkdir $conf_dir;
     mkdir $schema_dir;

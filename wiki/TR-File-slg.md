@@ -3,7 +3,7 @@
 [Turkce Dokumantasyon](TR-File-slg) | [English Documentation](File-slg)
 
 > **Kategori:** Dosya Formatlari ve Depolama  
-> **Konum:** `dbstore/tables/${tablo_adi}_0.slg` (ID -> Slug) ve `_1.slg` (Slug -> ID)  
+> **Konum:** `dbstore/table/${tablo_adi}_0.slg` (ID -> Slug) ve `_1.slg` (Slug -> ID)  
 > **Format:** Berkeley DB Hash Tablosu (`DB_File`)
 
 ---

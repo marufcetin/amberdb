@@ -40,12 +40,12 @@ Strict 2PL Lifecycle in AmberDB
 AmberDB supports two levels of OS-native `flock` lock granularity:
 
 ### Table-Level Locking
-Locks the entire table file (`dbstore/tables/${table}.lock`). Used for batch ingestion (`insert_list`), table schema mutations, and index rebuilding (`set_index`).
+Locks the entire table file (`dbstore/table/${table}.lock`). Used for batch ingestion (`insert_list`), table schema mutations, and index rebuilding (`set_index`).
 - Shared read lock: `$adb->flock_open("catalog_product", "read");`
 - Exclusive write lock: `$adb->flock_open("catalog_product", "write");`
 
 ### Record-Level Locking
-Locks a specific record ID by creating or locking a record mutex file (`dbstore/tables/${table}_${record_id}.lock`).
+Locks a specific record ID by creating or locking a record mutex file (`dbstore/table/${table}_${record_id}.lock`).
 - Exclusive record lock: `$adb->flock_open("orders", "write", 5001);`
 - Release: `$adb->flock_close("orders", 5001);`
 

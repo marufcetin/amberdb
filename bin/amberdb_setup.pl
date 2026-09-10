@@ -10,7 +10,11 @@ use Getopt::Long qw(:config pass_through);
 use File::Spec;
 use File::Path qw(make_path);
 use File::Basename qw(dirname);
+use File::Copy qw(move);
 use Cwd qw(abs_path getcwd);
+use version;
+use HTTP::Tiny;
+use JSON::PP qw(decode_json encode_json);
 
 BEGIN {
     use File::Basename qw(dirname);
@@ -49,6 +53,10 @@ my $opt_status    = 0;
 my $opt_all       = 0;
 my $opt_tables    = '';
 my $opt_force     = 0;
+my $opt_check     = 0;
+my $opt_no_backup = 0;
+my $opt_manifest  = '';
+my $opt_cpanm     = '';
 
 # Backup sub-options
 my $opt_dump      = 0;
@@ -81,6 +89,10 @@ GetOptions(
     'tables|t=s'    => \$opt_tables,
     'table=s'       => \$opt_tables,
     'force'         => \$opt_force,
+    'check'         => \$opt_check,
+    'no-backup'     => \$opt_no_backup,
+    'manifest=s'    => \$opt_manifest,
+    'cpanm=s'       => \$opt_cpanm,
 
     # Backup
     'dump|d'        => \$opt_dump,
@@ -160,7 +172,13 @@ if ( $opt_action eq 'install' || $opt_action eq 'setup' ) {
 elsif ( $opt_action eq 'ramdisk' ) {
     action_ramdisk();
 }
-elsif ( $opt_action eq 'update' || $opt_action eq 'updatedb' ) {
+elsif ( $opt_action eq 'update-amberdb' ) {
+    action_update_amberdb();
+}
+elsif ( $opt_action eq 'update-storage' || $opt_action eq 'updatedb' ) {
+    action_update_storage();
+}
+elsif ( $opt_action eq 'update' ) {
     action_update();
 }
 elsif ( $opt_action eq 'backup' ) {
@@ -196,12 +214,12 @@ sub action_install {
 
     # 1. Create directory structure
     my @dirs = (
-        "$target_dir/tables",
+        "$target_dir/table",
         "$target_dir/schema",
         "$target_dir/journal",
         "$target_dir/lock",
         "$target_dir/session",
-        "$target_dir/conf",
+        "$target_dir/config",
         "$target_dir/ramdisk",
     );
 
@@ -311,13 +329,445 @@ sub action_ramdisk {
 
 sub action_update {
     print "=================================================================\n";
-    print " AmberDB Table Migration Utility (ABR v1 Upgrade Engine)        \n";
+    print " AmberDB Comprehensive System Update Engine (Engine + Storage)  \n";
+    print "=================================================================\n";
+    print "Target Database Directory : $target_dir\n";
+    print "Current AmberDB Engine    : $AmberDB::VERSION\n";
+    print "-----------------------------------------------------------------\n";
+
+    print "\n>>> [Stage 1/2] Checking AmberDB Engine (CPAN)...\n\n";
+    action_update_amberdb();
+
+    print "\n>>> [Stage 2/2] Updating Database Storage & Migrations...\n\n";
+    action_update_storage();
+
+    print "\n=================================================================\n";
+    print " AmberDB comprehensive update finished successfully!             \n";
+    print "=================================================================\n";
+}
+
+sub action_update_amberdb {
+    print "=================================================================\n";
+    print " AmberDB Core Engine Update Utility (CPAN Distribution)          \n";
+    print "=================================================================\n";
+    print "Current Engine Version : $AmberDB::VERSION\n";
+    print "Checking MetaCPAN for latest release...\n";
+
+    my $api_url = "https://fastapi.metacpan.org/v1/release/AmberDB";
+    my $json_text;
+
+    my $http = HTTP::Tiny->new( timeout => 8, verify_SSL => 1 );
+    my $res  = $http->get($api_url);
+    if ( $res && $res->{success} ) {
+        $json_text = $res->{content};
+    }
+    else {
+        if ( $^O eq 'MSWin32' || $^O eq 'msys' || $^O eq 'cygwin' ) {
+            $json_text = `powershell -NoProfile -Command "try { (Invoke-WebRequest -Uri '$api_url' -UseBasicParsing).Content } catch {}"`;
+        }
+        else {
+            $json_text = `curl -s -L "$api_url" 2>/dev/null`;
+        }
+    }
+
+    my $latest_version;
+    if ( $json_text ) {
+        my $data = eval { decode_json($json_text) };
+        $latest_version = $data->{version} if $data && ref($data) eq 'HASH';
+    }
+
+    if ( !defined $latest_version || $latest_version eq '' ) {
+        print "[WARNING] Could not retrieve release information from MetaCPAN (offline or API unavailable).\n";
+        print "You can manually verify or install via: cpanm AmberDB\n";
+        print "=================================================================\n";
+        return;
+    }
+
+    print "Latest MetaCPAN Version: $latest_version\n";
+    print "-----------------------------------------------------------------\n";
+
+    my $v_curr = eval { version->parse($AmberDB::VERSION) };
+    my $v_late = eval { version->parse($latest_version) };
+
+    if ( $v_curr && $v_late && $v_curr >= $v_late ) {
+        print "[OK] AmberDB engine is up to date (v$AmberDB::VERSION).\n";
+        print "=================================================================\n";
+        return;
+    }
+
+    print "[UPDATE AVAILABLE] AmberDB can be updated from v$AmberDB::VERSION to v$latest_version.\n";
+
+    if ( $opt_check ) {
+        print "[CHECK MODE] Skipping package installation.\n";
+        print "=================================================================\n";
+        return;
+    }
+
+    my $cpanm_cmd = $opt_cpanm;
+    if ( !$cpanm_cmd ) {
+        my $has_cpanm = `where cpanm 2>nul` || `which cpanm 2>/dev/null`;
+        if ( $has_cpanm ) {
+            $cpanm_cmd = 'cpanm';
+        }
+        else {
+            my $has_cpan = `where cpan 2>nul` || `which cpan 2>/dev/null`;
+            $cpanm_cmd = 'cpan' if $has_cpan;
+        }
+    }
+
+    if ( $cpanm_cmd ) {
+        print "Launching installer via '$cpanm_cmd AmberDB'...\n";
+        my $exit_code = system( $cpanm_cmd, "AmberDB" );
+        if ( $exit_code == 0 ) {
+            print "[SUCCESS] AmberDB engine updated successfully to latest CPAN release.\n";
+        }
+        else {
+            print "[WARNING] Installer exited with status $exit_code. You can run '$cpanm_cmd AmberDB' manually.\n";
+        }
+    }
+    else {
+        print "[INFO] Neither 'cpanm' nor 'cpan' executable was detected in PATH.\n";
+        print "Please run the following command to update AmberDB:\n";
+        print "  cpanm AmberDB\n";
+    }
+    print "=================================================================\n";
+}
+
+sub action_update_storage {
+    print "=================================================================\n";
+    print " AmberDB Storage, Directory & Compatibility Migration Engine     \n";
     print "=================================================================\n";
     print "Database Directory : $target_dir\n";
+
+    my $config_dir = File::Spec->catdir( $target_dir, "config" );
+    my $ver_file   = File::Spec->catfile( $config_dir, "storage_version.json" );
+
+    # 1. Inspect existing storage version
+    my $current_storage_ver;
+    if ( -e $ver_file ) {
+        if ( open my $fh, '<', $ver_file ) {
+            local $/;
+            my $content = <$fh>;
+            close $fh;
+            my $data = eval { decode_json($content) };
+            if ( $data && $data->{storage_version} ) {
+                $current_storage_ver = $data->{storage_version};
+            }
+        }
+    }
+
+    if ( !defined $current_storage_ver || $current_storage_ver eq '' ) {
+        # Check presence of legacy scheme or tables directory
+        if ( -d File::Spec->catdir( $target_dir, "scheme" ) ) {
+            $current_storage_ver = "5.20.0";
+        }
+        elsif ( -d File::Spec->catdir( $target_dir, "tables" ) && !-d File::Spec->catdir( $target_dir, "table" ) ) {
+            $current_storage_ver = "5.21.0";
+        }
+        else {
+            $current_storage_ver = "5.21.0";
+        }
+    }
+
+    print "Current Storage Version   : v$current_storage_ver\n";
+
+    # 2. Load Roadmap / Manifest (Online or Local Fallback)
+    my $target_storage_ver = "5.25.0";
+    my $manifest;
+
+    my $manifest_url = $opt_manifest || "https://raw.githubusercontent.com/marufcetin/amberdb/main/migrations/manifest.json";
+    my $json_manifest;
+
+    my $http = HTTP::Tiny->new( timeout => 5, verify_SSL => 1 );
+    my $m_res = $http->get($manifest_url);
+    if ( $m_res && $m_res->{success} ) {
+        $json_manifest = $m_res->{content};
+    }
+    elsif ( $^O eq 'MSWin32' || $^O eq 'msys' || $^O eq 'cygwin' ) {
+        $json_manifest = `powershell -NoProfile -Command "try { (Invoke-WebRequest -Uri '$manifest_url' -UseBasicParsing).Content } catch {}"`;
+    }
+    else {
+        $json_manifest = `curl -s -L "$manifest_url" 2>/dev/null`;
+    }
+
+    if ( $json_manifest ) {
+        $manifest = eval { decode_json($json_manifest) };
+    }
+
+    if ( !$manifest || ref($manifest) ne 'HASH' || !$manifest->{current_storage_version} ) {
+        my $local_manifest_file = File::Spec->catfile( $project_dir, "migrations", "manifest.json" );
+        if ( -e $local_manifest_file && open my $lfh, '<', $local_manifest_file ) {
+            local $/;
+            my $lcont = <$lfh>;
+            close $lfh;
+            $manifest = eval { decode_json($lcont) };
+        }
+    }
+
+    if ( $manifest && $manifest->{current_storage_version} ) {
+        $target_storage_ver = $manifest->{current_storage_version};
+    }
+
+    print "Target Storage Version    : v$target_storage_ver\n";
+    print "-----------------------------------------------------------------\n";
+
+    my $v_curr = eval { version->parse($current_storage_ver) };
+    my $v_targ = eval { version->parse($target_storage_ver) };
+
+    if ( $v_curr && $v_targ && $v_curr >= $v_targ && !$opt_force ) {
+        print "[OK] Storage format is already at latest version ($current_storage_ver).\n";
+        print "     Use --force to rewrite and re-index existing tables.\n";
+        print "=================================================================\n";
+        return;
+    }
+
+    if ( $opt_check ) {
+        print "[CHECK MODE] Storage migration from v$current_storage_ver to v$target_storage_ver is pending.\n";
+        if ( $v_curr < version->parse('5.21.0') ) {
+            print "  - [v5.21.0] Directory migration: Rename scheme/ -> schema/\n";
+        }
+        if ( $v_curr < version->parse('5.25.0') || $opt_force ) {
+            print "  - [v5.25.0] Directory migration: Rename tables/ -> table/\n";
+            print "  - [v5.25.0] Format migration: Convert legacy records to ABR v5 binary pack\n";
+            print "  - [v5.25.0] Index migration: Rebuild all secondary indexes (.inx, .fld, .unq, .fac, .slg, .srt)\n";
+        }
+        print "=================================================================\n";
+        return;
+    }
 
     my $adb = AmberDB->new( path => { dbase_dir => $target_dir } );
     my $tools = AmberDB::Tools->new($adb);
 
+    # 3. Pre-migration Safety Snapshot (unless --no-backup)
+    if ( !$opt_no_backup ) {
+        print "Taking pre-migration safety snapshot...\n";
+        my $backup_file = File::Spec->catfile( $target_dir, "backup_pre_storage_update_" . time() . ".amberdb" );
+        eval {
+            $tools->dump( file => $backup_file );
+        };
+        if ( -e $backup_file && -s $backup_file ) {
+            print "  [+] Safety snapshot created: $backup_file\n";
+        }
+        else {
+            print "  [INFO] Snapshot skipped or empty database.\n";
+        }
+    }
+
+    # 4. Stage v5.21.0 Migration: Rename scheme -> schema
+    if ( $v_curr < version->parse('5.21.0') ) {
+        print "\n>>> [Stage v5.21.0 Migration] Scheme to Schema Directory Renaming...\n";
+        my $m521 = File::Spec->catfile( $project_dir, "migrations", "versions", "5.21.0", "migrate.pl" );
+        if ( -f $m521 ) {
+            eval {
+                do $m521;
+                migrate_5_21_0( target_dir => $target_dir );
+            };
+            if ($@) {
+                print "  [!] External script warning: $@\n";
+                _inline_migrate_5_21_0($target_dir);
+            }
+        }
+        else {
+            _inline_migrate_5_21_0($target_dir);
+        }
+    }
+
+    # 5. Stage v5.25.0 Migration: tables -> table, ABR v5 format & complete re-indexing
+    if ( $v_curr < version->parse('5.25.0') || $opt_force ) {
+        print "\n>>> [Stage v5.25.0 Migration] Tables to Table, ABR v5 Binary Pack & Index Rebuild...\n";
+        my $m525 = File::Spec->catfile( $project_dir, "migrations", "versions", "5.25.0", "migrate.pl" );
+        if ( -f $m525 ) {
+            eval {
+                do $m525;
+                migrate_5_25_0(
+                    target_dir => $target_dir,
+                    force      => $opt_force,
+                    tables     => $opt_tables,
+                );
+            };
+            if ($@) {
+                print "  [!] External script warning: $@\n";
+                _inline_migrate_5_25_0($target_dir);
+            }
+        }
+        else {
+            _inline_migrate_5_25_0($target_dir);
+        }
+    }
+
+    # 6. Synchronize standard directory layout
+    print "\nSynchronizing standard directory layout...\n";
+    my @dirs = (
+        File::Spec->catdir( $target_dir, "table" ),
+        File::Spec->catdir( $target_dir, "schema" ),
+        File::Spec->catdir( $target_dir, "journal" ),
+        File::Spec->catdir( $target_dir, "lock" ),
+        File::Spec->catdir( $target_dir, "session" ),
+        File::Spec->catdir( $target_dir, "config" ),
+        File::Spec->catdir( $target_dir, "ramdisk" ),
+    );
+    for my $d (@dirs) {
+        if ( !-d $d ) {
+            make_path($d);
+            print "  [+] Created $d\n";
+        }
+    }
+
+    # 7. Stamp storage version
+    make_path($config_dir) unless -d $config_dir;
+    if ( open my $fh, '>', $ver_file ) {
+        my $stamp = {
+            storage_version => $target_storage_ver,
+            amberdb_engine  => $AmberDB::VERSION,
+            record_format   => "abr_v5",
+            encoding        => "utf-8",
+            last_updated    => scalar localtime,
+        };
+        print $fh encode_json($stamp);
+        close $fh;
+        print "\n[OK] Storage version stamped as v$target_storage_ver in $ver_file\n";
+    }
+
+    print "=================================================================\n";
+    print " Storage migration completed successfully!                      \n";
+    print "=================================================================\n";
+}
+
+sub _inline_migrate_5_21_0 {
+    my ($tdir) = @_;
+    my $scheme_dir = File::Spec->catdir($tdir, 'scheme');
+    my $schema_dir = File::Spec->catdir($tdir, 'schema');
+
+    if (-d $scheme_dir) {
+        if (!-d $schema_dir) {
+            if (rename($scheme_dir, $schema_dir)) {
+                print "  [v5.21.0] Renamed '$scheme_dir' -> '$schema_dir'\n";
+            }
+            else {
+                make_path($schema_dir);
+                opendir(my $dh, $scheme_dir) or die "Cannot open $scheme_dir: $!";
+                my $moved = 0;
+                while (my $f = readdir($dh)) {
+                    next if $f eq '.' || $f eq '..';
+                    move(File::Spec->catfile($scheme_dir, $f), File::Spec->catfile($schema_dir, $f));
+                    $moved++;
+                }
+                closedir($dh);
+                rmdir($scheme_dir);
+                print "  [v5.21.0] Moved $moved file(s) from '$scheme_dir' -> '$schema_dir'\n";
+            }
+        }
+        else {
+            opendir(my $dh, $scheme_dir) or die "Cannot open $scheme_dir: $!";
+            my $moved = 0;
+            while (my $f = readdir($dh)) {
+                next if $f eq '.' || $f eq '..';
+                my $src = File::Spec->catfile($scheme_dir, $f);
+                my $dst = File::Spec->catfile($schema_dir, $f);
+                if (!-e $dst) {
+                    move($src, $dst);
+                    $moved++;
+                }
+            }
+            closedir($dh);
+            rmdir($scheme_dir);
+            print "  [v5.21.0] Merged $moved file(s) from '$scheme_dir' into '$schema_dir'\n";
+        }
+    }
+    else {
+        make_path($schema_dir) unless -d $schema_dir;
+        print "  [v5.21.0] Verified schema directory '$schema_dir'\n";
+    }
+}
+
+sub _inline_migrate_5_25_0 {
+    my ($tdir, %opts) = @_;
+    my $tables_dir = File::Spec->catdir($tdir, 'tables');
+    my $table_dir  = File::Spec->catdir($tdir, 'table');
+
+    # 1. Rename tables to table
+    if (-d $tables_dir) {
+        if (!-d $table_dir) {
+            if (rename($tables_dir, $table_dir)) {
+                print "  [v5.25.0] Renamed directory: '$tables_dir' -> '$table_dir'\n";
+            }
+            else {
+                make_path($table_dir);
+                opendir(my $dh, $tables_dir) or die "Cannot open $tables_dir: $!";
+                my $moved = 0;
+                while (my $f = readdir($dh)) {
+                    next if $f eq '.' || $f eq '..';
+                    move(File::Spec->catfile($tables_dir, $f), File::Spec->catfile($table_dir, $f));
+                    $moved++;
+                }
+                closedir($dh);
+                rmdir($tables_dir);
+                print "  [v5.25.0] Moved $moved file(s) from '$tables_dir' -> '$table_dir'\n";
+            }
+        }
+        else {
+            opendir(my $dh, $tables_dir) or die "Cannot open $tables_dir: $!";
+            my $moved = 0;
+            my $date_stamp = $opts{date_stamp};
+            if (!$date_stamp) {
+                my ($sec, $min, $hour, $mday, $mon, $year) = localtime();
+                $date_stamp = sprintf("%04d-%02d-%02d", $year + 1900, $mon + 1, $mday);
+            }
+
+            while (my $f = readdir($dh)) {
+                next if $f eq '.' || $f eq '..';
+                my $src = File::Spec->catfile($tables_dir, $f);
+                my $dst = File::Spec->catfile($table_dir, $f);
+                if (!-e $dst) {
+                    if (move($src, $dst)) {
+                        $moved++;
+                    }
+                    else {
+                        warn "  [!] Failed to move '$src' -> '$dst': $!\n";
+                    }
+                }
+                else {
+                    # Conflict: file already exists in table/. Append date stamp.
+                    # e.g., catalog_product_2026-08-25.db, catalog_product_2026-08-25.inx
+                    my ($base, $ext) = ( $f =~ /^(.*?)(\.[^.]+)$/ );
+                    my $stamped_name = (defined $base && length $base)
+                        ? "${base}_${date_stamp}${ext}"
+                        : "${f}_${date_stamp}";
+
+                    my $stamped_dst = File::Spec->catfile($table_dir, $stamped_name);
+                    if (-e $stamped_dst) {
+                        my $counter = 1;
+                        while (-e $stamped_dst) {
+                            my $suffixed = (defined $base && length $base)
+                                ? "${base}_${date_stamp}_${counter}${ext}"
+                                : "${f}_${date_stamp}_${counter}";
+                            $stamped_dst = File::Spec->catfile($table_dir, $suffixed);
+                            $counter++;
+                        }
+                    }
+
+                    if (move($src, $stamped_dst)) {
+                        $moved++;
+                    }
+                    else {
+                        warn "  [!] Failed to move '$src' -> '$stamped_dst': $!\n";
+                    }
+                }
+            }
+            closedir($dh);
+            rmdir($tables_dir);
+            print "  [v5.25.0] Merged $moved file(s) from '$tables_dir' into '$table_dir'\n";
+        }
+    }
+    else {
+        make_path($table_dir) unless -d $table_dir;
+        print "  [v5.25.0] Verified table directory '$table_dir'\n";
+    }
+
+    # 2. Convert legacy table records to ABR v5
+    # Always create fresh AmberDB instance after renaming directories
+    my $adb = AmberDB->new( path => { dbase_dir => $tdir } );
+    my $tools = AmberDB::Tools->new($adb);
     my @target_tables;
     if ($opt_tables) {
         @target_tables = split /,/, $opt_tables;
@@ -329,38 +779,36 @@ sub action_update {
         @target_tables = $tools->all_tables();
     }
 
-    if (!@target_tables) {
-        print "No tables found to migrate in '$target_dir'.\n";
-        return;
+    if (@target_tables) {
+        print "  [v5.25.0] Upgrading legacy table formats to native ABR v5...\n";
+        for my $tbl (@target_tables) {
+            $tbl =~ s/^\s+|\s+$//g;
+            next unless $tbl;
+
+            print "    - Migrating table '$tbl' ... ";
+            my $res = $tools->update_table( $tbl, force => $opt_force );
+            if (!$res || $res->{status} eq 'error') {
+                my $err = $res->{error} // 'Unknown error';
+                print "FAILED! ($err)\n";
+            }
+            elsif ($res->{status} eq 'already_current') {
+                print "ALREADY CURRENT ABR v5 (" . ($res->{already_current} // 0) . " records)\n";
+            }
+            elsif ($res->{status} eq 'updated') {
+                print "MIGRATED! ($res->{total} records, format: $res->{dominant_format})\n";
+            }
+            else {
+                print "OK\n";
+            }
+        }
+
+        # 3. Rebuild all secondary binary indexes
+        print "  [v5.25.0] Rebuilding all derived secondary binary indexes...\n";
+        action_reindex();
     }
-
-    print "Discovered Tables  : " . scalar(@target_tables) . "\n";
-    print "-----------------------------------------------------------------\n";
-
-    for my $table (@target_tables) {
-        $table =~ s/^\s+|\s+$//g;
-        next unless $table;
-
-        print "Processing table: $table ... ";
-        my $res = $tools->update_table( $table, force => $opt_force );
-
-        if (!$res || $res->{status} eq 'error') {
-            my $err = $res->{error} // 'Unknown error';
-            print "FAILED! ($err)\n";
-            next;
-        }
-
-        if ($res->{status} eq 'already_current') {
-            print "ALREADY CURRENT ABR v1 (" . ($res->{already_current} // 0) . " records)\n";
-        }
-        elsif ($res->{status} eq 'updated') {
-            print "MIGRATED!\n";
-            print "  - Records Migrated : $res->{total} (Legacy: $res->{updated}, ABR: $res->{already_current})\n";
-            print "  - Format Detected  : $res->{dominant_format}\n";
-            print "  - Backup Created   : $res->{backup_file}\n";
-        }
+    else {
+        print "  [v5.25.0] No tables found to migrate in '$tdir'.\n";
     }
-    print "=================================================================\n";
 }
 
 sub action_backup {
@@ -448,8 +896,8 @@ sub action_reindex {
     print "=================================================================\n";
     print "Database Directory : $target_dir\n";
 
-    my $tables_dir = "$target_dir/tables";
-    die "Error: Tables directory '$tables_dir' does not exist.\n" unless -d $tables_dir;
+    my $table_dir = File::Spec->catdir($target_dir, "table");
+    die "Error: Table directory '$table_dir' does not exist.\n" unless -d $table_dir;
 
     my $adb = AmberDB->new( path => { dbase_dir => $target_dir } );
     my $tools = AmberDB::Tools->new($adb);
@@ -557,9 +1005,12 @@ Usage:
   perl bin/amberdb_setup.pl --action=<action> [options]
 
 Actions:
+  update            Run comprehensive update (AmberDB engine via CPAN + storage migrations)
+  update-amberdb    Check and update AmberDB core engine distribution via CPAN
+  update-storage    Migrate database directory layout, ABR format, UTF-8 and indexes
+  updatedb          Alias for update-storage
   install, setup    Full infrastructure setup (dirs, user permissions, RAM-disk, cron)
   ramdisk           RAM-disk mount/unmount and status management
-  update, updatedb  Migrate tables to latest ABR binary format
   backup            Dump (.amberdb) or restore database archives
   reindex           Rebuild and pack all derived secondary binary indexes
   cron              Install / inspect self-healing watchdog in crontab
@@ -574,6 +1025,15 @@ Options:
   --no-cron           Skip configuring cron watchdog entry during install
   --service           Automatically configure systemd service unit during install
 
+Update Options (--action=update, update-amberdb, update-storage):
+  --check             Check for pending engine or storage updates without applying
+  --no-backup         Skip pre-migration safety snapshot (.amberdb)
+  --manifest URL      Custom URL or path for storage migration roadmap manifest
+  --cpanm PATH        Custom path or executable name for CPAN installer (default: cpanm)
+  --force             Force table migration and index rewrite even if up-to-date
+  --all               Process all detected database tables
+  --tables T1,T2      Target specific comma-separated tables
+
 RAM-Disk Options (--action=ramdisk):
   --start             Mount and initialize RAM-disk storage
   --stop              Unmount and clean RAM-disk storage
@@ -582,11 +1042,6 @@ RAM-Disk Options (--action=ramdisk):
   --user NAME         System user for NTFS ACLs and folder ownership
   --drive DRIVE       Drive letter on Windows (default: R:)
 
-Table Migration Options (--action=update):
-  --all               Process all detected database tables
-  --tables T1,T2      Target specific comma-separated tables
-  --force             Force rewrite even if already in current ABR format
-
 Backup Options (--action=backup):
   --dump              Export database archive (.amberdb)
   --restore           Import database archive (.amberdb)
@@ -594,9 +1049,11 @@ Backup Options (--action=backup):
   --force             Allow restore into non-empty directory
 
 Examples:
+  perl bin/amberdb_setup.pl --action=update
+  perl bin/amberdb_setup.pl --action=update-amberdb --check
+  perl bin/amberdb_setup.pl --action=update-storage --dbase_dir=./dbstore
   perl bin/amberdb_setup.pl --action=install --user=eticaretim --size=256M --cron
   perl bin/amberdb_setup.pl --action=ramdisk --start --size=512M
-  perl bin/amberdb_setup.pl --action=update --all
   perl bin/amberdb_setup.pl --action=backup --dump --file=backup/full.amberdb
   perl bin/amberdb_setup.pl --action=reindex
 =================================================================

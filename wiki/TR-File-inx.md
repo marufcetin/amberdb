@@ -3,7 +3,7 @@
 [Turkce Dokumantasyon](TR-File-inx) | [English Documentation](File-inx)
 
 > **Kategori:** Dosya Formatlari ve Depolama  
-> **Konum:** `dbstore/tables/${tablo_adi}.inx`  
+> **Konum:** `dbstore/table/${tablo_adi}.inx`  
 > **Format:** Bitisik Sabit Genislikli Ikili Dizi (Kayit basina 8 bayt)
 
 ---

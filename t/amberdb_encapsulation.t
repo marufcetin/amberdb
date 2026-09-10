@@ -101,7 +101,7 @@ subtest "5. table_attr() path invalidation on path-affecting attributes" => sub 
     ok( length($path1) > 0, "Initial table path resolved: $path1" );
 
     # Ensure target section directory exists before switching section
-    mkdir "$tmpdir/tables_north" unless -d "$tmpdir/tables_north";
+    mkdir "$tmpdir/table_north" unless -d "$tmpdir/table_north";
 
     # Change section -> should invalidate cached path and recalculate
     $adb->table_attr("demo_table", section => "north");

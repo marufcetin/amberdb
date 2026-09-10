@@ -292,7 +292,7 @@ sub set_datadir {
     $self->{_path}->{backup_dir}  ||= "$dbase_dir/backup";
     $self->{_path}->{buffer_dir}  ||= "$dbase_dir/buffer";
     $self->{_path}->{schema_dir}  ||= "$dbase_dir/schema";
-    $self->{_path}->{table_dir}   ||= "$dbase_dir/tables";
+    $self->{_path}->{table_dir}   ||= "$dbase_dir/table";
     $self->{_path}->{lock_dir}    ||= "$dbase_dir/lock";
     $self->{_path}->{session_dir} ||= "$dbase_dir/session";
 

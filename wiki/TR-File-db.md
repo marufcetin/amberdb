@@ -3,7 +3,7 @@
 [Turkce Dokumantasyon](TR-File-db) | [English Documentation](File-db)
 
 > **Kategori:** Dosya Formatlari ve Depolama  
-> **Konum:** `dbstore/tables/${tablo_adi}.db`  
+> **Konum:** `dbstore/table/${tablo_adi}.db`  
 > **Format:** Berkeley DB 1.85 Hash Tablosu (`DB_File`)
 
 ---

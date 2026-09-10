@@ -6113,7 +6113,7 @@ In addition to its schema-driven enterprise mode, AmberDB provides a lightweight
 
 =item * B<Arbitrary & Flexible Keys:> The 8-byte ASCII limit and numeric constraints are bypassed. Keys can be emails (C<user@example.com>), UUIDs, long tokens, or Unicode/multilingual strings.
 
-=item * B<Flat Directory Structure:> All tables reside directly under C<dbase_dir> (e.g. C<$dbase_dir/table.db>). No C<tables/> or C<schema/> subfolders are required.
+=item * B<Flat Directory Structure:> All tables reside directly under C<dbase_dir> (e.g. C<$dbase_dir/table.db>). No C<table/> or C<schema/> subfolders are required.
 
 =item * B<Rich Nested Structures:> Records can store nested array and hash references (ARRAY/HASH) directly.
 

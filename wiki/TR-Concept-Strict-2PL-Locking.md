@@ -40,12 +40,12 @@ AmberDB Strict 2PL Yasam Dongusu
 AmberDB iki seviyede isletim sistemi seviyesinde `flock` kilitlemesi sunar:
 
 ### Tablo Duzeyinde Kilit
-Tum tablo dosyasini kilitler (`dbstore/tables/${tablo}.lock`). Toplu iceri aktarma (`insert_list`), sema degisiklikleri ve reindex (`set_index`) islemlerinde kullanilir.
+Tum tablo dosyasini kilitler (`dbstore/table/${tablo}.lock`). Toplu iceri aktarma (`insert_list`), sema degisiklikleri ve reindex (`set_index`) islemlerinde kullanilir.
 - Paylasimli okuma kilidi: `$adb->flock_open("catalog_product", "read");`
 - Ozel yazma kilidi: `$adb->flock_open("catalog_product", "write");`
 
 ### Kayit Duzeyinde Kilit
-Yalnizca belirtilen tekil bir kayit ID'si icin kilit mutex'i olusturur (`dbstore/tables/${tablo}_${kayit_id}.lock`).
+Yalnizca belirtilen tekil bir kayit ID'si icin kilit mutex'i olusturur (`dbstore/table/${tablo}_${kayit_id}.lock`).
 - Ozel kayit kilidi: `$adb->flock_open("orders", "write", 5001);`
 - Kilidi birakma: `$adb->flock_close("orders", 5001);`
 

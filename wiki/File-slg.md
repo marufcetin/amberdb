@@ -3,7 +3,7 @@
 [Turkce Dokumantasyon](TR-File-slg) | [English Documentation](File-slg)
 
 > **Category:** File Formats & Storage  
-> **Location:** `dbstore/tables/${table_id}_0.slg` (ID -> Slug) and `_1.slg` (Slug -> ID)  
+> **Location:** `dbstore/table/${table_id}_0.slg` (ID -> Slug) and `_1.slg` (Slug -> ID)  
 > **Format:** Berkeley DB Hash Table (`DB_File`)
 
 ---

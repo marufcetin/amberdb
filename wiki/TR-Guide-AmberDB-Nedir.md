@@ -38,7 +38,7 @@ AmberDB Butunlesik NoSQL Mimarisi
  Isletim Sistemi Katmani (DB_File Hash + POSIX flock + Page Cache)
                      |
                      v
- Fiziksel Depolama (dbstore/tables/*.db, .inx, .fld, .src, .fac, .srt)
+ Fiziksel Depolama (dbstore/table/*.db, .inx, .fld, .src, .fac, .srt)
 ```
 
 ---

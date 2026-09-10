@@ -12,8 +12,8 @@
 
 `flock_open()`, isletim sistemi seviyesinde tablo duzeyinde veya kayit duzeyinde dosya kilidi (`flock`) edinir.
 
-- **Tablo Duzeyinde Kilit:** `$kayit_id` belirtilmezse `dbstore/tables/${tablo_adi}.lock` kilitlenir.
-- **Kayit Duzeyinde Kilit:** `$kayit_id` verilirse `dbstore/tables/${tablo_adi}_${kayit_id}.lock` kilitlenir.
+- **Tablo Duzeyinde Kilit:** `$kayit_id` belirtilmezse `dbstore/table/${tablo_adi}.lock` kilitlenir.
+- **Kayit Duzeyinde Kilit:** `$kayit_id` verilirse `dbstore/table/${tablo_adi}_${kayit_id}.lock` kilitlenir.
 - **Kilit Modlari:** `"read"` (paylasimli `LOCK_SH`) veya `"write"` (ozel `LOCK_EX`, varsayilan).
 
 ---

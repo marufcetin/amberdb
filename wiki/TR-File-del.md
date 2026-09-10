@@ -3,7 +3,7 @@
 [Turkce Dokumantasyon](TR-File-del) | [English Documentation](File-del)
 
 > **Kategori:** Dosya Formatlari ve Depolama  
-> **Konum:** `dbstore/tables/${tablo_adi}.del`  
+> **Konum:** `dbstore/table/${tablo_adi}.del`  
 > **Format:** Berkeley DB Hash Tablosu (`DB_File`)
 
 ---

@@ -3,7 +3,7 @@
 [Turkce Dokumantasyon](TR-File-db) | [English Documentation](File-db)
 
 > **Category:** File Formats & Storage  
-> **Location:** `dbstore/tables/${table_id}.db`  
+> **Location:** `dbstore/table/${table_id}.db`  
 > **Format:** Berkeley DB 1.85 Hash Table (`DB_File`)
 
 ---

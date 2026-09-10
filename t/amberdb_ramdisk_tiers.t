@@ -92,7 +92,7 @@ subtest 'Tier 4 Dirty Tracking Journal & State Machine' => sub {
         }
     );
 
-    my $dummy_file = "$tmpdir/tables/test_events.db";
+    my $dummy_file = "$tmpdir/table/test_events.db";
 
     # 1. Insert (1) -> Action 'add'
     $adb->ramdisk_mark_dirty( $dummy_file, 101, 1 );

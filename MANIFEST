@@ -53,6 +53,9 @@ LICENSE
 Makefile.PL
 MANIFEST			This list of files
 MANIFEST.SKIP
+migrations/manifest.json
+migrations/versions/5.21.0/migrate.pl
+migrations/versions/5.25.0/migrate.pl
 README.md
 SECURITY.md
 t/00-load.t
@@ -89,6 +92,7 @@ t/amberdb_junk_facet_integration.t
 t/amberdb_junk_tiered.t
 t/amberdb_lock.t
 t/amberdb_match_unq.t
+t/amberdb_migrate_5_25_conflict.t
 t/amberdb_offset_update_alias.t
 t/amberdb_ramdisk_tiers.t
 t/amberdb_range_filter.t
@@ -109,17 +113,7 @@ t/amberdb_standard_api_args.t
 t/amberdb_table_use_simple.t
 t/amberdb_tools.t
 t/amberdb_transact.t
+t/amberdb_update_actions.t
 t/amberdb_update_table.t
-t/amberdb_journal.t
-t/amberdb_ramdisk_tiers.t
-t/amberdb_read_order.t
-t/amberdb_slug_bulk.t
 xt/amberdb_concurrency_stress.t
 xt/amberdb_ramdisk.t
-bin/amberdb_daemon.pl
-bin/amberdb_setup.pl
-bin/setup_linux.sh
-bin/setup_macos.sh
-bin/setup_windows.bat
-bin/setup_windows.ps1
-

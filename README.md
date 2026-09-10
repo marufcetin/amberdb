@@ -23,7 +23,7 @@
 - **ACID-Compliant Undo-Journal Transactions**: Full ACID multi-table transactions with disk-backed journaling (`.txn`), Strict Two-Phase Locking (Strict 2PL), automatic LIFO rollback upon failure or abnormal process exit, and orphaned journal recovery.
 - **2-Pillar Disaster Recovery & Native `.amberdb` Archiving**: 
   - **Pillar 1 (Continuous Recovery Stream):** Automatic append-only audit stream in `backup/YYYY/YYYY-MM-DD.csv` capturing every `insert`, `modify`, and `delete`.
-  - **Pillar 2 (Native Portable Archive):** Compressed, portable `.amberdb` archives containing schemas (`schema/*.table`, `schema/*.dbase`) and authoritative data files (`tables/*.db`, `tables/*.del`, `tables/*.aut`, `tables/*.cnt`, `tables/*_*.str`) with SHA-256 integrity verification. Derived indexes are excluded to save space and reconstructed deterministically on restore.
+  - **Pillar 2 (Native Portable Archive):** Compressed, portable `.amberdb` archives containing schemas (`schema/*.table`, `schema/*.dbase`) and authoritative data files (`table/*.db`, `table/*.del`, `table/*.aut`, `table/*.cnt`, `table/*_*.str`) with SHA-256 integrity verification. Derived indexes are excluded to save space and reconstructed deterministically on restore.
 - **Multi-Granularity Concurrency Control**: Non-blocking shared reads and exclusive writes at both table-level and individual record-level using OS-native `flock`.
 - **ORM & Data Hydration (`inflate` / `deflate`)**: Native transformation between flat storage arrays and schema-mapped hash structures (`$adb->inflate` and `$adb->deflate`), including automatic RDBM foreign relationship resolution and repeating child rows.
 - **Granular Field Operations**: Direct field mutation without full record rewriting via `update_field`, positional child block insertion via `insert_field`, and safe targeted child deletion via `delete_field`.
@@ -39,10 +39,10 @@ AmberDB organizes database files into a clean, deterministic physical directory 
 
 ```text
 dbstore/
-├── schema/                      ← Database Group & Table Schemas
-│   ├── catalog.dbase            ← Database group configuration
+├── schema/                     ← Database Group & Table Schemas
+│   ├── catalog.dbase           ← Database group configuration
 │   └── catalog_product.table   ← Product table schema
-├── tables/                      ← Master Data & Derived Index Files
+├── table/                      ← Master Data & Derived Index Files
 │   ├── catalog_product.db      ← Primary key-value data table (DB_File Hash)
 │   ├── catalog_product.del     ← Soft-deleted records archive (keep_deleted)
 │   ├── catalog_product.aut     ← User audit trail log (log_owner)
@@ -52,10 +52,10 @@ dbstore/
 │   ├── catalog_product.fld     ← Inverted exact-match field index ("$blk:$val")
 │   ├── catalog_product.src     ← Full-text keyword search index
 │   └── catalog_product.fac     ← Columnar facet filter index
-└── backup/                      ← Disaster Recovery & Archives
+└── backup/                     ← Disaster Recovery & Archives
     └── 2026/
-        ├── 2026-08-28.csv       ← Continuous time-series audit stream (Pillar 1)
-        └── full_backup.amberdb  ← Compressed native database archive (Pillar 2)
+        ├── 2026-08-28.csv      ← Continuous time-series audit stream (Pillar 1)
+        └── full_backup.amberdb ← Compressed native database archive (Pillar 2)
 ```
 
 ### File Extension Reference

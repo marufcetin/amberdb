@@ -8,7 +8,7 @@ use File::Spec;
 use AmberDB;
 
 my $temp_dir   = tempdir( CLEANUP => 1 );
-my $conf_dir   = File::Spec->catdir( $temp_dir, 'conf' );
+my $conf_dir   = File::Spec->catdir( $temp_dir, 'config' );
 my $schema_dir = File::Spec->catdir( $temp_dir, 'schema' );
 mkdir $conf_dir;
 mkdir $schema_dir;

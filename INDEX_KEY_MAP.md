@@ -24,7 +24,7 @@ AmberDB ikili indeks mimarisinde dosya tanıtıcı (file descriptor) ve I/O yük
 ## 2. Ayrıntılı İndeks Anahtar Haritası
 
 ### 2.1. `.inx` - Birincil Kayıt ve Sıralama İndeksi (Primary & Sort Index)
-* **Konum:** `dbstore/tables/${tablo}.inx`
+* **Konum:** `dbstore/table/${tablo}.inx`
 * **Format:** Berkeley DB (`DB_File`) Hash Tablosu
 * **Şema Ayarları:** `record_index => 1`, `sort_block => [ 2, { blk => 3, type => 'num' } ]`, `use_junk => 1`
 * **Amaç:** $O(1)$ sürede sayfa dilimleme (pagination), kayıt sayısı ve önceden sıralanmış ID erişimi.
@@ -44,7 +44,7 @@ AmberDB ikili indeks mimarisinde dosya tanıtıcı (file descriptor) ve I/O yük
 ---
 
 ### 2.2. `.fld` - Birebir Alan Eşleme İndeksi (Field Match Inverted Index)
-* **Konum:** `dbstore/tables/${tablo}.fld`
+* **Konum:** `dbstore/table/${tablo}.fld`
 * **Format:** Berkeley DB (`DB_File`) Hash Tablosu
 * **Şema Ayarları:** `match_block => [ 1, 2, 4 ]`, `use_junk => 1`
 * **Amaç:** `field_fetch` ve `field_filter` aramalarında belirtilen alana göre kayıt ID'lerini anında getirmek.
@@ -62,7 +62,7 @@ AmberDB ikili indeks mimarisinde dosya tanıtıcı (file descriptor) ve I/O yük
 ---
 
 ### 2.3. `.src` - Tam Metin Arama Ters İndeksi (Full-Text Search Inverted Index)
-* **Konum:** `dbstore/tables/${tablo}.src`
+* **Konum:** `dbstore/table/${tablo}.src`
 * **Format:** Berkeley DB (`DB_File`) Hash Tablosu
 * **Şema Ayarları:** `search_block => [ 1, 2 ]`, `use_junk => 1`
 * **Amaç:** `search_table` sorgularında fonetik/aksan toleranslı kelime kökleriyle eşleşen kayıtları bulmak.
@@ -80,7 +80,7 @@ AmberDB ikili indeks mimarisinde dosya tanıtıcı (file descriptor) ve I/O yük
 ---
 
 ### 2.4. `.fac` - Çok Boyutlu Faset İndeksi (Columnar Facet Index)
-* **Konum:** `dbstore/tables/${tablo}.fac`
+* **Konum:** `dbstore/table/${tablo}.fac`
 * **Format:** Berkeley DB (`DB_File`) Hash Tablosu
 * **Şema Ayarları:** `use_facet => 1`, `facet_block => [ 1, 2, 3 ]`, `facet_rules => [ [ blk, op, val ] ]`
 * **Amaç:** E-ticaret filtreleme menüleri (`facet_menu`) için disjunctive sayımlar ve dinamik ürün filtreleme.
@@ -94,7 +94,7 @@ AmberDB ikili indeks mimarisinde dosya tanıtıcı (file descriptor) ve I/O yük
 ---
 
 ### 2.5. `.slg` - Çift Yönlü URL Slug İndeksi (Bidirectional Slug Index)
-* **Konum:** `dbstore/tables/${tablo}.slg`
+* **Konum:** `dbstore/table/${tablo}.slg`
 * **Format:** Berkeley DB (`DB_File`) Hash Tablosu
 * **Şema Ayarları:** `slug_block => [ 1 ]`, `slug_max_len => 80`
 * **Amaç:** Başlıktan otomatik SEO URL slug üretimi, slug -> ID ve ID -> slug çift yönlü $O(1)$ dönüşümü.
@@ -109,7 +109,7 @@ AmberDB ikili indeks mimarisinde dosya tanıtıcı (file descriptor) ve I/O yük
 ---
 
 ### 2.6. `.unq` - Tekillik Kısıtı ve Metin Sözlük İndeksi (Unique & Dictionary Master)
-* **Konum:** `dbstore/tables/${tablo}.unq`
+* **Konum:** `dbstore/table/${tablo}.unq`
 * **Format:** Berkeley DB (`DB_File`) Hash Tablosu
 * **Şema Ayarları:** `valid => 'unique'` (kolon kuralı) veya `match_block` metin/RDBM alanları
 * **Amaç:** Metin alanları sayısallaştırarak 8-baytlık indeks alanına dönüştürmek ve tekil sütun bütünlüğünü korumak.
@@ -129,10 +129,10 @@ AmberDB ikili indeks mimarisinde dosya tanıtıcı (file descriptor) ve I/O yük
 
 | Dosya Uzantısı | Fiziksel Konum | Anahtar (Key) | Değer (Value / Payload) | Açıklama |
 |---|---|---|---|---|
-| **`.db`** | `dbstore/tables/${tablo}.db` | `$rid` (Kayıt ID) | ABR v5 Binary (`\x00ABR\x05...`) veya Legacy text | Ana veri deposu. |
-| **`.del`** | `dbstore/tables/${tablo}.del` | `$rid` (Kayıt ID) | ABR v5 Binary | `keep_deleted => 1` aktifken silinen kayıtların soft-delete arşivi. |
-| **`.aut`** | `dbstore/tables/${tablo}.aut` | `"$rid:$zaman"` | Serialized Audit Trail | `log_owner => 1` veya denetim açıkken kullanıcı işlem geçmişi. |
-| **`.cnt`** | `dbstore/tables/${tablo}.cnt` | `$rid` (Kayıt ID) | Sayısal sayaç (örn: `42`) | Kayıt bazlı okuma/ziyaret sayacı. |
+| **`.db`** | `dbstore/table/${tablo}.db` | `$rid` (Kayıt ID) | ABR v5 Binary (`\x00ABR\x05...`) veya Legacy text | Ana veri deposu. |
+| **`.del`** | `dbstore/table/${tablo}.del` | `$rid` (Kayıt ID) | ABR v5 Binary | `keep_deleted => 1` aktifken silinen kayıtların soft-delete arşivi. |
+| **`.aut`** | `dbstore/table/${tablo}.aut` | `"$rid:$zaman"` | Serialized Audit Trail | `log_owner => 1` veya denetim açıkken kullanıcı işlem geçmişi. |
+| **`.cnt`** | `dbstore/table/${tablo}.cnt` | `$rid` (Kayıt ID) | Sayısal sayaç (örn: `42`) | Kayıt bazlı okuma/ziyaret sayacı. |
 | **`.txn`** | `dbstore/txn/txn_${tid}.txn` | Sıralı log akışı | `0x1E` (RS) ayraçlı WAL kayıtları | ACID Strict 2PL işlem geri alma (undo-journal) günlüğü. |
 
 ---
@@ -145,7 +145,7 @@ use AmberDB;
 my $adb = AmberDB->new( path => { dbase_dir => 'dbstore' } );
 
 # 1. .inx üzerinden O(1) sayfalama ve ID okuma
-my ($total, @page_ids) = $adb->index_get("dbstore/tables/urunler.inx", "keys", "ids", 0, 20);
+my ($total, @page_ids) = $adb->index_get("dbstore/table/urunler.inx", "keys", "ids", 0, 20);
 
 # 2. .fld üzerinden kategoriye göre kayıt ID'lerini alma
 my @elektronik_ids = $adb->read_field("urunler", 1, "Elektronik");
@@ -155,5 +155,5 @@ my $slug = $adb->get_slug("urunler", 0, 101); # 0: ID -> Slug
 my $id   = $adb->get_slug("urunler", 1, "bluetooth-kulaklik"); # 1: Slug -> ID
 
 # 4. .unq üzerinden sözlük kelimesi çözme
-my ($cat_name) = $adb->index_get("dbstore/tables/urunler.unq", "1:n:42", "raw");
+my ($cat_name) = $adb->index_get("dbstore/table/urunler.unq", "1:n:42", "raw");
 ```

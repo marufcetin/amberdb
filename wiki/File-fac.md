@@ -3,7 +3,7 @@
 [Turkce Dokumantasyon](TR-File-fac) | [English Documentation](File-fac)
 
 > **Category:** File Formats & Storage  
-> **Location:** `dbstore/tables/${table_id}_${block_idx}.fac`  
+> **Location:** `dbstore/table/${table_id}_${block_idx}.fac`  
 > **Format:** Columnar Fixed-Width Forward Index Bitset Array
 
 ---

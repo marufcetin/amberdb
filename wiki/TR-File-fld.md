@@ -3,7 +3,7 @@
 [Turkce Dokumantasyon](TR-File-fld) | [English Documentation](File-fld)
 
 > **Kategori:** Dosya Formatlari ve Depolama  
-> **Konum:** `dbstore/tables/${tablo_adi}_${blok_indisi}.fld` (veya Tier B `*.jfld`)  
+> **Konum:** `dbstore/table/${tablo_adi}_${blok_indisi}.fld` (veya Tier B `*.jfld`)  
 > **Format:** Birebir Esleme Hash Tablosu (`DB_File`)
 
 ---

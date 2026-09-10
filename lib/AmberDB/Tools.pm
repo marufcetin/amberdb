@@ -1140,12 +1140,12 @@ sub all_tables {
         my @files = $adb->dir_files( $dbase_dir, "*.$ext", full_path => 0 );
         @all_tables = map { /^([a-z0-9_]+)\.\Q$ext\E$/i ? $1 : () } @files;
     }
-    # 2. Standard Structured Mode: Multi-directory scan (tables/ and year directories) for .db files
+    # 2. Standard Structured Mode: Multi-directory scan (table/ and year directories) for .db files
     else {
-        my $tbl_dir = File::Spec->catdir( $dbase_dir, 'tables' );
-        push @all_tables, $adb->dir_files( $tbl_dir, "*.db", full_path => 0 );
+        my $tbl_dir = File::Spec->catdir( $dbase_dir, 'table' );
+        push @all_tables, $adb->dir_files( $tbl_dir, "*.db", full_path => 0 ) if -d $tbl_dir;
 
-        my %seen_dirs = ( "tables" => 1, "schema" => 1, "backup" => 1 );
+        my %seen_dirs = ( "table" => 1, "schema" => 1, "backup" => 1, "lock" => 1, "ramdisk" => 1, "journal" => 1, "session" => 1, "config" => 1 );
         if ($year_dir) {
             my $yd_path = File::Spec->catdir( $dbase_dir, $year_dir );
             push @all_tables, $adb->dir_files( $yd_path, "*.db", full_path => 0 );
@@ -1614,8 +1614,8 @@ sub replace_tablename {
         push @tables, ( glob "$dbase_dir/${find}_*" );
     }
     else {
-        @tables = glob "$dbase_dir/tables/$find.*";
-        push @tables, ( glob "$dbase_dir/tables/${find}_*" );
+        @tables = glob "$dbase_dir/table/$find.*";
+        push @tables, ( glob "$dbase_dir/table/${find}_*" );
         if ( $adb->config('use_section') ) {
             my @sections = glob "$dbase_dir/section_*";
             foreach my $sec_file (@sections) {
@@ -1768,7 +1768,7 @@ sub convert_tables {
     return unless $db_dir && -d $db_dir;
 
     my @dirs = ($db_dir);
-    push @dirs, File::Spec->catdir( $db_dir, 'tables' ) if -d File::Spec->catdir( $db_dir, 'tables' );
+    push @dirs, File::Spec->catdir( $db_dir, 'table' ) if -d File::Spec->catdir( $db_dir, 'table' );
 
     my @db_files;
     foreach my $d (@dirs) {
@@ -1942,7 +1942,7 @@ sub dump {
                     $arch_path = $1;
                 }
                 else {
-                    $arch_path = "tables/$tid.$sfx";
+                    $arch_path = "table/$tid.$sfx";
                 }
 
                 $tar->add_data( $arch_path, $dcontent );
@@ -1970,7 +1970,7 @@ sub dump {
             }
             else {
                 my ($fname) = $fpath =~ m{([^/\\]+)$};
-                $arch_path = "tables/$fname";
+                $arch_path = "table/$fname";
             }
 
             $tar->add_data( $arch_path, $dcontent );
@@ -2040,7 +2040,7 @@ sub restore {
     my $schema_dir = $adb->path('schema_dir')
       || ( $adb->path('dbase_dir') ? $adb->path('dbase_dir') . "/schema" : "schema" );
     my $table_dir = $adb->path('table_dir')
-      || ( $adb->path('dbase_dir') ? $adb->path('dbase_dir') . "/tables" : "tables" );
+      || ( $adb->path('dbase_dir') ? $adb->path('dbase_dir') . "/table" : "table" );
 
     my $force = $opts{force} || $opts{overwrite};
     unless ($force) {
@@ -2130,7 +2130,7 @@ sub restore {
                 }
             }
 
-            # Native archive path: e.g. tables/products.db or 2026/sales.db
+            # Native archive path: e.g. table/products.db or 2026/sales.db
             my $target_file = "$base_dir/$arch_path";
 
             if ( my ($tdir) = $target_file =~ m{^(.*)[/\\]} ) {
@@ -2218,7 +2218,7 @@ Creates an C<AmberDB::Tools> instance associated with an active C<AmberDB> objec
 
 =head2 dump([%options])
 
-Creates a compressed, portable C<.amberdb> archive file (gzipped tar archive) containing table and database schemas (C<schema/*.table>, C<schema/*.dbase>), native database data files (C<tables/*.db>, C<tables/*.del>, C<tables/*.aut>, C<tables/*.cnt>), and a cryptographically verified SHA-256 C<manifest.json>.
+Creates a compressed, portable C<.amberdb> archive file (gzipped tar archive) containing table and database schemas (C<schema/*.table>, C<schema/*.dbase>), native database data files (C<table/*.db>, C<table/*.del>, C<table/*.aut>, C<table/*.cnt>), and a cryptographically verified SHA-256 C<manifest.json>.
 
 Options:
 =over 4

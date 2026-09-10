@@ -3,7 +3,7 @@
 [Turkce Dokumantasyon](TR-File-del) | [English Documentation](File-del)
 
 > **Category:** File Formats & Storage  
-> **Location:** `dbstore/tables/${table_id}.del`  
+> **Location:** `dbstore/table/${table_id}.del`  
 > **Format:** Berkeley DB Hash Table (`DB_File`)
 
 ---

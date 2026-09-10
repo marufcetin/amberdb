@@ -19,11 +19,11 @@ RAM-Disk Çok Süreçli Paylaşımlı Bellek Mimarisi
   
  Perl Worker Süreci 1        Perl Worker Süreci 2        Perl Worker Süreci N      
                      Paylaşımlı RAM-Disk Alanı (/dev/shm, ImDisk R: veya /Volumes/AmberDB_RAM)
-             dbstore/ramdisk/tables/catalog_category.db & .inx (Bellek İçi Hash)
+             dbstore/ramdisk/table/catalog_category.db & .inx (Bellek İçi Hash)
                                       
                                        Otomatik Şeffaf Eşleme (use_ramdisk)
                                       
-             Kalıcı Fiziksel Depolama Diski (dbstore/tables/*.db)
+             Kalıcı Fiziksel Depolama Diski (dbstore/table/*.db)
 ```
 
 ---
@@ -43,11 +43,11 @@ Tablo şemasında (`schema/*.table`) veya çalışma anında `$adb->table_attr($
 
 ## 3. Özel Tablo Dizini Belirleme (`table_dir`)
 
-AmberDB varsayılan olarak tabloları `dbstore/tables/` ve RAM-diskte `dbstore/ramdisk/tables/` altında depolar. `table_dir` parametresi ile bu dizin özelleştirilebilir:
+AmberDB varsayılan olarak tabloları `dbstore/table/` ve RAM-diskte `dbstore/ramdisk/table/` altında depolar. `table_dir` parametresi ile bu dizin özelleştirilebilir:
 
 - **`table_dir => 'siparis'`:** Tablo diskte `dbstore/siparis/$table` ve RAM-diskte `dbstore/ramdisk/siparis/$table` altında tutulur.
-- **`table_dir => ''`:** Varsayılan `tables/` önekini ezer ve tabloyu doğrudan kök dizin altına (`dbstore/$table` ve `ramdisk/$table`) yerleştirir.
-- **Tanımlanmazsa:** Standart `tables/` hiyerarşisi kullanılır.
+- **`table_dir => ''`:** Varsayılan `table/` önekini ezer ve tabloyu doğrudan kök dizin altına (`dbstore/$table` ve `ramdisk/$table`) yerleştirir.
+- **Tanımlanmazsa:** Standart `table/` hiyerarşisi kullanılır.
 
 ```perl
 # Sipariş tablosunu özel bir dizine yönlendir
