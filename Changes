@@ -1,5 +1,34 @@
 Revision history for AmberDB
 
+5.25.1  2026-09-11
+        - [JOURNAL & TRANSACTION STANDARDIZATION] Extensionless Uniform Journaling:
+          * Standardized all transaction undo logs and RAM-disk write-behind queues under $dbase_dir/journal/ ($adb->journal_dir()).
+          * Removed legacy .txn extension; transaction journal files now follow the standard extensionless format dbstore/journal/txn_<timestamp>_<seq>_<pid> (Base.pm:481-488).
+          * Modernized transact_recover() to scan journal/ directory for txn_* files and extract process IDs via /[-_](\d+)$/ for deterministic crash recovery without race conditions.
+          * Added explicit transact_commit() method alias to transact_end() matching documented public API semantics.
+          * Cleaned out obsolete legacy 5-parameter signature fallback and 6-field journal format fallback in AmberDB::Base::Transact.
+          
+        - [RAM-DISK TIER 4 WRITE-BEHIND JOURNALING] Explicit sync_ramdisk Queue:
+          * Renamed dirty sync queue from sync_events to sync_ramdisk for clear semantic clarity:
+            - Active Queue: dbstore/journal/sync_ramdisk
+            - Rotated Queue: dbstore/journal/sync_ramdisk_<timestamp>
+          * Updated AmberDB::Base::Ramdisk (ramdisk_mark_dirty, ramdisk_sync, ramdisk_sync_db_path) and AmberDB::Base (journal_slot, journal_scan) to reflect sync_ramdisk naming.
+          * Synchronized background daemon engine (bin/amberdb_daemon.pl) and unit test suites (t/amberdb_ramdisk_tiers.t, t/amberdb_journal.t).
+
+        - [MODERN COMMAND LINE INTERFACE & NATURAL QUERY PARSER]
+          * Implemented unified bin/amberdb_cli.pl with bin/amberdb (POSIX shell) and bin/amberdb.bat (Windows CMD) wrappers.
+          * Natural positional query signatures:
+            - amberdb read <table> <id> (read_id)
+            - amberdb read <table> all [offset] [limit] [modifiers] (read_all)
+            - amberdb search <table> <query> [offset] [limit] [modifiers] (search_table)
+            - amberdb fetch <table> <block> <value> (field_fetch)
+            - amberdb count <table>, amberdb info <table>, amberdb status, amberdb ping
+          * Dual execution model: direct stateless execution against database without background session side-effects, and isolated session management via 4-digit numeric tokens (connect, disconnect, config, path, attr).
+          * Trailing output format (json, pretty, tsv, dumper, table, raw) and elapsed execution time (time, time=1, --time) keywords.
+          * Preserved clean machine-readable JSON output by rendering execution time metrics as an independent footer line.
+          * Completely eliminated redundant %cli_path and %cli_cfg hashes in CLI, directly utilizing $adb->path() and $adb->config().
+          * Added full CLI test suite in t/amberdb_cli.t (100% pass) and updated wiki documentation (TR-Guide-CLI.md, Guide-CLI.md, bin/commands.md).
+
 5.25.0  2026-09-10
         - [CORE ENGINE MODULARIZATION & NAMESPACE RESTRUCTURING] Grouped Internal Engine Modules Under AmberDB::Base::*:
           * Migrated and reorganized core engine components into AmberDB::Base namespace:

@@ -6,7 +6,7 @@ use Carp qw(croak cluck);
 use Fcntl qw(:flock);
 use IO::Handle;
 
-our $VERSION = '5.25.0';
+our $VERSION = '5.25.1';
 
 my $CREATED = '2026-08-11';
 
@@ -99,16 +99,16 @@ sub transact_start {
     # Recover orphaned transactions from previous crashes
     $self->transact_recover();
 
-    my $txn_dir = $self->path('txn_dir') || ( ( $self->path('dbase_dir') || "." ) . "/txn" );
-    unless ( -d $txn_dir ) {
-        $self->transact_error( $txn_dir, "Transaction directory does not exist: $txn_dir" );
+    my $journal_dir = $self->journal_dir();
+    unless ( -d $journal_dir ) {
+        $self->transact_error( $journal_dir, "Transaction directory does not exist: $journal_dir" );
         return;
     }
 
     our $TXN_SEQ;
     $TXN_SEQ = 0 unless defined $TXN_SEQ;
-    my $txn_id   = time() . "-" . (++$TXN_SEQ) . "-$$";
-    my $txn_file = "$txn_dir/txn_$txn_id.txn";
+    my $txn_id   = time() . "_" . (++$TXN_SEQ) . "_$$";
+    my $txn_file = "$journal_dir/txn_$txn_id";
 
     open my $fh, "+>>", $txn_file or do {
         $self->transact_error( $txn_file, "Cannot open journal: $txn_file ($!)" );
@@ -211,6 +211,15 @@ sub transact_end {
     };
 }
 
+# $result = $adb->transact_commit();
+# ------------------------------------------------
+# Alias to transact_end() for explicit commit semantics.
+# ------------------------------------------------
+sub transact_commit {
+    my ( $self ) = @_;
+    return $self->transact_end();
+}
+
 # $result = $adb->transact_rollback();
 # ------------------------------------------------
 # Forces rollback regardless of error state.
@@ -259,37 +268,25 @@ sub transact_rollback {
 }
 
 # $adb->_txn_log( $type, $tableid, $file_path, $key, $action, $old_val );
-# Backward-compatible signature:
-# $adb->_txn_log( $tableid, $action, $rid, $new_raw, $old_raw );
 # ------------------------------------------------
 # Appends one undo-log entry to the journal file.
 # Flushes buffer and optionally calls sync (fsync) for durability.
-# Noop if no active transaction — backward compatible.
+# Noop if no active transaction.
 # ------------------------------------------------
 sub _txn_log {
-    my $self = shift;
+    my ( $self, $type, $tableid, $file_path, $key, $action, $old_val ) = @_;
 
     return unless $self->{_txn} && $self->{_txn}->{active};
     my $fh = $self->{_txn}->{fh} or return;
 
-    my ( $type, $tableid, $file_path, $key, $action, $old_val );
-
-    if ( @_ >= 6 && ( $_[0] eq 'recs' || $_[0] eq 'index' ) ) {
-        ( $type, $tableid, $file_path, $key, $action, $old_val ) = @_;
-    }
-    else {
-        # Legacy signature fallback: ($tableid, $action, $rid, $new_raw, $old_raw)
-        my ( $t_id, $act, $r_id, $new_raw, $old_raw ) = @_;
-        $type      = 'recs';
-        $tableid   = $t_id;
-        $file_path = $self->table_path( $t_id, 1 );
-        $key       = $r_id;
-        $action    = $act;
-        $old_val   = ( $act eq 'add' ) ? '__NULL__' : ( $old_raw // '' );
-    }
+    $type      //= 'recs';
+    $tableid   //= '';
+    $file_path //= '';
+    $key       //= '';
+    $action    //= 'put';
+    $old_val   //= '__NULL__';
 
     my $ts = $self->_txn_timestamp();
-    $old_val //= '__NULL__';
 
     my $safe_enc = sub {
         my ($s) = @_;
@@ -356,21 +353,8 @@ sub _txn_apply_rollback {
 
     foreach my $line ( reverse @lines ) {
         chomp $line;
-        my @f = split /\x1e/, $line, 7;
-        next unless @f >= 6;
-
-        my ( $ts, $type, $tableid, $file_path, $key, $action, $old_val );
-        if ( $f[1] eq 'recs' || $f[1] eq 'index' ) {
-            ( $ts, $type, $tableid, $file_path, $key, $action, $old_val ) = @f;
-        }
-        else {
-            # Legacy 6-field journal format fallback
-            ( $ts, $tableid, $action, $key, my $new_raw, $old_val ) = @f;
-            $type      = 'recs';
-            $file_path = $self->table_path( $tableid, 1 );
-        }
-
-        next unless $file_path && defined $key;
+        my ( $ts, $type, $tableid, $file_path, $key, $action, $old_val ) = split /\x1e/, $line, 7;
+        next unless defined $file_path && defined $key;
         $affected_tables{$tableid} = 1 if $tableid;
 
         unless ( $open_files{$file_path} ) {
@@ -418,7 +402,7 @@ sub _txn_apply_rollback {
 
 # $adb->transact_recover();
 # ------------------------------------------------
-# Scans txn/ directory for journal files left by dead/crashed processes.
+# Scans journal/ directory for orphaned transaction files left by dead/crashed processes.
 # Uses non-blocking exclusive flock to safely claim ownership without race conditions.
 # Rolls back and removes confirmed orphaned journals.
 # Called automatically at the start of each new transaction.
@@ -426,12 +410,12 @@ sub _txn_apply_rollback {
 sub transact_recover {
     my ( $self ) = @_;
 
-    my $txn_dir = $self->path('txn_dir') || ( ( $self->path('dbase_dir') || "." ) . "/txn" );
-    my @orphans = $self->dir_files( $txn_dir, "txn_*.txn" );
+    my $journal_dir = $self->journal_dir();
+    my @orphans = $self->dir_files( $journal_dir, "txn_*" );
     return unless @orphans;
 
     foreach my $orphan ( sort @orphans ) {
-        my ($pid) = $orphan =~ /\-(\d+)\.txn$/;
+        my ($pid) = $orphan =~ /[-_](\d+)$/;
         next unless $pid;
 
         # Skip our own active transaction file
@@ -524,7 +508,7 @@ AmberDB::Transact - ACID-compliant transactions with Strict Two-Phase Locking (S
 =head1 DESCRIPTION
 
 C<AmberDB::Transact> provides ACID-compliant transaction undo logging, Strict Two-Phase Locking (Strict 2PL), and automated LIFO rollback for C<AmberDB>.
-It records binary undo journal entries (C<txn/txn_*.txn>) using ASCII record separators (0x1E) for atomic operations across base database files (C<.db>), soft-delete archives (C<.del>), user audit histories (C<.aut>), and all associated index files (C<.inx>, C<.src>, C<.fld>, C<.fac>, C<.slg>).
+It records binary undo journal entries (C<journal/txn_*>) using ASCII record separators (0x1E) for atomic operations across base database files (C<.db>), soft-delete archives (C<.del>), user audit histories (C<.aut>), and all associated index files (C<.inx>, C<.src>, C<.fld>, C<.fac>, C<.slg>).
 
 Transactions maintain process ownership via exclusive non-blocking C<flock> on journal files, hold record-level write locks throughout the transaction lifecycle, and guarantee crash durability through C<IO::Handle> buffer flushing, optional filesystem sync (C<txn_sync =E<gt> 1>), and automated orphaned journal recovery (C<transact_recover>).
 
@@ -540,9 +524,15 @@ If transactional atomicity is required for bulk records, execute individual CRUD
 
 =head2 transact_start()
 
-Starts a new transaction. Creates an undo journal file under C<dbstore/txn/>, acquires an exclusive non-blocking lock, and initializes the transaction state. Also triggers C<transact_recover> to clean up any orphaned journals from previous crashes.
+Starts a new transaction. Creates an undo journal file under C<dbstore/journal/> (e.g. C<txn_1741512300_1_4820>), acquires an exclusive non-blocking lock, and initializes the transaction state. Also triggers C<transact_recover> to clean up any orphaned journals from previous crashes.
 
   my $ok = $adb->transact_start();
+
+=head2 transact_commit()
+
+Unconditionally commits the active transaction, flushes changes to physical tables, releases all acquired locks, and removes the journal file.
+
+  my $result = $adb->transact_commit();
 
 =head2 transact_end()
 
@@ -562,7 +552,7 @@ Forces an immediate manual rollback of the active transaction regardless of whet
 
 =head2 transact_recover()
 
-Scans the C<dbstore/txn/> directory for orphaned transaction journals left behind by crashed or killed processes. Uses non-blocking C<flock> to safely identify dead processes without race conditions and rolls back uncommitted operations to restore consistency.
+Scans the C<dbstore/journal/> directory for orphaned transaction journals left behind by crashed or killed processes. Uses non-blocking C<flock> to safely identify dead processes without race conditions and rolls back uncommitted operations to restore consistency.
 
   $adb->transact_recover();
 

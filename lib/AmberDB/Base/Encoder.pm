@@ -5,7 +5,7 @@ use warnings;
 use Carp qw(croak cluck);
 use MIME::Base64 qw(encode_base64 decode_base64);
 
-our $VERSION = '5.25.0';
+our $VERSION = '5.25.1';
 
 my $CREATED = '2026-09-06';
 

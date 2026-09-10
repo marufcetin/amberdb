@@ -53,22 +53,22 @@ subtest '2. Journal append, read, rotate, and scan' => sub {
     my $entry1 = [ 'recs', 'test_tbl', '/db/test.db', 1, 'add', '', "Item 1", 1741512300 ];
     my $entry2 = [ 'recs', 'test_tbl', '/db/test.db', 2, 'add', '', "Item 2", 1741512301 ];
 
-    # Append to slot "sync_events" -> dbstore/journal/sync_events
-    ok( $adb->journal_append( 'sync_events', $entry1, $entry2 ), 'Appended 2 entries to sync_events' );
+    # Append to slot "sync_ramdisk" -> dbstore/journal/sync_ramdisk
+    ok( $adb->journal_append( 'sync_ramdisk', $entry1, $entry2 ), 'Appended 2 entries to sync_ramdisk' );
 
     # Read back
-    my @read = $adb->journal_read('sync_events');
+    my @read = $adb->journal_read('sync_ramdisk');
     is( scalar(@read), 2, 'Read 2 entries back' );
     is( $read[0]->{key}, 1, 'First entry key' );
     is( $read[1]->{key}, 2, 'Second entry key' );
 
     # Rotate
-    my $rotated = $adb->journal_rotate( 'sync_events', 1741512300 );
+    my $rotated = $adb->journal_rotate( 'sync_ramdisk', 1741512300 );
     ok( defined $rotated && -e $rotated, "Rotated file exists: $rotated" );
-    like( $rotated, qr/sync_events_1741512300$/, 'Rotated file matches exact naming pattern' );
+    like( $rotated, qr/sync_ramdisk_1741512300$/, 'Rotated file matches exact naming pattern' );
 
     # Scan rotated files
-    my @scanned = $adb->journal_scan('sync_events_');
+    my @scanned = $adb->journal_scan('sync_ramdisk_');
     is( scalar(@scanned), 1, 'Found 1 rotated sync journal' );
     is( $scanned[0], $rotated, 'Scanned path matches rotated path' );
 

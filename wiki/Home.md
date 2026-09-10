@@ -24,7 +24,7 @@ This wiki is organized as an **encyclopedic reference dictionary**. Each method,
 | :--- | :--- |
 | **A** | [array_compare](Method-array_compare) · [array_filter](Method-array_filter) · [array_pick](Method-array_pick) · [array_punch](Method-array_punch) · [array_shuffle](Method-array_shuffle) · [array_size](Method-array_size) · [array_sort](Method-array_sort) · [array_sublist](Method-array_sublist) · [array_substr](Method-array_substr) · [array_substrno](Method-array_substrno) · [ASCII / String Keys](Concept-ASCII-ID) · [auto_id (Flag)](Flag-auto_id) · [Auto-Increment ID (Concept)](Concept-Auto-ID) |
 | **B** | [Berkeley DB Engine](Concept-Berkeley-DB) · [buffer_delete](Method-buffer_delete) · [buffer_read](Method-buffer_read) · [buffer_write](Method-buffer_write) · [buffer_write (Flag)](Flag-buffer_write) |
-| **C** | [check_table](Method-check_table) · [config](Method-config) · [convert_tables](Method-convert_tables) · [CRUD Operations Guide](Guide-CRUD-Operations) |
+| **C** | [check_table](Method-check_table) · [CLI Console (amberdb_cli.pl)](Guide-CLI) · [config](Method-config) · [convert_tables](Method-convert_tables) · [CRUD Operations Guide](Guide-CRUD-Operations) |
 | **D** | [Data Model](Concept-Record-Anatomy) · [dbase_dir (Flag)](Flag-dbase_dir) · [deep_copy](Method-deep_copy) · [delete_id](Method-delete_id) · [delete_list](Method-delete_list) · [Directory Structure](Concept-Directory-Structure) · [Disaster Recovery](Concept-2-Pillar-Disaster-Recovery) · [Disjunctive Faceting](Concept-Disjunctive-Faceting) · [dump](Method-dump) |
 | **E** | [exist_id](Method-exist_id) · [exist_list](Method-exist_list) · [exist_table](Method-exist_table) |
 | **F** | [facet_menu](Method-facet_menu) · [facet_rules](Method-facet_rules) · [field_allfltkeys](Method-field_allfltkeys) · [field_fetch](Method-field_fetch) · [field_filter](Method-field_filter) · [field_fltkeys](Method-field_fltkeys) · [File Structure (Extensions)](Concept-File-Structure) · [flock_close](Method-flock_close) · [flock_open](Method-flock_open) |
@@ -65,6 +65,7 @@ AmberDB Architecture
 - [How to Install AmberDB](Guide-Installation) - CPAN, source build, upgrades, and RAM-disks
 - [How to Use AmberDB](Guide-Usage-Quickstart) - End-to-end practical scenario
 - [Core CRUD Operations](Guide-CRUD-Operations) - insert, read, modify, and delete guide
+- [Command Line Interface (CLI)](Guide-CLI) - Manage, query, and maintain databases via amberdb_cli.pl
 
 ### 1. Core Architectural Concepts
 - [Berkeley DB Engine & Advantages](Concept-Berkeley-DB)

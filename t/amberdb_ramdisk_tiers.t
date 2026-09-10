@@ -96,32 +96,32 @@ subtest 'Tier 4 Dirty Tracking Journal & State Machine' => sub {
 
     # 1. Insert (1) -> Action 'add'
     $adb->ramdisk_mark_dirty( $dummy_file, 101, 1 );
-    my @e1 = $adb->journal_read('sync_events');
+    my @e1 = $adb->journal_read('sync_ramdisk');
     ok( @e1 >= 1, "Journal has entries" );
     is( $e1[-1]->{action}, 'add', "New insert event logged as action 'add'" );
     is( $e1[-1]->{key}, '101', "Key is 101" );
 
     # 2. Update (2) -> Action 'edit'
     $adb->ramdisk_mark_dirty( $dummy_file, 101, 2 );
-    my @e2 = $adb->journal_read('sync_events');
+    my @e2 = $adb->journal_read('sync_ramdisk');
     is( $e2[-1]->{action}, 'edit', "Update event logged as action 'edit'" );
 
     # 3. Delete (3) -> Action 'del'
     $adb->ramdisk_mark_dirty( $dummy_file, 101, 3 );
-    my @e3 = $adb->journal_read('sync_events');
+    my @e3 = $adb->journal_read('sync_ramdisk');
     is( $e3[-1]->{action}, 'del', "Delete event logged as action 'del'" );
 
     # 4. Pos testing: exact numerical offset and raw payload
     $adb->ramdisk_mark_dirty( $dummy_file, 202, 1, 'sample_payload_data', 8000000 );
-    my @e4 = $adb->journal_read('sync_events');
+    my @e4 = $adb->journal_read('sync_ramdisk');
     is( $e4[-1]->{pos}, 8000000, "Exact position recorded in journal entry" );
     is( $e4[-1]->{payload}, 'sample_payload_data', "Raw payload preserved in journal entry" );
 
     # 5. Unmark dirty is a safe no-op
     ok( $adb->ramdisk_unmark_dirty( $dummy_file, 202 ), "ramdisk_unmark_dirty returns success" );
 
-    # Clean up sync_events before next subtest
-    $adb->journal_delete('sync_events');
+    # Clean up sync_ramdisk before next subtest
+    $adb->journal_delete('sync_ramdisk');
 };
 
 # -----------------------------------------------------------------------------
@@ -158,8 +158,8 @@ subtest 'Tier 4 Async CRUD and Background Sync' => sub {
     my $disk_rec  = $adb->recs_get( $disk_file, 1 );
     ok( !$disk_rec->{1}, "Record 1 is NOT yet present on persistent disk (async)" );
 
-    # Verify dirty entry exists in journal sync_events
-    my @events1 = $adb->journal_read('sync_events');
+    # Verify dirty entry exists in journal sync_ramdisk
+    my @events1 = $adb->journal_read('sync_ramdisk');
     ok( ( grep { $_->{key} eq '1' } @events1 ), "Dirty sync event exists for record 1 in journal" );
 
     # 2. Modify record in async mode
@@ -178,7 +178,7 @@ subtest 'Tier 4 Async CRUD and Background Sync' => sub {
     is( $disk_fields[1], 'Gaming Mouse RGB Edition', "Persistent disk contains the latest modified state" );
 
     # Verify dirty event was cleared from journal after sync
-    my @after_sync = $adb->journal_read('sync_events');
+    my @after_sync = $adb->journal_read('sync_ramdisk');
     ok( !( grep { $_->{key} eq '1' } @after_sync ), "Dirty sync event was cleared from journal after sync" );
 
     # 4. Delete record in async mode
@@ -197,7 +197,7 @@ subtest 'Tier 4 Async CRUD and Background Sync' => sub {
     my $disk_del_after = $adb->recs_get( $disk_file, 1 );
     ok( !$disk_del_after->{1}, "Record 1 deleted from persistent disk after sync" );
 
-    my @after_del_sync = $adb->journal_read('sync_events');
+    my @after_del_sync = $adb->journal_read('sync_ramdisk');
     ok( !( grep { $_->{key} eq '1' } @after_del_sync ), "Delete event cleared from journal after sync" );
 };
 
@@ -237,7 +237,7 @@ subtest 'Transaction Dual-Write Invariant' => sub {
     ok( $ram_r10->{10}, "Record 10 written to RAM-disk immediately during transaction" );
 
     # MUST NOT leave a dirty event in sync registry
-    my @sh10 = $adb->journal_read('sync_events');
+    my @sh10 = $adb->journal_read('sync_ramdisk');
     ok( !( grep { $_->{key} eq '10' } @sh10 ), "No dirty sync event generated for transacted write" );
 
     my $end_res = $adb->transact_end();

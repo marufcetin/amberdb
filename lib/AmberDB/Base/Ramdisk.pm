@@ -6,7 +6,7 @@ use Carp qw(croak cluck);
 use Cwd qw(abs_path);
 use Digest::MD5 qw(md5_hex);
 
-our $VERSION = '5.25.0';
+our $VERSION = '5.25.1';
 
 my $CREATED = '2026-08-11';
 
@@ -569,12 +569,12 @@ sub ramdisk_preload {
 # ------------------------------------------------
 sub ramdisk_sync_db_path {
     my ($self) = @_;
-    return $self->journal_slot("sync_events");
+    return $self->journal_slot("sync_ramdisk");
 }
 
 # Marks a record dirty in the RAM-disk sync events journal.
 # Formats entry as: [ 'recs', $tableid, $file_path, $rid, $action, $pos, $raw, time() ]
-# Appends to $journal_dir/sync_events
+# Appends to $journal_dir/sync_ramdisk
 # ------------------------------------------------
 sub ramdisk_mark_dirty {
     my ( $self, $file_path, $rid, $action, $raw, $pos ) = @_;
@@ -605,7 +605,7 @@ sub ramdisk_mark_dirty {
         }
     }
 
-    $self->journal_append( 'sync_events', [ 'recs', $tableid, $file_path, $rid, $norm_action, $pos // '', $raw, time() ] );
+    $self->journal_append( 'sync_ramdisk', [ 'recs', $tableid, $file_path, $rid, $norm_action, $pos // '', $raw, time() ] );
     return 1;
 }
 
@@ -618,9 +618,9 @@ sub ramdisk_unmark_dirty {
     return 1;
 }
 
-# Synchronizes pending dirty events from journal (sync_events) to persistent disk.
+# Synchronizes pending dirty events from journal (sync_ramdisk) to persistent disk.
 # If $target_table is specified, syncs only events matching that table.
-# Atomically rotates active journal file: sync_events -> sync_events_${epoch}
+# Atomically rotates active journal file: sync_ramdisk -> sync_ramdisk_${epoch}
 # Processes all pending rotated journals, applies coalescing, and removes processed files.
 # Returns number of synced events.
 # ------------------------------------------------
@@ -629,11 +629,11 @@ sub ramdisk_sync {
 
     return 0 unless $self->ramdisk_is_mounted();
 
-    # 1. Rotate active sync_events journal under lock
-    $self->journal_rotate('sync_events');
+    # 1. Rotate active sync_ramdisk journal under lock
+    $self->journal_rotate('sync_ramdisk');
 
     # 2. Scan for rotated journal files
-    my @journal_files = $self->journal_scan('sync_events_');
+    my @journal_files = $self->journal_scan('sync_ramdisk_');
     return 0 unless @journal_files;
 
     my $db_ext       = $self->{db_ext} // 'db';
@@ -663,7 +663,7 @@ sub ramdisk_sync {
             my @re_entries = map {
                 [ $_->{type}, $_->{tableid}, $_->{file_path}, $_->{key}, $_->{action}, $_->{pos}, $_->{payload}, $_->{epoch} ]
             } @to_keep;
-            $self->journal_append( 'sync_events', @re_entries );
+            $self->journal_append( 'sync_ramdisk', @re_entries );
         }
 
         # 3. In-batch state machine coalescing
@@ -892,7 +892,7 @@ All RAM-disk operations run automatically in the background and are controlled v
 
 =item * B<Tier 3 (temp / ram_only / 3):> Transient simple key-value store with zero persistent disk files and sliding TTL expiration (C<ramdisk_ttl>). Configured strictly per-table.
 
-=item * B<Tier 4 (async / delay / 4):> High-throughput write-behind tier. All reads and writes occur exclusively in RAM-disk. Writes register dirty events in C<sync_events> journal with automatic event coalescing. A single-writer background daemon flushes changes to persistent disk. During active transactions (C<transact_start>), Tier 4 automatically elevates to synchronous Dual-Write to guarantee strict durability and immediate rollback.
+=item * B<Tier 4 (async / delay / 4):> High-throughput write-behind tier. All reads and writes occur exclusively in RAM-disk. Writes register dirty events in C<sync_ramdisk> journal with automatic event coalescing. A single-writer background daemon flushes changes to persistent disk. During active transactions (C<transact_start>), Tier 4 automatically elevates to synchronous Dual-Write to guarantee strict durability and immediate rollback.
 
 =back
 

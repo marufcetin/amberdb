@@ -872,8 +872,8 @@ AmberDB guarantees the four classical ACID properties through embedded flat-file
 
 In the public API, transaction workflows are driven by 3 primary methods:
 
-1. **`transact_start()`**: Opens a microsecond-stamped undo journal (`.txn`) in `$dbase_dir/txn/` and recovers any orphaned transactions left by dead processes (`transact_recover`).
-2. **CRUD Operations & `transact_error($context, $message)`**: `insert_id`, `modify_id`, `delete_id` write updates to the base `.db` file, acquire record write locks (`flock`), and record reverse undo entries in the `.txn` journal. If a business logic constraint or validation fails, call `$adb->transact_error(...)`; `transact_error` immediately invokes `transact_rollback()` to revert all mutations in reverse LIFO order, unlinks the `.txn` journal, and atomically releases all locks (no need to call `transact_end()` upon failure).
+1. **`transact_start()`**: Opens a microsecond-stamped undo journal (`txn_*`) in `$dbase_dir/journal/` and recovers any orphaned transactions left by dead processes (`transact_recover`).
+2. **CRUD Operations & `transact_error($context, $message)`**: `insert_id`, `modify_id`, `delete_id` write updates to the base `.db` file, acquire record write locks (`flock`), and record reverse undo entries in the journal. If a business logic constraint or validation fails, call `$adb->transact_error(...)`; `transact_error` immediately invokes `transact_rollback()` to revert all mutations in reverse LIFO order, unlinks the journal file, and atomically releases all locks (no need to call `transact_end()` upon failure).
 3. **`transact_end()`**: Finalizes and commits the transaction if everything proceeded normally without errors (`status => "commit"`). If an unhandled underlying database error occurred, it executes an automatic LIFO rollback (`status => "rollback"`).
 
 > [!NOTE]

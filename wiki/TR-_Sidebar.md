@@ -9,6 +9,7 @@
 - [AmberDB Nasil Kurulur?](TR-Guide-Kurulum)
 - [AmberDB Nasil Kullanilir?](TR-Guide-Kullanim)
 - [Temel CRUD Islemleri](TR-Guide-CRUD-Islemleri)
+- [Komut Satiri Arayuzu (CLI)](TR-Guide-CLI)
 
 ---
 
@@ -125,6 +126,7 @@
 ---
 
 ### Bakim ve Araslar
+- [amberdb_cli.pl Konsolu](TR-Guide-CLI)
 - [dump](TR-Method-dump)
 - [restore](TR-Method-restore)
 - [set_index](TR-Method-set_index)

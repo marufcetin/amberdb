@@ -9,6 +9,7 @@
 - [How to Install AmberDB](Guide-Installation)
 - [How to Use AmberDB](Guide-Usage-Quickstart)
 - [Core CRUD Operations](Guide-CRUD-Operations)
+- [Command Line Interface (CLI)](Guide-CLI)
 
 ---
 
@@ -125,6 +126,7 @@
 ---
 
 ### Maintenance & Tools
+- [amberdb_cli.pl Console](Guide-CLI)
 - [dump](Method-dump)
 - [restore](Method-restore)
 - [set_index](Method-set_index)

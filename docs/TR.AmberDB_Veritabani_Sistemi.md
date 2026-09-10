@@ -877,7 +877,7 @@ AmberDB, gömülü (embedded) ve şema güdümlü mimarisine uygun olarak 4 teme
 
 Dış API ve uygulama kodlarında transaction süreçleri şu metotlar üzerinden yürütülür:
 
-1. **`transact_start()`**: Yeni bir işlem başlatır, `$dbase_dir/txn/` altında mikrosaniye hassasiyetinde bir `.txn` undo günlüğü açar ve yetim işlemleri onarır (`transact_recover`).
+1. **`transact_start()`**: Yeni bir işlem başlatır, `$dbase_dir/journal/` altında mikrosaniye hassasiyetinde bir `txn_*` undo günlüğü açar ve yetim işlemleri onarır (`transact_recover`).
 2. **`transact_rollback()`**: İş mantığı veya operasyonel iptallerde (stok yetersizliği, bakiye yetersizliği, kullanıcı iptali vb.) işlemi doğrudan geri sarar; LIFO sırasıyla değişiklikleri geri alır, kilitleri serbest bırakır ve günlüğü temizler.
 3. **`transact_end()`**: Normal akış sonunda çağrılır; duruma bakar, herhangi bir hata veya geri alma durumu yoksa `transact_commit()` çalıştırarak işlemi kalıcı olarak onaylar (`status => "commit"`).
 4. **`transact_commit()`**: Herhangi bir durum kontrolü yapmadan işlemi doğrudan ve olumlu olarak kesinleştirir.

@@ -5,7 +5,7 @@ use warnings;
 use Carp qw(croak cluck);
 use File::Spec;
 
-our $VERSION = '5.25.0';
+our $VERSION = '5.25.1';
 my $CREATED = '2018-10-08';
 
 # Constructor
@@ -2206,6 +2206,8 @@ AmberDB::Tools - Database maintenance, CLI reindexing, and bulk conversion tools
 
 C<AmberDB::Tools> provides maintenance, native disaster recovery archiving (C<dump>/C<restore>), and batch utility functions for rebuilding indexes, populating full-text search inverted files, compiling forward facet filter dictionaries, generating binary sort matrices, and running automated database-wide index migrations.
 
+AmberDB maintenance and indexing operations can also be invoked directly from the terminal using C<bin/amberdb_cli.pl> (e.g. C<perl bin/amberdb_cli.pl action=reindex table=products>) and C<bin/amberdb_setup.pl>. See C<perldoc bin/amberdb_cli.pl>.
+
 =head1 CONSTRUCTOR
 
 =head2 new($adb, [%options])
@@ -2221,10 +2223,15 @@ Creates an C<AmberDB::Tools> instance associated with an active C<AmberDB> objec
 Creates a compressed, portable C<.amberdb> archive file (gzipped tar archive) containing table and database schemas (C<schema/*.table>, C<schema/*.dbase>), native database data files (C<table/*.db>, C<table/*.del>, C<table/*.aut>, C<table/*.cnt>), and a cryptographically verified SHA-256 C<manifest.json>.
 
 Options:
+
 =over 4
+
 =item * C<file>: Custom output file path (defaults to C<backup/YYYY/amberdb_YYYY-MM-DD_time.amberdb>).
+
 =item * C<tables>: Array reference of table IDs to include (defaults to all tables in database).
+
 =item * C<table>: Single table ID to export as a focused snapshot.
+
 =back
 
   my $archive = $tools->dump();
@@ -2235,11 +2242,17 @@ Options:
 Restores a C<.amberdb> archive into the target database. Validates archive integrity via SHA-256 checksums in C<manifest.json>, extracts schemas and data files, and deterministically reconstructs all binary indexes (C<.inx>, C<.src>, C<.fld>, C<.fac>) via C<set_index>.
 
 Options:
+
 =over 4
+
 =item * C<file>: Path to C<.amberdb> archive file (required).
+
 =item * C<force>: Boolean (default 0). Must be set to 1 to overwrite existing tables in a non-empty database directory.
+
 =item * C<reindex>: Boolean (default 1). Automatically executes C<set_index> for all restored tables.
+
 =item * C<tables>: Array reference of specific table IDs to extract from the archive.
+
 =back
 
   my $res = $tools->restore(file => "backup.amberdb", force => 1);
@@ -2247,12 +2260,19 @@ Options:
 =head2 set_index($table_id, [@records])
 
 Rebuilds all secondary and primary indexes for C<$table_id> based on its schema definition:
+
 =over 4
+
 =item * Primary key index (C<.inx>) via C<set_readall>
+
 =item * Full-text search inverted indexes (C<.src>) via C<set_search>
+
 =item * Inverted field match indexes (C<.fld>) via C<set_fields>
+
 =item * Columnar facet filter forward indexes (C<.fac>) via C<set_filters>
+
 =item * Monotonic binary pre-sorted record indexes (within C<.inx>) via C<set_sort>
+
 =back
 
 If C<@records> is omitted, reads all records from the base table automatically.

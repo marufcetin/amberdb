@@ -132,8 +132,8 @@ AmberDB ikili indeks mimarisinde dosya tanıtıcı (file descriptor) ve I/O yük
 | **`.db`** | `dbstore/table/${tablo}.db` | `$rid` (Kayıt ID) | ABR v5 Binary (`\x00ABR\x05...`) veya Legacy text | Ana veri deposu. |
 | **`.del`** | `dbstore/table/${tablo}.del` | `$rid` (Kayıt ID) | ABR v5 Binary | `keep_deleted => 1` aktifken silinen kayıtların soft-delete arşivi. |
 | **`.aut`** | `dbstore/table/${tablo}.aut` | `"$rid:$zaman"` | Serialized Audit Trail | `log_owner => 1` veya denetim açıkken kullanıcı işlem geçmişi. |
-| **`.cnt`** | `dbstore/table/${tablo}.cnt` | `$rid` (Kayıt ID) | Sayısal sayaç (örn: `42`) | Kayıt bazlı okuma/ziyaret sayacı. |
-| **`.txn`** | `dbstore/txn/txn_${tid}.txn` | Sıralı log akışı | `0x1E` (RS) ayraçlı WAL kayıtları | ACID Strict 2PL işlem geri alma (undo-journal) günlüğü. |
+| **`journal/`** | `dbstore/journal/txn_${epoch}_${seq}_${pid}` | Sıralı log akışı | `0x1E` (RS) ayraçlı WAL kayıtları | ACID Strict 2PL işlem geri alma (undo-journal) günlüğü. |
+| **`journal/`** | `dbstore/journal/sync_ramdisk` | TSV akışı | Base64 delta kayıtları | RAM-disk Tier 4 (write-behind) arka plan eşitleme günlüğü. |
 
 ---
 

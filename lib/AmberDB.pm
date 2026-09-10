@@ -24,7 +24,7 @@ use parent qw(
 our $DB_HASH;
 our $hash_info;
 
-our $VERSION = '5.25.0';
+our $VERSION = '5.25.1';
 my $CREATED = '2005-01-28';
 
 
@@ -92,7 +92,11 @@ sub new {
     $self->_load_locale($self->config('language'));
 
     $self->init_date();
+    my %custom_paths = %{ $self->{_path} || {} };
     $self->set_datadir( $self->path('dbase_dir') );
+    for my $k ( keys %custom_paths ) {
+        $self->{_path}->{$k} = $custom_paths{$k} if defined $custom_paths{$k} && length($custom_paths{$k}) && $k ne 'dbase_dir';
+    }
 
     # Detect RAM-disk mount status and register in configuration
     my $rd_setup = $self->ramdisk_setup();
@@ -6010,9 +6014,13 @@ Schemas can be defined in two ways:
 
 =over 4
 
-=item 1. B<Disk-Based Schema Files:> Placed in the C<dbstore/schema/E<lt>table_nameE<gt>.table> directory. AmberDB loads and parses them automatically upon first access.
+=item 1.
 
-=item 2. B<Programmatic In-Memory Schemas:> Defined directly on the AmberDB instance via C<$adb-E<gt>table_attr('table_id', { ... })>.
+B<Disk-Based Schema Files:> Placed in the C<dbstore/schema/E<lt>table_nameE<gt>.table> directory. AmberDB loads and parses them automatically upon first access.
+
+=item 2.
+
+B<Programmatic In-Memory Schemas:> Defined directly on the AmberDB instance via C<$adb-E<gt>table_attr('table_id', { ... })>.
 
 =back
 
@@ -6067,7 +6075,7 @@ AmberDB supports hierarchical, JSON-like extensible records without the need for
 
 =head1 TRANSACTIONS
 
-Transactions provide multi-table atomic updates backed by undo-log journals (C<.txn> files).
+Transactions provide multi-table atomic updates backed by undo-log journals.
 If a database error occurs (e.g. file lock failure, duplicate ID), or if custom business validation fails (e.g. insufficient stock),
 all base records and indexes across all affected tables are restored to their exact pre-transaction state.
 
@@ -6167,7 +6175,7 @@ RAM-disk acceleration routes file I/O for database tables to an operating system
 
 =item * B<Dual-Write Synchronization:> For accelerated tables, reads are served at microsecond RAM speeds directly from RAM-disk. Writes synchronously update both the persistent disk file and the RAM-disk file, ensuring complete data durability without stale reads.
 
-=item * B<ACID Transaction Safety:> Transactions (C<transact_start>, C<transact_end>, C<transact_rollback>) protect RAM-disk operations with disk-backed undo journals (C<.txn>) and strict two-phase locking (Strict 2PL).
+=item * B<ACID Transaction Safety:> Transactions (C<transact_start>, C<transact_end>, C<transact_rollback>) protect RAM-disk operations with disk-backed undo journals and strict two-phase locking (Strict 2PL).
 
 =item * B<Automated Mount Detection & Graceful Fallback:> The engine automatically verifies whether the RAM-disk filesystem is actively mounted. If unmounted, AmberDB gracefully falls back to persistent disk storage without throwing errors or interrupting application operations.
 
@@ -6207,11 +6215,28 @@ AmberDB manages the RAM-disk layer entirely in the background. Developers do not
 
 =back
 
+=head1 COMMAND-LINE TOOLS (CLI)
+
+AmberDB provides two standalone command-line utilities in its C<bin/> directory for infrastructure provisioning, maintenance, and interactive database operations:
+
+=over 4
+
+=item * B<amberdb_cli.pl:> Management console and interactive query utility. Supports token-based session lifecycles, database dashboards, CRUD operations, dynamic schema mutations (C<table_attr>), CSV import/export, and index rebuilding. Run C<perl bin/amberdb_cli.pl> without arguments to view the active database dashboard, or see C<perldoc bin/amberdb_cli.pl>.
+
+=item * B<amberdb_setup.pl:> Consolidated infrastructure provisioning engine. Automates physical RAM-disk mounts (Linux tmpfs, macOS APFS, Windows ImDisk), user/group permissions, storage format migrations, CPAN engine updates, and crontab/systemd watchdog services. See C<perl bin/amberdb_setup.pl --help>.
+
+=back
+
 =head1 METHODS
 
 =head2 new(%options)
 
 Instantiates a new C<AmberDB> object.
+
+    my $adb = AmberDB->new(
+        cfg  => { language => "gb" },
+        path => { dbase_dir => "./dbstore" },
+    );
 
 =head2 config([$key], [%options])
 
@@ -6233,9 +6258,20 @@ Gets or sets runtime configuration flags deterministically with automatic hook/s
 
 Inserts a new record into specified table. It automatically generates search, match, slug, and facet indexes if they are defined in the table schema. It supports transact operations. In normal records, there is no need to enter an ID value. It can be entered as empty, undef, or 0. The system automatically generates the ID using an incrementing counter and returns the ID value.
 
+    # Auto-increment primary key ID (pass 0 or undef)
+    my $new_id = $adb->insert_id("catalog_product", 0, "Widget Pro", "Electronics", 1250);
+
+    # Explicit primary key ID
+    $adb->insert_id("catalog_product", 5001, "Custom Widget", "Electronics", 2000);
+
 =head2 insert_list($table_id, @records)
 
 Inserts multiple records in a single bulk operation. Aside from Transact, it processes records, search, match, slug, and facet indexes all at once with high performance.
+
+    $adb->insert_list("catalog_product",
+        [ 0, "Item 1", "Category A", 100 ],
+        [ 0, "Item 2", "Category B", 200 ],
+    );
 
 =head2 insert_links($table_id, @records)
 
@@ -6255,13 +6291,22 @@ Writes alias link bindings into the table's C<.lnk> routing index. Used specific
 
 Updates existing record data (alias: C<modify_id>). It automatically updates the search, match, slug, and facet indexes if they are defined in the table schema. It supports transact operations.
 
+    $adb->update_id("catalog_product", 101, "Widget Pro v2", "Electronics", 1300);
+
 =head2 modify_id($table_id, $record_id, @record)
 
 Legacy alias for C<update_id>.
 
+    $adb->modify_id("catalog_product", 101, "Widget Pro v2", "Electronics", 1300);
+
 =head2 update_list($table_id, @records)
 
 Modifies multiple records in a single bulk operation (alias: C<modify_list>). Aside from Transact, it processes records, search, match, slug, and facet indexes all at once with high performance.
+
+    $adb->update_list("catalog_product",
+        [ 101, "Item 1 Updated", "Category A", 150 ],
+        [ 102, "Item 2 Updated", "Category B", 250 ],
+    );
 
 =head2 modify_list($table_id, @records)
 
@@ -6271,24 +6316,38 @@ Legacy alias for C<update_list>.
 
 Deletes specified record from table. Supports transaction logging.
 
+    $adb->delete_id("catalog_product", 101);
+
 =head2 delete_list($table_id, @records)
 
 Deletes multiple records in a single bulk operation. Aside from Transact, it processes records, search, match, slug, and facet indexes all at once with high performance.
+
+    $adb->delete_list("catalog_product", 101, 102, 103);
 
 =head2 read_id($table_id, [$record_id], [\%options])
 
 Reads a single record by primary key ID (or dynamic positional type) in $O(1)$ time.
 
 Options:
+
 =over 4
+
 =item * C<type>: Positional selector (C<'last'>, C<'first'>, C<'rand'>). When specified, a dummy ID (e.g. C<0>) can be passed to preserve standard 3-argument positional signature consistency: C<< $adb->read_id("products", 0, { type => "last" }) >> (omitting the ID is also supported: C<< $adb->read_id("products", { type => "last" }) >>).
-=item * C<sort>: Optional sort block (numeric index, schema block name like C<"price">, C<"price desc">, or hashref C<< { block => "price", dir => "asc" } >>). Used in combination with C<type => 'first'> or C<'last'> to retrieve the first or last record according to that block. For example, C<< type => 'first', sort => 'price' >> fetches the lowest price item, and C<< type => 'last', sort => 'price' >> fetches the highest price item.
+
+=item * C<sort>: Optional sort block (numeric index, schema block name like C<"price">, C<"price desc">, or hashref C<< { block => "price", dir => "asc" } >>). Used in combination with C<< type => 'first' >> or C<'last'> to retrieve the first or last record according to that block. For example, C<< type => 'first', sort => 'price' >> fetches the lowest price item, and C<< type => 'last', sort => 'price' >> fetches the highest price item.
+
 =item * C<range>: Optional numerical/chronological range filter hashref C<< { block => 4, min => 1000, max => 2000 } >> to constrain candidate records before positional selection.
+
 =item * C<inflate>: Boolean (C<1> or string C<"inflate">) to inflate record fields into a named HASH reference based on table schema blocks.
+
 =item * C<counter> / C<use_counter>: Explicit boolean (C<1> or C<0>) or string C<"counter"> to force or disable incrementing the read counter (C<.cnt>).
+
 =item * C<no_counter>: Explicit boolean (C<1>) or string C<"no_counter"> to suppress incrementing the read counter.
+
 =item * C<deleted> / C<force>: Boolean (C<1>) or string C<"deleted"> / C<"force"> to read from soft-deleted archive (C<.del>) if missing from active table.
+
 =item * C<links> / C<alias>: Boolean (C<1>) or string C<"links"> / C<"alias"> to resolve a deleted/merged record ID from alias link index (C<.lnk>) to its canonical record.
+
 =back
 
     # Standard array return: ($id, @fields)
@@ -6318,15 +6377,33 @@ Options:
 
 =head2 read_lastid($table_id, [\%options])
 
-Convenience alias for C<< $adb->read_id($table_id, 0, { type => "last", %opts }) >>. Supports passing a sort block directly, e.g. C<< $adb->read_lastid("catalog_product", "price") >> or C<< $adb->read_lastid("catalog_product", { sort => "price" }) >>.
+Convenience alias for:
+
+    $adb->read_id($table_id, 0, { type => "last", %opts });
+
+Supports passing a sort block directly, e.g.:
+
+    $adb->read_lastid("catalog_product", "price");
+    # or
+    $adb->read_lastid("catalog_product", { sort => "price" });
 
 =head2 read_firstid($table_id, [\%options])
 
-Convenience alias for C<< $adb->read_id($table_id, 0, { type => "first", %opts }) >>. Supports passing a sort block directly, e.g. C<< $adb->read_firstid("catalog_product", "price") >> or C<< $adb->read_firstid("catalog_product", { sort => "price" }) >>.
+Convenience alias for:
+
+    $adb->read_id($table_id, 0, { type => "first", %opts });
+
+Supports passing a sort block directly, e.g.:
+
+    $adb->read_firstid("catalog_product", "price");
+    # or
+    $adb->read_firstid("catalog_product", { sort => "price" });
 
 =head2 read_randid($table_id, [\%options])
 
-Convenience alias for C<< $adb->read_id($table_id, 0, { type => "rand", %opts }) >>.
+Convenience alias for:
+
+    $adb->read_id($table_id, 0, { type => "rand", %opts });
 
 =head2 read_all($table_id, [\%options])
 
@@ -6492,7 +6569,7 @@ Loads and returns the table schema definition (hash reference). Automatically en
 - C<dbase>: database prefix (e.g. C<"catalog">)
 
     my $tb_info = $adb->table_info("catalog_product");
-    
+
     print $tb_info->{table}; # "catalog_product"
     print $tb_info->{dbase}; # "catalog"
 
@@ -6590,11 +6667,13 @@ Deletes specified record IDs directly from an open C<DB_File> write handle:
 
 =head2 transact_start()
 
-Starts a new transaction for atomic multi-table operations. Opens a disk-backed undo journal (C<.txn>) with non-blocking exclusive lock.
+Starts a new transaction for atomic multi-table operations. Opens a disk-backed undo journal with non-blocking exclusive lock.
+
+    $adb->transact_start();
 
 =head2 transact_rollback()
 
-Forces an immediate manual rollback of the active transaction. Reverts all inserted, modified, or deleted records in reverse LIFO order, unlinks the C<.txn> journal, and atomically releases all Strict 2PL locks. Use this in application code whenever an operational or business rule failure occurs (e.g., insufficient stock, credit limit exceeded):
+Forces an immediate manual rollback of the active transaction. Reverts all inserted, modified, or deleted records in reverse LIFO order, unlinks the journal, and atomically releases all Strict 2PL locks. Use this in application code whenever an operational or business rule failure occurs (e.g., insufficient stock, credit limit exceeded):
 
     if ( $balance < $amount ) {
         $adb->transact_rollback();
@@ -6603,11 +6682,13 @@ Forces an immediate manual rollback of the active transaction. Reverts all inser
 
 =head2 transact_commit()
 
-Unconditionally commits the active transaction, synchronizes dirty buffers to disk, removes the active C<.txn> rollback journal, and releases all acquired locks.
+Unconditionally commits the active transaction, synchronizes dirty buffers to disk, removes the active rollback journal, and releases all acquired locks.
+
+    $adb->transact_commit();
 
 =head2 transact_end()
 
-Concludes the active transaction with status checking. If all operations completed without error, it commits all changes via C<transact_commit()>, unlinks the C<.txn> journal, releases all locks, and returns C<{ status =E<gt> "commit", ... }>. If any unhandled underlying database error occurred, it performs an automatic LIFO rollback and returns C<{ status =E<gt> "rollback", ... }>.
+Concludes the active transaction with status checking. If all operations completed without error, it commits all changes via C<transact_commit()>, unlinks the journal, releases all locks, and returns C<{ status =E<gt> "commit", ... }>. If any unhandled underlying database error occurred, it performs an automatic LIFO rollback and returns C<{ status =E<gt> "rollback", ... }>.
 
     my $txn = $adb->transact_end();
     if ($txn->{status} eq 'commit') { ... }
@@ -6621,17 +6702,37 @@ I<Internal Engine Method.> Records a physical file or write error during databas
 Acquires a record-level (if C<$record_id> specified) or table-level (if C<$record_id> omitted) lock.
 C<$mode> can be C<"write"> (exclusive lock, default) or C<"read"> (shared lock).
 
+    # Table-level exclusive lock
+    $adb->flock_open("catalog_product", "write");
+
+    # Record-level exclusive lock
+    $adb->flock_open("catalog_product", "write", 101);
+
 =head2 flock_close($table_id, [$record_id])
 
 Releases a record-level or table-level lock previously acquired via C<flock_open()>.
+
+    # Release table-level lock
+    $adb->flock_close("catalog_product");
+
+    # Release record-level lock
+    $adb->flock_close("catalog_product", 101);
 
 =head2 get_cache($group, $key)
 
 Retrieves cached records or data from the in-memory L1 process cache for the specified group and key.
 
+    my $data = $adb->get_cache("catalog_product", 101);
+
 =head2 set_cache($group, $key, [@data | undef])
 
 Writes data to the in-memory L1 process cache, or invalidates the cache entry if data is C<undef>.
+
+    # Set cache entry
+    $adb->set_cache("catalog_product", 101, @record_data);
+
+    # Invalidate / clear cache entry
+    $adb->set_cache("catalog_product", 101, undef);
 
 =head1 AUTHOR
 

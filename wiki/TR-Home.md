@@ -24,7 +24,7 @@ Bu wiki, **ansiklopedik bir kavram ve fonksiyon sozluk yapisinda** duzenlenmisti
 | :--- | :--- |
 | **A** | [AmberDB Nedir? (Rehber)](TR-Guide-AmberDB-Nedir) · [AmberDB Nasil Kurulur? (Rehber)](TR-Guide-Kurulum) · [AmberDB Nasil Kullanilir? (Rehber)](TR-Guide-Kullanim) · [AmberDB Tablo Semasi](TR-Concept-Table-Schema) · [array_compare](TR-Method-array_compare) · [array_filter](TR-Method-array_filter) · [array_pick](TR-Method-array_pick) · [array_punch](TR-Method-array_punch) · [array_shuffle](TR-Method-array_shuffle) · [array_size](TR-Method-array_size) · [array_sort](TR-Method-array_sort) · [array_sublist](TR-Method-array_sublist) · [array_substr](TR-Method-array_substr) · [array_substrno](TR-Method-array_substrno) · [ASCII / Metin Anahtarlar](TR-Concept-ASCII-ID) · [auto_id (Bayrak)](TR-Flag-auto_id) · [Otomatik ID (Kavram)](TR-Concept-Auto-ID) |
 | **B** | [BerkeleyDB (DB_File) Motoru](TR-Concept-Berkeley-DB) · [buffer_delete](TR-Method-buffer_delete) · [buffer_read](TR-Method-buffer_read) · [buffer_write](TR-Method-buffer_write) · [buffer_write (Bayrak)](TR-Flag-buffer_write) |
-| **C** | [check_table](TR-Method-check_table) · [config](TR-Method-config) · [convert_tables](TR-Method-convert_tables) · [CRUD Islemleri (Rehber)](TR-Guide-CRUD-Islemleri) |
+| **C** | [check_table](TR-Method-check_table) · [CLI Yonetim Konsolu (amberdb_cli.pl)](TR-Guide-CLI) · [config](TR-Method-config) · [convert_tables](TR-Method-convert_tables) · [CRUD Islemleri (Rehber)](TR-Guide-CRUD-Islemleri) |
 | **D** | [dbase_dir (Bayrak)](TR-Flag-dbase_dir) · [deep_copy](TR-Method-deep_copy) · [delete_id](TR-Method-delete_id) · [delete_list](TR-Method-delete_list) · [Dizin Yapilandirmasi](TR-Concept-Directory-Structure) · [Disaster Recovery (Kurtarma)](TR-Concept-2-Pillar-Disaster-Recovery) · [Dosya Yapisi (Uzantilar)](TR-Concept-File-Structure) · [dump](TR-Method-dump) |
 | **E** | [exist_id](TR-Method-exist_id) · [exist_list](TR-Method-exist_list) · [exist_table](TR-Method-exist_table) |
 | **F** | [facet_menu](TR-Method-facet_menu) · [facet_rules](TR-Method-facet_rules) · [Facet Sistemi](TR-Concept-Disjunctive-Faceting) · [field_allfltkeys](TR-Method-field_allfltkeys) · [field_fetch](TR-Method-field_fetch) · [field_filter](TR-Method-field_filter) · [field_fltkeys](TR-Method-field_fltkeys) · [flock_close](TR-Method-flock_close) · [flock_open](TR-Method-flock_open) · [Fonetik Aksan Arama](TR-Concept-Phonetic-Accent-Search) |
@@ -64,6 +64,7 @@ AmberDB Mimari Yapisi
 - [AmberDB Nasil Kurulur?](TR-Guide-Kurulum) - CPAN, derleme, update ve RAM-disk
 - [AmberDB Nasil Kullanilir?](TR-Guide-Kullanim) - Uctan uca ornek uygulama senaryosu
 - [Temel CRUD Islemleri](TR-Guide-CRUD-Islemleri) - insert, read, modify, delete rehberi
+- [Komut Satiri Arayuzu (CLI)](TR-Guide-CLI) - amberdb_cli.pl ile terminalden yonetim, sorgu ve bakim
 
 ### 1. Mimari Kavramlar ve Prensipler
 - [BerkeleyDB (DB_File) Motoru ve Avantajlari](TR-Concept-Berkeley-DB)

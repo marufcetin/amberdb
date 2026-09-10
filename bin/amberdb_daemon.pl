@@ -262,13 +262,13 @@ sub cmd_status {
     # Journal status
     my $jdir = eval { $adb->journal_dir() };
     if ( $jdir && -d $jdir ) {
-        my $sync_file = $adb->journal_slot('sync_events');
+        my $sync_file = $adb->journal_slot('sync_ramdisk');
         my $active_lines = 0;
         if ( -e $sync_file && open my $sfh, '<', $sync_file ) {
             while (<$sfh>) { $active_lines++; }
             close $sfh;
         }
-        my @rotated = eval { $adb->journal_scan('sync_events_') };
+        my @rotated = eval { $adb->journal_scan('sync_ramdisk_') };
         print "Journal Queue    : $active_lines active event(s) in live queue\n";
         print "Rotated Batches  : " . scalar(@rotated) . " rotated file(s) awaiting flush\n";
     }

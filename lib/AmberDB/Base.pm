@@ -8,7 +8,7 @@ use File::Spec;
 use Fcntl qw(:DEFAULT :flock);
 use parent qw(AmberDB::Locale AmberDB::Array);
 
-our $VERSION = '5.25.0';
+our $VERSION = '5.25.1';
 my $CREATED = '2014-12-20';
 
 # ------------------------------------------------
@@ -262,7 +262,7 @@ sub set_datadir {
     my @dirs = qw(
       dbase_dir table_dir schema_dir backup_dir
       ramdisk_dir table_rdir schema_rdir conf_rdir
-      buffer_dir txn_dir lock_dir session_dir
+      buffer_dir journal_dir lock_dir session_dir
     );
     foreach my $dir (@dirs) {
         $self->{_path}->{$dir} //= "";
@@ -282,19 +282,19 @@ sub set_datadir {
         $self->{_path}->{schema_dir}  = $dbase_dir;
         $self->{_path}->{backup_dir}  = $dbase_dir;
         $self->{_path}->{buffer_dir}  = $dbase_dir;
-        $self->{_path}->{txn_dir}     = $dbase_dir;
+        $self->{_path}->{journal_dir} = $dbase_dir;
         $self->{_path}->{lock_dir}    = "$dbase_dir/lock";
         $self->{_path}->{session_dir} = "$dbase_dir/session";
         return 1;
     }
 
-    $self->{_path}->{txn_dir}     ||= "$dbase_dir/txn";
-    $self->{_path}->{backup_dir}  ||= "$dbase_dir/backup";
-    $self->{_path}->{buffer_dir}  ||= "$dbase_dir/buffer";
-    $self->{_path}->{schema_dir}  ||= "$dbase_dir/schema";
-    $self->{_path}->{table_dir}   ||= "$dbase_dir/table";
-    $self->{_path}->{lock_dir}    ||= "$dbase_dir/lock";
-    $self->{_path}->{session_dir} ||= "$dbase_dir/session";
+    $self->{_path}->{journal_dir} = "$dbase_dir/journal";
+    $self->{_path}->{backup_dir}  = "$dbase_dir/backup";
+    $self->{_path}->{buffer_dir}  = "$dbase_dir/buffer";
+    $self->{_path}->{schema_dir}  = "$dbase_dir/schema";
+    $self->{_path}->{table_dir}   = "$dbase_dir/table";
+    $self->{_path}->{lock_dir}    = "$dbase_dir/lock";
+    $self->{_path}->{session_dir} = "$dbase_dir/session";
 
     unless ( $self->config('test') ) {
         if ( defined $dbase_dir && $dbase_dir ne "." && $dbase_dir ne "" ) {
@@ -304,7 +304,7 @@ sub set_datadir {
                 $self->{_path}->{schema_dir},
                 $self->{_path}->{backup_dir},
                 $self->{_path}->{buffer_dir},
-                $self->{_path}->{txn_dir},
+                $self->{_path}->{journal_dir},
                 $self->{_path}->{lock_dir},
                 $self->{_path}->{session_dir},
             ) {
@@ -482,15 +482,14 @@ sub init_date {
 # JOURNAL FILE OPERATIONS (Streaming Append, Safe Read, Atomic Rotate)
 # Default Directory: $dbase_dir/journal/
 # File Naming:
-#   Active Queue:  dbstore/journal/sync_events
-#   Rotated Queue: dbstore/journal/sync_events_1741512300
+#   Active Queue:  dbstore/journal/sync_ramdisk
+#   Rotated Queue: dbstore/journal/sync_ramdisk_1741512300
 #   Transaction:   dbstore/journal/txn_1741512300_1_4820
 # ============================================================================
 
 sub journal_dir {
     my ($self) = @_;
     my $dir = $self->path('journal_dir')
-           || $self->path('txn_dir')
            || ( ( $self->path('dbase_dir') || "." ) . "/journal" );
     $dir =~ s{[\\/]+$}{};
     unless ( -d $dir ) {
@@ -653,7 +652,7 @@ sub journal_delete {
 
 sub journal_scan {
     my ( $self, $prefix ) = @_;
-    $prefix //= 'sync_events_';
+    $prefix //= 'sync_ramdisk_';
 
     my $jdir = $self->journal_dir();
     return () unless -d $jdir;

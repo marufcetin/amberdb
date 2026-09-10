@@ -205,8 +205,7 @@ subtest 'Index Error Does NOT Trigger Rollback' => sub {
 subtest 'Orphan Transaction Recovery & Lock Protection' => sub {
     plan tests => 5;
 
-    my $txn_dir = File::Spec->catdir( $tmpdir, 'txn' );
-    mkdir $txn_dir unless -d $txn_dir;
+    my $journal_dir = $adb->journal_dir();
 
     # 1. Test dead orphan recovery (simulate process crash by abandoning transaction)
     $adb->transact_start();
@@ -227,7 +226,7 @@ subtest 'Orphan Transaction Recovery & Lock Protection' => sub {
     is( scalar(@rec65), 0, 'Orphaned insert was rolled back' );
 
     # 2. Test active locked journal protection
-    my $locked_file = File::Spec->catfile( $txn_dir, 'txn_locked_test-888888.txn' );
+    my $locked_file = File::Spec->catfile( $journal_dir, 'txn_locked_test_888888' );
     open my $lfh, '+>>', $locked_file or die "Cannot create locked test file: $!";
     use Fcntl qw(:flock);
     flock( $lfh, LOCK_EX ); # Actively lock file
