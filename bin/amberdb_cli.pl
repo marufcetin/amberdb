@@ -32,9 +32,87 @@ use AmberDB::Tools;
 $| = 1;
 
 # ============================================================================
+# SESSION REGISTRY (.amberdb_cli_sessions)
+# Maps active session tokens to their respective dbase_dir paths:
+#   TOKEN:/path/to/dbstore
+# ============================================================================
+
+my $REGISTRY_FILE = ".amberdb_cli_sessions";
+
+sub get_registered_db_for_token {
+    my ($tok) = @_;
+    return unless -f $REGISTRY_FILE;
+    open my $fh, '<', $REGISTRY_FILE or return;
+    my ($last_tok, $last_db);
+    while (my $line = <$fh>) {
+        chomp $line;
+        next if $line =~ /^\s*#/ || $line !~ /:/;
+        my ($t, $d) = split /:/, $line, 2;
+        $t =~ s/^\s+|\s+$//g if defined $t;
+        $d =~ s/^\s+|\s+$//g if defined $d;
+        if (defined $tok && length $tok) {
+            if ($t eq $tok) {
+                close $fh;
+                return $d;
+            }
+        }
+        $last_tok = $t;
+        $last_db  = $d;
+    }
+    close $fh;
+    return wantarray ? ($last_tok, $last_db) : $last_db unless defined $tok;
+    return undef;
+}
+
+sub register_session_db {
+    my ($tok, $db_path) = @_;
+    return unless defined $tok && length $tok && defined $db_path && length $db_path;
+    my @lines;
+    if (-f $REGISTRY_FILE && open my $rfh, '<', $REGISTRY_FILE) {
+        while (my $l = <$rfh>) {
+            chomp $l;
+            my ($t) = split /:/, $l, 2;
+            $t =~ s/^\s+|\s+$//g if defined $t;
+            push @lines, $l if defined $t && $t ne $tok;
+        }
+        close $rfh;
+    }
+    push @lines, "$tok:$db_path";
+    if (open my $wfh, '>', $REGISTRY_FILE) {
+        print $wfh join("\n", @lines), "\n";
+        close $wfh;
+    }
+}
+
+sub unregister_session_db {
+    my ($tok) = @_;
+    return unless -f $REGISTRY_FILE;
+    my @lines;
+    if (open my $rfh, '<', $REGISTRY_FILE) {
+        while (my $l = <$rfh>) {
+            chomp $l;
+            my ($t) = split /:/, $l, 2;
+            $t =~ s/^\s+|\s+$//g if defined $t;
+            push @lines, $l if defined $t && $t ne $tok;
+        }
+        close $rfh;
+    }
+    if (@lines) {
+        if (open my $wfh, '>', $REGISTRY_FILE) {
+            print $wfh join("\n", @lines), "\n";
+            close $wfh;
+        }
+    }
+    else {
+        unlink $REGISTRY_FILE;
+    }
+}
+
+# ============================================================================
 # RESOLVE DBASE_DIR FROM CLI ARGUMENTS
 # 1- Connect'ten sonraki string: amberdb connect /path/to/dbstore
 # 2- Argümanlı: --db=dbstore veya --dbase_dir=/path/to
+# 3- Oturum token'ı varsa: .amberdb_cli_sessions içinden dbase_dir tespit et
 # Argümandan gelmiyorsa: bulunduğu dizinde dbstore oluşturur.
 # ============================================================================
 
@@ -75,7 +153,32 @@ if ( !defined $target_db ) {
     }
 }
 
-# Argümandan gelmiyorsa: bulunduğu dizinde dbstore oluşturur
+# 3. Oturum token'ı varsa: .amberdb_cli_sessions içinden dbase_dir tespit et
+if ( !defined $target_db ) {
+    my $token;
+    for (my $i = 0; $i < @ARGV; $i++) {
+        my $arg = $ARGV[$i];
+        if ( $arg =~ /^(?:--?)?token=(.*)$/i ) {
+            $token = $1;
+            last;
+        }
+        elsif ( ( $arg =~ /^--(?:token)$/i || $arg =~ /^-k$/i ) && $i + 1 < @ARGV && $ARGV[$i + 1] !~ /^-/ ) {
+            $token = $ARGV[$i + 1];
+            last;
+        }
+    }
+    if ( !defined $token && @ARGV && $ARGV[0] =~ /^[a-zA-Z0-9]{4,8}$/ && $ARGV[0] !~ /^(?:help|status|tables|connect|disconnect|config|path|attr|read|insert|update|delete|search|count|reindex|check|vacuum|migrate)$/i ) {
+        $token = $ARGV[0];
+    }
+    $token //= $ENV{AMBERDB_TOKEN};
+
+    my $reg_db = get_registered_db_for_token($token);
+    if ( defined $reg_db && length $reg_db ) {
+        $target_db = $reg_db;
+    }
+}
+
+# 4. Argümandan gelmiyorsa: bulunduğu dizinde dbstore oluşturur
 if ( !defined $target_db || !length $target_db ) {
     $target_db = "dbstore";
     make_path($target_db) unless -d $target_db;
@@ -88,9 +191,6 @@ $target_db = eval { abs_path($target_db) } // $target_db;
 our $adb = AmberDB->new( path => { dbase_dir => $target_db } );
 $adb->set_datadir($target_db);
 our $tools = AmberDB::Tools->new($adb);
-
-my $local_db   = "dbstore";
-my $local_sess = "$local_db/session";
 
 my $explicit_db      = $from_cli_args;
 my $has_cfg_updates  = 0;
@@ -116,11 +216,15 @@ sub session_file {
         "$sess_dir/cli_$tok.json",
         "$db_dir/session/cli_$tok",
         "$db_dir/ramdisk/session/cli_$tok",
-        "$local_sess/cli_$tok",
-        "$local_sess/cli_$tok.json",
     );
     for my $f (@candidates) {
         return $f if defined $f && -f $f;
+    }
+    my $reg_db = get_registered_db_for_token($tok);
+    if ( $reg_db && $reg_db ne $db_dir ) {
+        for my $rf ( "$reg_db/session/cli_$tok", "$reg_db/ramdisk/session/cli_$tok" ) {
+            return $rf if -f $rf;
+        }
     }
     return "$sess_dir/cli_$tok";
 }
@@ -140,33 +244,8 @@ sub save_session {
     print $fh encode_json($data);
     close $fh;
 
-    # Also save to current session_dir if different from $file
-    my $curr_file = $adb->path('session_dir') . "/cli_$tok";
-    if ( $curr_file ne $file ) {
-        my $cdir = dirname($curr_file);
-        make_path($cdir) unless -d $cdir;
-        if ( open my $cfh, '>', $curr_file ) {
-            print $cfh encode_json($data);
-            close $cfh;
-        }
-    }
-
-    # If active database session_dir is outside local_sess, mirror session so subsequent CLI calls in this workspace find it
-    my $abs_local = eval { abs_path($local_sess) } // $local_sess;
-    my $abs_curr  = eval { abs_path($adb->path('session_dir')) } // $adb->path('session_dir');
-    if ( $abs_local ne $abs_curr ) {
-        make_path($local_sess) unless -d $local_sess;
-        my $mf = "$local_sess/cli_$tok";
-        if ( open my $mfh, '>', $mf ) {
-            print $mfh encode_json($data);
-            close $mfh;
-        }
-        my $mlf = "$local_sess/cli_last_token";
-        if ( open my $mlfh, '>', $mlf ) {
-            print $mlfh $tok;
-            close $mlfh;
-        }
-    }
+    # Register in local .amberdb_cli_sessions flat file
+    register_session_db( $tok, $adb->path('dbase_dir') );
 
     my $lf = last_token_file();
     if ( $lf && open my $lfh, '>', $lf ) {
@@ -198,14 +277,13 @@ sub delete_session {
         "$sess_dir/cli_$tok",
         "$db_dir/session/cli_$tok",
         "$db_dir/ramdisk/session/cli_$tok",
-        "$local_sess/cli_$tok",
     );
     for my $f (@candidates) {
         unlink $f if defined $f && -f $f;
     }
+    unregister_session_db($tok);
     my $lf = last_token_file();
     unlink $lf if $lf && -f $lf;
-    unlink "$local_sess/cli_last_token" if -f "$local_sess/cli_last_token";
 }
 
 sub resolve_active_token {
@@ -213,6 +291,9 @@ sub resolve_active_token {
     return $cli_token if defined $cli_token && length $cli_token;
     return $ENV{AMBERDB_TOKEN} if defined $ENV{AMBERDB_TOKEN} && length $ENV{AMBERDB_TOKEN};
     if ($allow_last_token) {
+        my ($last_reg_tok) = get_registered_db_for_token();
+        return $last_reg_tok if defined $last_reg_tok && length $last_reg_tok;
+
         my $lf = last_token_file();
         if ( $lf && -f $lf ) {
             open my $fh, '<', $lf;
