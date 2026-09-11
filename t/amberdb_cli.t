@@ -20,7 +20,18 @@ ok(-f $cli_path, "amberdb_cli.pl exists at $cli_path");
 
 my $test_tmpdir = tempdir(CLEANUP => 1);
 my $test_dbdir  = File::Spec->catdir($test_tmpdir, "dbstore");
-mkdir $test_dbdir;
+mkdir $test_dbdir unless -d $test_dbdir;
+$test_dbdir = eval { abs_path($test_dbdir) } // $test_dbdir;
+
+sub norm_path {
+    my ($p) = @_;
+    return '' unless defined $p;
+    $p = eval { abs_path($p) } // $p;
+    $p = File::Spec->canonpath($p);
+    $p =~ s{\\}{/}g;
+    $p =~ s{/+$}{};
+    return lc($p);
+}
 
 # ---------------------------------------------------------------------------
 subtest '1. Help screen & default table overview' => sub {
@@ -322,7 +333,7 @@ subtest '11. Positional connect database directory' => sub {
     is($conn_pos->{status}, 'connected', "Positional connect to path succeeded");
     my $tok_pos = $conn_pos->{token};
     ok(defined $tok_pos && $tok_pos =~ /^\d{4}$/, "Positional connect token generated: $tok_pos");
-    is($conn_pos->{path}->{dbase_dir}, $test_dbdir, "Connected data dir matches positional path");
+    is(norm_path($conn_pos->{path}->{dbase_dir}), norm_path($test_dbdir), "Connected data dir matches positional path");
 
     my $disc_pos = `"$perl_bin" -Ilib "$cli_path" token=$tok_pos disconnect format=json`;
     my $dd_pos = eval { decode_json($disc_pos) };

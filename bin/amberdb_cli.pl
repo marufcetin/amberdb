@@ -331,9 +331,30 @@ sub resolve_active_token {
 sub parse_value {
     my ($v) = @_;
     return 1 unless defined $v;
+    $v =~ s/^\s+|\s+$//g;
+    # Strip wrapping quotes if preserved literally by shell (e.g. cmd.exe single quotes)
+    if ( ( $v =~ /^'(.*)'$/s ) || ( $v =~ /^"(.*)"$/s ) ) {
+        $v = $1;
+        $v =~ s/^\s+|\s+$//g;
+    }
     if ( ( $v =~ /^\[.*\]$/s ) || ( $v =~ /^\{.*\}$/s ) ) {
         my $decoded = eval { decode_json($v) };
         return $decoded if defined $decoded;
+
+        # Fallback if inner quotes were removed by shell: [Book,15] or ['Book',15]
+        if ( $v =~ /^\[(.*)\]$/s ) {
+            my $inner = $1;
+            my @items;
+            while ( $inner =~ /([^,]+)/g ) {
+                my $item = $1;
+                $item =~ s/^\s+|\s+$//g;
+                $item =~ s/^['"]//;
+                $item =~ s/['"]$//;
+                $item = 0 + $item if $item =~ /^-?\d+$/;
+                push @items, $item;
+            }
+            return \@items if @items;
+        }
     }
     return 1 if $v =~ /^(?:true|yes)$/i;
     return 0 if $v =~ /^(?:false|no)$/i;
@@ -1306,6 +1327,10 @@ if ( $action eq 'insert_id' || $action eq 'insert' ) {
     if ( !defined $data ) {
         $data = scalar keys %method_args ? \%method_args : \@pos_args;
     }
+    elsif ( !ref $data ) {
+        my $parsed = parse_value($data);
+        $data = $parsed if ref $parsed;
+    }
 
     die "[AMBERDB_ERROR] 'table' parameter required for insert\n" unless defined $table && length $table;
 
@@ -1337,6 +1362,10 @@ if ( $action eq 'update_id' || $action eq 'update' ) {
 
     if ( !defined $data ) {
         $data = scalar keys %method_args ? \%method_args : \@pos_args;
+    }
+    elsif ( !ref $data ) {
+        my $parsed = parse_value($data);
+        $data = $parsed if ref $parsed;
     }
 
     die "[AMBERDB_ERROR] 'table' and 'id' parameters required for update\n"
