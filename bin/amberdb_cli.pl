@@ -31,6 +31,9 @@ use AmberDB::Tools;
 
 $| = 1;
 
+our $adb = AmberDB->new( path => { dbase_dir => 'dbstore' }, connect => { username => 'cli' } );
+our $tools = AmberDB::Tools->new($adb);
+
 # ============================================================================
 # SESSION REGISTRY (.amberdb/session/)
 # Stores session files per active session under .amberdb/session/sess_$token
@@ -40,21 +43,23 @@ $| = 1;
 our $CLI_SESS_DIR = ".amberdb/session";
 
 sub cli_session_file {
-    my ($tok) = @_;
-    return unless defined $tok && length $tok;
-    return "$CLI_SESS_DIR/sess_$tok";
+    my ($token) = @_;
+    return '' unless $token;
+    return "$CLI_SESS_DIR/sess_$token";
 }
 
-sub get_registered_db_for_token {
-    my ($tok) = @_;
+sub get_session_path {
+    my ($token) = @_;
+    $token //= '';
 
-    # 1. If token is provided, check .amberdb/session/sess_$tok
-    if ( defined $tok && length $tok ) {
-        my $file = cli_session_file($tok);
+    # 1. If token is provided, check .amberdb/session/sess_$token
+    if ( $token ) {
+        my $file = cli_session_file($token);
         if ( -f $file && open my $fh, '<', $file ) {
             local $/;
             my $content = <$fh>;
             close $fh;
+            return '' unless $content;
             my $data = eval { decode_json($content) };
             if ( $data && ref $data eq 'HASH' && $data->{path} && $data->{path}->{dbase_dir} ) {
                 return $data->{path}->{dbase_dir};
@@ -64,35 +69,23 @@ sub get_registered_db_for_token {
             return $content if length $content && -d $content;
         }
     }
-    else {
-        # If no token provided, get the latest active session by modification time (mtime)
-        if ( -d $CLI_SESS_DIR ) {
-            my @sess_files = sort { ( stat($b) )[9] <=> ( stat($a) )[9] } glob("$CLI_SESS_DIR/sess_*");
-            for my $sf (@sess_files) {
-                if ( $sf =~ /sess_([a-zA-Z0-9]+)$/ ) {
-                    my $cand_tok = $1;
-                    my $db = get_registered_db_for_token($cand_tok);
-                    return wantarray ? ( $cand_tok, $db ) : $db if $db;
-                }
-            }
-        }
-    }
+
     return undef;
 }
 
-sub register_session_db {
-    my ( $tok, $db_path, $sess_data ) = @_;
-    return unless defined $tok && length $tok;
+sub set_session_path {
+    my ( $token, $db_path, $sess_data ) = @_;
+    return unless defined $token && length $token;
     make_path($CLI_SESS_DIR) unless -d $CLI_SESS_DIR;
 
-    my $file = cli_session_file($tok);
+    my $file = cli_session_file($token);
     if ( open my $fh, '>', $file ) {
         if ($sess_data) {
             print $fh encode_json($sess_data);
         }
         else {
             print $fh encode_json( {
-                token => $tok,
+                token => $token,
                 path  => { dbase_dir => $db_path },
             } );
         }
@@ -100,12 +93,12 @@ sub register_session_db {
     }
 }
 
-sub unregister_session_db {
-    my ($tok) = @_;
-    return unless defined $tok && length $tok;
+sub del_session_path {
+    my ($token) = @_;
+    return unless defined $token && length $token;
 
-    # Delete .amberdb/session/sess_$tok
-    my $file = cli_session_file($tok);
+    # Delete .amberdb/session/sess_$token
+    my $file = cli_session_file($token);
     unlink $file if defined $file && -f $file;
 }
 
@@ -168,12 +161,12 @@ if ( !defined $target_db ) {
             last;
         }
     }
-    if ( !defined $token && @ARGV && $ARGV[0] =~ /^[a-zA-Z0-9]{4,8}$/ && $ARGV[0] !~ /^(?:help|status|tables|connect|disconnect|config|path|attr|read|insert|update|delete|search|count|reindex|check|vacuum|migrate)$/i ) {
+    if ( !defined $token && @ARGV && $ARGV[0] =~ /^[0-9]{4}$/ ) {
         $token = $ARGV[0];
     }
     $token //= $ENV{AMBERDB_TOKEN};
 
-    my $reg_db = get_registered_db_for_token($token);
+    my $reg_db = get_session_path($token);
     if ( defined $reg_db && length $reg_db ) {
         $target_db = $reg_db;
     }
@@ -189,9 +182,8 @@ else {
 }
 $target_db = eval { abs_path($target_db) } // $target_db;
 
-our $adb = AmberDB->new( path => { dbase_dir => $target_db } );
+# şimdi datadiri atama yap
 $adb->set_datadir($target_db);
-our $tools = AmberDB::Tools->new($adb);
 
 my $explicit_db      = $from_cli_args;
 my $has_cfg_updates  = 0;
@@ -202,66 +194,55 @@ my $has_path_updates = 0;
 # ============================================================================
 
 sub generate_token {
-    # 4-digit session token (e.g. 1000..9999)
+    # 4-digit session token (e.g. 1000..9999) with collision avoidance
+    for ( 1 .. 1000 ) {
+        my $token = sprintf( "%04d", int( rand(9000) ) + 1000 );
+        my $sf = session_file($token);
+        next if defined $sf && -f $sf;
+        my $cf = cli_session_file($token);
+        next if defined $cf && -f $cf;
+        return $token;
+    }
     return sprintf( "%04d", int( rand(9000) ) + 1000 );
 }
 
 sub session_file {
-    my ($tok) = @_;
-    return unless defined $tok && length $tok;
+    my ($token) = @_;
+    return unless defined $token && length $token;
 
-    # 1. Local session file in working directory: .amberdb/session/sess_$tok
-    my $local_sess = cli_session_file($tok);
+    # 1. Local session file in working directory: .amberdb/session/sess_$token
+    my $local_sess = cli_session_file($token);
     return $local_sess if defined $local_sess && -f $local_sess;
 
-    # 2. Database session directory candidates
-    if ($adb) {
-        my $sess_dir = $adb->path('session_dir');
-        my $db_dir   = $adb->path('dbase_dir');
-        my @candidates = (
-            "$sess_dir/cli_$tok",
-            "$sess_dir/cli_$tok.json",
-            "$db_dir/session/cli_$tok",
-            "$db_dir/ramdisk/session/cli_$tok",
-        );
-        for my $f (@candidates) {
-            return $f if defined $f && -f $f;
-        }
-        my $reg_db = get_registered_db_for_token($tok);
-        if ( $reg_db && $reg_db ne $db_dir ) {
-            for my $rf ( "$reg_db/session/cli_$tok", "$reg_db/ramdisk/session/cli_$tok" ) {
-                return $rf if -f $rf;
-            }
-        }
-    }
+    # 2. Database session file: RAM-disk veya standart disk
+    my $db_sess = $adb->path('session_dir') . "/cli_$token";
+    return $db_sess if -f $db_sess;
+
     return $local_sess;
 }
 
 sub save_session {
-    my ( $tok, $data ) = @_;
-    return unless defined $tok && length $tok;
+    my ( $token, $data ) = @_;
+    return unless defined $token && length $token;
 
-    # 1. Save in working directory: .amberdb/session/sess_$tok
-    register_session_db( $tok, $adb->path('dbase_dir'), $data );
+    # 1. Save in working directory: .amberdb/session/sess_$token
+    set_session_path( $token, $adb->path('dbase_dir'), $data );
 
-    # 2. Also save in database's own session_dir ($adb->path('session_dir')/cli_$tok)
-    if ($adb) {
-        my $sess_dir = $adb->path('session_dir');
-        make_path($sess_dir) unless -d $sess_dir;
-        my $db_file = "$sess_dir/cli_$tok";
-        if ( open my $dfh, '>', $db_file ) {
-            print $dfh encode_json($data);
-            close $dfh;
-        }
+    # 2. Also save in database's own session_dir ($adb->path('session_dir')/cli_$token)
+    my $sess_dir = $adb->path('session_dir');
+    my $db_file = "$sess_dir/cli_$token";
+    if ( open my $dfh, '>', $db_file ) {
+        print $dfh encode_json($data);
+        close $dfh;
     }
 }
 
 sub load_session {
-    my ($tok) = @_;
-    return unless defined $tok && length $tok;
+    my ($token) = @_;
+    return unless defined $token && length $token;
 
-    # 1. Try local session in .amberdb/session/sess_$tok
-    my $local_file = cli_session_file($tok);
+    # 1. Try local session in .amberdb/session/sess_$token
+    my $local_file = cli_session_file($token);
     if ( defined $local_file && -f $local_file ) {
         if ( open my $fh, '<', $local_file ) {
             local $/;
@@ -275,7 +256,7 @@ sub load_session {
     }
 
     # 2. Try candidate session file from database session_dir
-    my $file = session_file($tok);
+    my $file = session_file($token);
     if ( defined $file && -f $file && $file ne ( $local_file // '' ) ) {
         if ( open my $fh, '<', $file ) {
             local $/;
@@ -289,27 +270,15 @@ sub load_session {
 }
 
 sub delete_session {
-    my ($tok) = @_;
-    return unless defined $tok && length $tok;
+    my ($token) = @_;
+    return unless defined $token && length $token;
 
-    # 1. Delete from working directory: .amberdb/session/sess_$tok
-    unregister_session_db($tok);
+    # 1. Delete from working directory: .amberdb/session/sess_$token
+    del_session_path($token);
 
     # 2. Delete from database session_dir
-    if ($adb) {
-        my $sess_dir = $adb->path('session_dir');
-        my $db_dir   = $adb->path('dbase_dir');
-        my @candidates = (
-            "$sess_dir/cli_$tok",
-            "$sess_dir/cli_$tok.json",
-            "$db_dir/session/cli_$tok",
-            "$db_dir/ramdisk/session/cli_$tok",
-            "$sess_dir/cli_last_token",
-        );
-        for my $f (@candidates) {
-            unlink $f if defined $f && -f $f;
-        }
-    }
+    my $db_sess = $adb->path('session_dir') . "/cli_$token";
+    unlink $db_sess if -f $db_sess;
 }
 
 sub resolve_active_token {
@@ -318,7 +287,7 @@ sub resolve_active_token {
     return $ENV{AMBERDB_TOKEN} if defined $ENV{AMBERDB_TOKEN} && length $ENV{AMBERDB_TOKEN};
     if ($allow_last_token) {
         # Check active session in .amberdb/session/sess_* by mtime
-        my ($latest_tok) = get_registered_db_for_token();
+        my ($latest_tok) = get_session_path();
         return $latest_tok if defined $latest_tok && length $latest_tok;
     }
     return undef;
@@ -509,6 +478,9 @@ our $opt_time   = 0;
 my $opt_dry_run = 0;
 my $opt_force   = 0;
 our $opt_help   = 0;
+my $opt_database;
+my $opt_user;
+my $opt_pass;
 
 my %method_args;
 my @pos_args;
@@ -543,6 +515,12 @@ while ( $arg_idx < @ARGV ) {
     elsif ( ( $curr =~ /^--(?:token)$/i || $curr =~ /^-k$/i ) && $arg_idx + 1 < @ARGV && $ARGV[$arg_idx + 1] !~ /^-/ ) {
         $opt_token = $ARGV[++$arg_idx];
     }
+    elsif ( ( $curr =~ /^--(?:user|username)$/i || $curr =~ /^-u$/i ) && $arg_idx + 1 < @ARGV && $ARGV[$arg_idx + 1] !~ /^-/ ) {
+        $opt_user = $ARGV[++$arg_idx];
+    }
+    elsif ( ( $curr =~ /^--(?:pass|password|passwd)$/i || $curr =~ /^-p$/i ) && $arg_idx + 1 < @ARGV && $ARGV[$arg_idx + 1] !~ /^-/ ) {
+        $opt_pass = $ARGV[++$arg_idx];
+    }
     elsif ( ( $curr =~ /^--(?:format)$/i || $curr =~ /^-f$/i ) && $arg_idx + 1 < @ARGV && $ARGV[$arg_idx + 1] !~ /^-/ ) {
         $opt_format = lc($ARGV[++$arg_idx]);
     }
@@ -569,7 +547,7 @@ while ( $arg_idx < @ARGV ) {
 
 # Step 2: Known action definitions
 my %known_actions = map { $_ => 1 } qw(
-    connect disconnect path config cfg attr table_attr
+    connect disconnect path config cfg attr table_attr user users
     status tables list info table_info read read_id read_all read_list
     search search_table fetch field_fetch count table_count
     insert insert_id update update_id delete delete_id
@@ -620,7 +598,7 @@ for my $t (@raw_tokens) {
 }
 my $is_session_cmd = 0;
 for my $t (@raw_tokens) {
-    if ( $t =~ /^--?(?:action=)?(disconnect|config|path|attr|cfg|table_attr)$/i ) {
+    if ( $t =~ /^--?(?:action=)?(connect|disconnect|config|path|attr|cfg|table_attr|user|users)$/i ) {
         $is_session_cmd = 1;
         last;
     }
@@ -646,6 +624,7 @@ unless ($is_connect_cmd) {
     }
 
     if ($session) {
+        eval { $adb->connect( token => $active_token ) };
         if ( $session->{path}->{dbase_dir} && !$explicit_db ) {
             $adb->set_datadir( $session->{path}->{dbase_dir} );
         }
@@ -718,6 +697,15 @@ for my $raw (@raw_tokens) {
         elsif ( $k eq 'data' ) {
             $method_args{data} = $val;
         }
+        elsif ( $k eq 'user' || $k eq 'username' ) {
+            $opt_user = $val;
+        }
+        elsif ( $k eq 'pass' || $k eq 'password' || $k eq 'passwd' ) {
+            $opt_pass = $val;
+        }
+        elsif ( $k eq 'database' || $k eq 'dbname' ) {
+            $opt_database = $val;
+        }
         else {
             if ( $k =~ /[-.]/ ) {
                 my @parts = split /[-.]/, $k;
@@ -744,12 +732,6 @@ for my $raw (@raw_tokens) {
         elsif ( !defined $opt_action ) {
             $opt_action = $arg;
         }
-        elsif ( lc($opt_action) eq 'connect' && !@pos_args && $arg !~ /^(?:json|pretty|tsv|dumper|perl|raw|table|time)$/i ) {
-            my $abs = eval { abs_path($arg) } // $arg;
-            make_path($abs) unless -d $abs;
-            $adb->set_datadir($abs);
-            $explicit_db = 1;
-        }
         else {
             push @pos_args, $arg;
         }
@@ -760,6 +742,7 @@ for my $raw (@raw_tokens) {
 if ( defined $opt_action ) {
     my $act = lc($opt_action);
     $opt_action = 'status'      if $act eq 'tables' || $act eq 'list';
+    $opt_action = 'user'        if $act eq 'users';
     $opt_action = 'config'      if $act eq 'cfg';
     $opt_action = 'attr'        if $act eq 'table_attr';
     $opt_action = 'info'        if $act eq 'table_info';
@@ -876,36 +859,67 @@ if ( $opt_help || ( defined $opt_action && $opt_action eq 'help' ) ) {
 # ============================================================================
 
 if ( defined $opt_action && $opt_action eq 'connect' ) {
-    if ( @pos_args && !$explicit_db ) {
-        my $target = shift @pos_args;
-        if ( defined $target && length $target && $target !~ /^format=/i ) {
-            my $abs = eval { abs_path($target) } // $target;
-            make_path($abs) unless -d $abs;
-            $adb->set_datadir($abs);
-            $explicit_db = 1;
+    if ( @pos_args ) {
+        my $first = $pos_args[0];
+        if ( -d $first || $first =~ m{[/\\\\]} || ( defined $target_db && ( $first eq $target_db || ( eval { abs_path($first) } // '' ) eq ( eval { abs_path($target_db) } // '' ) ) ) ) {
+            my $target = shift @pos_args;
+            if ( defined $target && length $target && $target !~ /^format=/i ) {
+                my $abs = eval { abs_path($target) } // $target;
+                make_path($abs) unless -d $abs;
+                $adb->set_datadir($abs);
+                $explicit_db = 1;
+            }
+        }
+        elsif ( @pos_args >= 3 && !defined $opt_database && !defined $opt_user ) {
+            # Positional format: amberdb connect dir db user pass
+            my $target = shift @pos_args;
+            if ( defined $target && length $target && $target !~ /^format=/i ) {
+                my $abs = eval { abs_path($target) } // $target;
+                make_path($abs) unless -d $abs;
+                $adb->set_datadir($abs);
+                $explicit_db = 1;
+            }
         }
     }
 
-    my $token = generate_token();
-    my $sess_data = {
-        token       => $token,
-        created_at  => time(),
-        updated_at  => time(),
-        path        => { %{ $adb->path() } },
-        cfg         => { %{ $adb->config() } },
-        table_attrs => {},
-    };
+    my $conn_db   = $opt_database // shift @pos_args;
+    # Even if username is entered differently, CLI always operates and authenticates as 'cli'
+    my $conn_user = 'cli';
+    my $entered_user = shift @pos_args if @pos_args;
+    my $conn_pass = $opt_pass // shift @pos_args // '';
 
-    save_session( $token, $sess_data );
+    my $token = eval {
+        $adb->connect(
+            ( defined $conn_db && length $conn_db ? ( database => $conn_db ) : () ),
+            username => $conn_user,
+            ( defined $conn_pass                  ? ( password => $conn_pass ) : () ),
+        );
+    };
+    if ( $@ || !$token ) {
+        my $err = $@ || $adb->last_error() || "Authentication failed";
+        $err =~ s/ at .* line \d+.*//s;
+        die "[AMBERDB_ERROR] $err\n";
+    }
+
     my $actual_file = session_file($token);
 
     if ( defined $opt_format && $opt_format eq 'json' ) {
-        print encode_json( { status => 'connected', token => $token, session_file => $actual_file, path => $sess_data->{path}, cfg => $sess_data->{cfg} } ), "\n";
+        print encode_json( {
+            status       => 'connected',
+            token        => $token,
+            session_file => $actual_file,
+            database     => $adb->connect('database'),
+            username     => $adb->connect('username'),
+            path         => $adb->path(),
+            cfg          => $adb->config(),
+        } ), "\n";
     }
     else {
         print "[AMBERDB] Connected successfully.\n";
         print "Session Token : $token\n";
         print "Session File  : $actual_file\n";
+        print "Database      : " . ($adb->connect('database') || '') . "\n";
+        print "User          : " . ($adb->connect('username') || '') . "\n";
         print "Data Dir      : " . $adb->path('dbase_dir') . "\n";
         print "Config        : " . encode_json( $adb->config() ) . "\n" if %{ $adb->config() };
         print "To use in shell:\n";
@@ -919,6 +933,7 @@ if ( defined $opt_action && $opt_action eq 'disconnect' ) {
     unless ($token) {
         die "[AMBERDB_ERROR] No active session token found to disconnect.\n";
     }
+    $adb->disconnect($token);
     delete_session($token);
     if ( defined $opt_format && $opt_format eq 'json' ) {
         print encode_json( { status => 'disconnected', token => $token } ), "\n";
@@ -1002,6 +1017,58 @@ if ( defined $opt_action && $opt_action eq 'path' ) {
     exit 0;
 }
 
+if ( defined $opt_action && $opt_action eq 'user' ) {
+    my $subcmd = shift @pos_args // 'list';
+    if ( $subcmd eq 'list' ) {
+        my @users = $adb->user_list();
+        if ( defined $opt_format && ( $opt_format eq 'json' || $opt_format eq 'pretty' ) ) {
+            output_result( { status => 'ok', action => 'user_list', users => \@users }, $opt_format );
+        }
+        else {
+            print "Database: " . ($adb->connect('database') || 'unknown') . "\n";
+            print "=" x 60, "\n";
+            printf( "%-20s %-15s %-15s\n", "Username", "Role", "Password Set" );
+            print "-" x 60, "\n";
+            for my $u (@users) {
+                printf( "%-20s %-15s %-15s\n",
+                    $u->{username},
+                    $u->{role},
+                    $u->{has_password} ? "Yes (Shadow)" : "No (Passwordless)"
+                );
+            }
+            print "-" x 60, "\n";
+        }
+        exit 0;
+    }
+    elsif ( $subcmd eq 'add' ) {
+        my $u = shift @pos_args // $opt_user;
+        my $p = shift @pos_args // $opt_pass // '';
+        my $role = shift @pos_args // 'user';
+        die "[AMBERDB_ERROR] Usage: amberdb user add <username> [password] [role]\n" unless defined $u && length $u;
+        $adb->user_add( $u, $p, role => $role );
+        output_result( { status => 'ok', action => 'user_add', username => $u, role => $role }, $opt_format );
+        exit 0;
+    }
+    elsif ( $subcmd eq 'passwd' ) {
+        my $u = shift @pos_args // $opt_user;
+        my $p = shift @pos_args // $opt_pass // '';
+        die "[AMBERDB_ERROR] Usage: amberdb user passwd <username> <new_password>\n" unless defined $u && length $u;
+        $adb->user_passwd( $u, $p );
+        output_result( { status => 'ok', action => 'user_passwd', username => $u }, $opt_format );
+        exit 0;
+    }
+    elsif ( $subcmd eq 'del' || $subcmd eq 'delete' ) {
+        my $u = shift @pos_args // $opt_user;
+        die "[AMBERDB_ERROR] Usage: amberdb user del <username>\n" unless defined $u && length $u;
+        $adb->user_del($u);
+        output_result( { status => 'ok', action => 'user_del', username => $u }, $opt_format );
+        exit 0;
+    }
+    else {
+        die "[AMBERDB_ERROR] Unknown user subcommand '$subcmd'. Available: list, add, passwd, del\n";
+    }
+}
+
 # ============================================================================
 # DEFAULT ACTION: DASHBOARD OVERVIEW (ALL TABLES)
 # ============================================================================
@@ -1045,6 +1112,8 @@ if ( !defined $opt_action || $opt_action eq '' || $opt_action eq 'list' || $opt_
 
     if ( defined $opt_format && ( $opt_format eq 'json' || $opt_format eq 'pretty' ) ) {
         output_result( {
+            database      => $adb->connect('database'),
+            user          => $adb->connect('username'),
             data_dir      => $adb->path('dbase_dir'),
             total_tables  => scalar(@rows),
             total_records => $total_records,
@@ -1053,7 +1122,7 @@ if ( !defined $opt_action || $opt_action eq '' || $opt_action eq 'list' || $opt_
         }, $opt_format );
     }
     else {
-        print "AmberDB v$AmberDB::VERSION | Data Dir: " . $adb->path('dbase_dir') . "\n";
+        print "AmberDB v$AmberDB::VERSION | Database: " . ($adb->connect('database') || '-') . " | User: " . ($adb->connect('username') || '-') . " | Data Dir: " . $adb->path('dbase_dir') . "\n";
         print "=" x 80, "\n";
         printf( "%-28s %-10s %-12s %-10s %-15s\n", "Table Name", "Records", "Size", "Schema", "Indexes" );
         print "-" x 80, "\n";
