@@ -88,6 +88,7 @@ t/amberdb_cache.t
 t/amberdb_cli.t
 t/amberdb_connect_lifecycle.t
 t/amberdb_date.t
+t/amberdb_dbase_inheritance.t
 t/amberdb_ecommerce_facet.t
 t/amberdb_encapsulation.t
 t/amberdb_escape_encode.t

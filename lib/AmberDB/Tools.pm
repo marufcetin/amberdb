@@ -5,7 +5,7 @@ use warnings;
 use Carp qw(croak cluck);
 use File::Spec;
 
-our $VERSION = '5.25.2';
+our $VERSION = '5.25.3';
 my $CREATED = '2018-10-08';
 
 # Constructor
@@ -64,43 +64,43 @@ sub set_index {
 
     # Pre-fetch foreign records for junk_rules in one batch before sub-indexers run
     if ( $table_info->{use_junk} ) {
-        print "    - Pre-fetching relational foreign records for junk rules...\n";
+        $self->{say} .= "    - Pre-fetching relational foreign records for junk rules...\n";
         $adb->prefetch_junk_rdbm( $table_info, \@records );
     }
 
     # 3. Create readall index
     if ( exists( $table_info->{record_index} ) ) {
-        print "    - Rebuilding readall index (.inx)...\n";
+        $self->{say} .= "    - Rebuilding readall index (.inx)...\n";
         my $ok = $self->set_readall( $tableid, @records );
     }
 
     # 4. Create search index
     if ( exists( $table_info->{search_block} ) ) {
-        print "    - Rebuilding search index (.src)...\n";
+        $self->{say} .= "    - Rebuilding search index (.src)...\n";
         my $ok = $self->set_search( $tableid, @records );
     }
 
     # 5. Create fetch field index.
     if ( exists( $table_info->{match_block} ) ) {
-        print "    - Rebuilding field index (.fld)...\n";
+        $self->{say} .= "    - Rebuilding field index (.fld)...\n";
         my $ok = $self->set_fields( $tableid, @records );
     }
 
     # 6. Create facet index.
     if ( exists( $table_info->{use_facet} ) ) {
-        print "    - Rebuilding facet index (.fac)...\n";
+        $self->{say} .= "    - Rebuilding facet index (.fac)...\n";
         my $ok = $self->set_filters( $tableid, @records );
     }
 
     # 7. Create sort index.
     if ( exists( $table_info->{sort_block} ) ) {
-        print "    - Rebuilding sort index (.srt)...\n";
+        $self->{say} .= "    - Rebuilding sort index (.srt)...\n";
         my $ok = $self->set_sort( $tableid, @records );
     }
 
     # 8. Create URL slug index
     if ( exists( $table_info->{slug_block} ) ) {
-        print "    - Rebuilding slug index (.slg)...\n";
+        $self->{say} .= "    - Rebuilding slug index (.slg)...\n";
         my $ok = $self->set_rwlnkall( $tableid, @records );
     }
 
@@ -444,7 +444,7 @@ sub set_fields {
     foreach my $record (@records) {
         $count++;
         if ( $total_rec > 1000 && $count % $prog_step == 0 ) {
-            print "    ... processed $count / $total_rec records for field index\n";
+            $self->{say} .= "    ... processed $count / $total_rec records for field index\n";
         }
         my @fields_arr = @$record;
         my $rid = $fields_arr[0];
@@ -1423,7 +1423,7 @@ sub update_table {
         }
 
         # Kayitlari yeni ikili ABR v1 formatinda tek tek yaz
-        print "  - Writing $total records in ABR v1 format...\n";
+        $self->{say} .= "  - Writing $total records in ABR v1 format...\n";
         for my $rec (@decoded_records) {
             my ( $k, @fields ) = @$rec;
             my $v_new   = $adb->db_encode(@fields);
@@ -1442,7 +1442,7 @@ sub update_table {
     }
     else {
         $backup_file //= "None (already ABR v1)";
-        print "  - Main table is already in ABR v1 format ($already_current records).\n";
+        $self->{say} .= "  - Main table is already in ABR v1 format ($already_current records).\n";
     }
 
     # 5. Eslikci veri dosyalarini ('del', 'aut') donustur (indeks insasindan once calisir)
@@ -1454,7 +1454,7 @@ sub update_table {
 
         if ( $ci->{legacy} > 0 || $opts{force} ) {
             if ( $ci->{total} > 0 ) {
-                print "  - Migrating companion file ($cext: $ci->{total} records)...\n";
+                $self->{say} .= "  - Migrating companion file ($cext: $ci->{total} records)...\n";
         my $c_backup_base = "$table_path-$dom_ver-$mtime_str.$cext";
         my $c_backup = $c_backup_base;
         my $cnt = 1;
@@ -1491,10 +1491,10 @@ sub update_table {
     # 6. Indeksleri insa et (gerekliyse veya eksikse)
     my $is_simple = $adb->config('simple') || ( $table_info && $table_info->{use_simple} ) || ( $table_info && $table_info->{id_type} && $table_info->{id_type} eq 'ascii' );
     if ( $is_simple ) {
-        print "  - Table '$tableid' is in simple mode, skipping index generation.\n";
+        $self->{say} .= "  - Table '$tableid' is in simple mode, skipping index generation.\n";
     }
     elsif ( $legacy_count > 0 || $recovered_from_backup || $opts{force} ) {
-        print "  - Rebuilding indexes...\n";
+        $self->{say} .= "  - Rebuilding indexes...\n";
         eval {
             $self->set_index( $tableid, @decoded_records );
             1;
@@ -1503,7 +1503,7 @@ sub update_table {
         };
     }
     elsif ($missing_indexes) {
-        print "  - Rebuilding missing indexes...\n";
+        $self->{say} .= "  - Rebuilding missing indexes...\n";
         eval {
             $self->set_index( $tableid, @decoded_records );
             1;

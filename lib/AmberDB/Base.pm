@@ -9,7 +9,7 @@ use Fcntl qw(:DEFAULT :flock);
 use Digest::SHA qw(sha256_hex);
 use parent qw(AmberDB::Locale AmberDB::Array);
 
-our $VERSION = '5.25.2';
+our $VERSION = '5.25.3';
 my $CREATED = '2014-12-20';
 
 # ------------------------------------------------
@@ -311,7 +311,7 @@ sub set_datadir {
         $self->{_connect}->{database} = $leaf if defined $leaf && length $leaf;
     }
 
-    unless ( $self->config('test') ) {
+    unless ( $self->config('test') || $^C ) {
         if ( defined $dbase_dir && $dbase_dir ne "." && $dbase_dir ne "" ) {
             for my $dir (
                 $self->{_path}->{dbase_dir},
@@ -330,7 +330,7 @@ sub set_datadir {
         }
     }
 
-    $self->ramdisk_setup();
+    $self->ramdisk_setup() unless $^C;
     return 1;
 }
 
@@ -338,6 +338,7 @@ sub set_datadir {
 # ------------------------------------------------
 sub make_path {
     my ( $self, $path ) = @_;
+    return 1 if $^C;
     unless ( -d $path ) {
         require File::Path;
         File::Path::make_path($path);

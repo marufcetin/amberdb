@@ -6,9 +6,19 @@ use Carp qw(croak cluck);
 use File::Spec;
 use parent 'AmberDB::Base';
 
-our $VERSION = '5.25.2';
+our $VERSION = '5.25.3';
 
 my $CREATED = '2026-09-06';
+
+# Whitelist of inheritable group-level configuration keys from .dbase to member tables
+our %INHERITABLE_DBASE_KEYS = map { $_ => 1 } qw(
+    use_ramdisk   ramdisk_ttl   use_cache   cache_ttl
+    keep_deleted  log_owner     use_counter
+    use_section   section       use_year    year
+    use_language  lang
+    no_transact   no_backup     table_dir   use_junk
+    use_simple
+);
 
 # =====================================================================
 # SCHEMA FIELD NORMALIZATION, VALIDATION & TYPE CONVERSION
@@ -319,6 +329,32 @@ sub dbase_info {
     return $self->{_dbase}->{$dbase};
 }
 
+# Applies inherited configuration from the database group (.dbase) to a table schema.
+# Only copies whitelisted keys (%INHERITABLE_DBASE_KEYS) that are not already defined
+# on the table schema (preserving table-level overrides).
+sub _apply_dbase_inheritance {
+    my ( $self, $table, $schema ) = @_;
+
+    return unless ref($schema) eq 'HASH';
+
+    my $dbase = $schema->{dbase};
+    if ( !defined $dbase || !length $dbase ) {
+        my $t = defined $table ? $table : ( $schema->{table} // '' );
+        ($dbase) = ( $t =~ /^([a-z0-9]+)_/i );
+        $dbase //= "";
+    }
+    return unless length $dbase;
+
+    my $dbase_info = $self->dbase_info($dbase);
+    return unless $dbase_info && ref($dbase_info) eq 'HASH';
+
+    for my $key ( keys %INHERITABLE_DBASE_KEYS ) {
+        if ( exists $dbase_info->{$key} && !exists $schema->{$key} ) {
+            $schema->{$key} = $dbase_info->{$key};
+        }
+    }
+}
+
 # ============================================================================
 # TABLE SCHEMA NORMALIZATION & VALIDATION PIPELINE
 # Normalizes, converts, and validates table schema definitions through an ordered
@@ -342,6 +378,12 @@ sub normalize_blocks {
         $dbase //= "";
         $schema->{dbase} = $dbase unless defined $schema->{dbase} && length $schema->{dbase};
     }
+
+    # ------------------------------------------------------------------------
+    # Pipeline Step 0b: Dbase Schema Group Inheritance
+    # Inherit whitelisted operational flags from .dbase if not overridden.
+    # ------------------------------------------------------------------------
+    $self->_apply_dbase_inheritance( $table, $schema );
 
     # ------------------------------------------------------------------------
     # Pipeline Step 1: Global Configuration Inheritance
@@ -570,8 +612,7 @@ sub table_path {
     }
 
     # load table info first
-    $self->table_info($table);
-    my $table_info = $self->{_table}->{$table};
+    my $table_info = $self->table_info($table);
 
     # Volatile RAM-Disk Tier 3: table lives strictly on RAM-disk
     if ( $table_info && ( $table_info->{use_ramdisk} // 0 ) == 3 && $self->ramdisk_is_mounted() ) {
@@ -614,12 +655,12 @@ sub table_path {
     }
 
     if ( $table_info && exists $table_info->{table_dir} ) {
-        my $tdir = $table_info->{table_dir};
-        if ( defined $tdir && length $tdir ) {
+        my $tdir = $table_info->{table_dir} // '';
+        if ( $tdir ) {
             $tdir =~ s{^[\\/]+|[\\/]+$}{}g;
             $dbase_dir .= "/$tdir";
         }
-        # if defined $tdir && length $tdir == 0 (table_dir => ''), overwrite default: keep $dbase_dir directly
+        # if length $tdir == 0 (table_dir => ''), overwrite default: keep $dbase_dir directly
     }
     else {
         # if using year

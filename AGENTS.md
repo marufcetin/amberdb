@@ -14,3 +14,6 @@
   - MSYS2 Python: `C:\msys64\usr\bin\python3.exe`
 
 - **MSYS2 Toolchain**: `C:\msys64\usr\bin\`
+- **Git (MSYS2)**: `C:\msys64\usr\bin\git.exe`
+  - Because `C:\msys64` is outside the sandboxed workspace, run commands with `BypassSandbox: true`.
+

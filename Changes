@@ -1,5 +1,12 @@
 Revision history for AmberDB
 
+5.25.3  2026-09-15
+        - [GROUP-LEVEL SCHEMA INHERITANCE (.dbase -> .table)]
+          * Database group schema files (.dbase) now cascade common operational flags to all member tables in the group.
+          * Added %INHERITABLE_DBASE_KEYS whitelist in AmberDB::Base::Schema (use_ramdisk, keep_deleted, use_counter, log_owner, table_dir, use_section, etc.) preventing table-specific blocks and rules from leaking.
+          * Granular overrides: attributes explicitly defined in a .table file take precedence over .dbase defaults.
+          * Upgraded version string to 5.25.3 across all modules in lib/.
+
 5.25.2  2026-09-11
         - [CONNECTION PROFILE & SHADOW CRYPTOGRAPHY ARCHITECTURE]
           * Decentralized connection profile abstraction ($adb->{_connect}) managing database, username, password, and session token.

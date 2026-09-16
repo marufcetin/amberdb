@@ -6,7 +6,7 @@ use Carp qw(croak cluck);
 use Cwd qw(abs_path);
 use Digest::MD5 qw(md5_hex);
 
-our $VERSION = '5.25.2';
+our $VERSION = '5.25.3';
 
 my $CREATED = '2026-08-11';
 
