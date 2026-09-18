@@ -3,7 +3,7 @@
 [Turkce Dokumantasyon](TR-File-src) | [English Documentation](File-src)
 
 > **Kategori:** Dosya Formatlari ve Depolama  
-> **Konum:** `dbstore/table/${tablo_adi}.src` (veya Tier B `*.jsrc`)  
+> **Konum:** `dbstore/table/${tablo_adi}.src`  
 > **Format:** Ters Kelime Dizin Hash Tablosu (`DB_File`)
 
 ---

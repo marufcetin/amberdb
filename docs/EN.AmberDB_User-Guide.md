@@ -56,7 +56,7 @@ AmberDB is self-contained and does not rely on heavy external dependencies:
 │                              AmberDB                                    │
 ├─────────────────────────────────────────────────────────────────────────┤
 │  AmberDB::Base     → Schema parsing, paths, data serialization          │
-│  AmberDB::Index    → Binary indexes (.inx, .fld, .src, .fac, .srt)      │
+│  AmberDB::Index    → Binary indexes (.inx, .fld, .src, .fac, .slg)      │
 │  AmberDB::Transact → Undo-log transactions, rollback & recovery         │
 │  AmberDB::Ramdisk  → Native RAM-Disk (tmpfs/APFS/ImDisk) Shared Cache      │
 │  AmberDB::Array    → High-speed array utilities (nodup, crop)           │
@@ -464,7 +464,7 @@ my @all_ids           = $adb->search_table("catalog_product", "sony", { keys_onl
 
 #### 1. Internal Engine Pipeline:
 All high-level listing and querying methods in AmberDB (`read_all`, `field_fetch`, `search_table`, `field_filter`, etc.) operate in two decoupled stages:
-1. **Index Filtering Stage:** The query method first reads lightweight record keys (`@ids`) from inverted index files (`.inx`, `.fld`, `.src`, `.srt`), evaluating Boolean logic (AND/OR), sorting, and pagination slicing (`recs_cutting`).
+1. **Index Filtering Stage:** The query method first reads lightweight record keys (`@ids`) from inverted index files (`.inx`, `.fld`, `.src`, `.slg`), evaluating Boolean logic (AND/OR), sorting, and pagination slicing (`recs_cutting`).
 2. **Batch Document Resolution Stage:** Once the final matched ID list is finalized, it is forwarded in a single call to **`read_list`**. `read_list` opens the data table in a single batch session (or leverages the RAM-Disk cache) to deserialize all requested records simultaneously, returning them in the **exact positional order** requested.
 
 #### 2. Developer API Usage & Relational Traversal (SQL JOIN Alternative):
@@ -540,7 +540,7 @@ print "Product 5001 viewed $views times.\n";
 
 ## 5. Simple Mode and Direct Schemaless Access (Simple Mode)
 
-In AmberDB, **Simple Mode (`simple => 1`)** represents the entirely schemaless, lightweight, direct flat-file NoSQL operational mode where no `.table` or `.dbase` schema files and no secondary binary indexes (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, `.slg`, `.aut`, `.del`) are generated or maintained.
+In AmberDB, **Simple Mode (`simple => 1`)** represents the entirely schemaless, lightweight, direct flat-file NoSQL operational mode where no `.table` or `.dbase` schema files and no secondary binary indexes (`.inx`, `.src`, `.fld`, `.fac`, `.slg`, `.aut`, `.del`) are generated or maintained.
 
 In Simple Mode, records can store rich, nested data structures directly, including array and hash references (`ARRAY`/`HASH`). The index generation and maintenance overhead is completely eliminated; single-key read and write operations (`read_id`, `insert_id`) execute at maximum hardware speed ($O(1)$).
 
@@ -742,11 +742,11 @@ Benefits of this dual-instance design:
 | **Word Search (`search_table`)** | Inverted Index `.src` | Collation Streaming Scan |
 | **ACID Transactions (`transact_*`)** | Supported (Index Undo) | **Supported (Raw Undo)** |
 | **Continuous Daily Backup (`recs_back`)** | Supported (`backup/YYYY/`) | **Supported (Same Directory `YYYY-MM-DD.csv`)** |
-| **Secondary Indexes (`.inx, .fld, .src, .srt, .fac`)** | Generated & Maintained | **Disabled (Zero Index Cost)** |
+| **Secondary Indexes (`.inx, .fld, .src, .slg, .fac`)** | Generated & Maintained | **Disabled (Zero Index Cost)** |
 | **URL Slug Mapping (`.slg`)** | Auto Generated | Disabled |
 | **Audit Logs (`.aut`) & Archive (`.del`)** | Schema-Driven | Disabled |
 | **Directory Hierarchy** | `table/`, `schema/`, `backup/`, etc. | **Flat Single Directory (`$dbase_dir/<table_name>.db`)** |
-| **Secondary Indexes (`.inx, .fld, .src, .srt, .fac`)** | Generated & Maintained | **Disabled (Zero Index Cost)** |
+| **Secondary Indexes (`.inx, .fld, .src, .slg, .fac`)** | Generated & Maintained | **Disabled (Zero Index Cost)** |
 | **URL Slug Mapping (`.slg`)** | Auto Generated | Disabled |
 | **Audit Logs (`.aut`) & Archive (`.del`)** | Schema-Driven | Disabled |
 | **Directory Hierarchy** | `table/`, `schema/`, `backup/`, etc. | **Flat Single Directory (`$dbase_dir/<table_name>.db`)** |
@@ -761,34 +761,33 @@ AmberDB maintains structured binary index files based on the schema configuratio
 
 | Extension | Index Type | Description |
 |---|---|---|
-| `.inx` | Record Index | Packed binary array of all active IDs, total count, and highest ID. |
+| `.inx` | Record Index | Packed binary array of all active IDs, total count, highest ID, and pre-sorted order arrays. |
 | `.fld` | Match Index | Block-level key-to-IDs inverted index (`field_fetch`). |
-| `.str` | Field Dictionary | Bidirectional string-to-numeric ID dictionary companion for `.fld` (`_${blk}.str`). |
+| `.unq` | Field Dictionary | Bidirectional string-to-numeric ID dictionary companion for `.fld` and unique validation (`.unq`). |
 | `.src` | Full-Text Index | Word-level token inverted index (`search_table`). |
-| `.srt` | Sort Index | Pre-sorted binary array of record IDs for `sort_block` definitions. |
 | `.fac` | Facet Index | Fast forward index for faceted filter navigation. |
-| `.slg` | URL Slug Index | Bidirectional map: `_0.slg` (ID → Slug) and `_1.slg` (Slug → ID). |
+| `.slg` | URL Slug Index | Bidirectional map: `0:$rid` (ID → Slug) and `1:$slug` (Slug → ID). |
 
 ### 6.2 Unified 8-Byte Binary Packing Standard
 
 AmberDB achieves high throughput and compact disk storage through uniform **8-byte binary packing**:
-- **Numeric Record IDs:** Binary indexes (`.inx`, `.srt`, `.fld`) pack record IDs as pure 64-bit Big-Endian unsigned integers (`(Q>)*`) into fixed 8-byte record strides.
+- **Numeric Record IDs:** Binary indexes (`.inx`, `.src`, `.fld`) pack record IDs as pure 64-bit Big-Endian unsigned integers (`(Q>)*`) into fixed 8-byte record strides.
 - **Arbitrary String Keys (`use_simple => 1`):** When arbitrary string keys (UUIDs, slugs, emails, session tokens) are needed, tables configure `use_simple => 1`. This strips `.inx` binary index overhead and allows keys up to 255 bytes directly in Berkeley DB key-value hash storage.
 
 This binary layout enables zero-copy slicing for pagination (`LIMIT/OFFSET`) directly through raw byte offsets ($O(1)$ `substr` slicing) without decoding full record buffers into memory.
 
-### 6.3 Inverted Match Index (`.fld`) and Bidirectional Dictionary (`.str`)
+### 6.3 Inverted Match Index (`.fld`) and Bidirectional Dictionary (`.unq`)
 
 For fields declared under `match_block`, AmberDB indexes data across two complementary tiers:
 
 1. **Packed Binary Inverted Match Index (`.fld`):**  
    AmberDB consolidates all field matches into a single `<table_name>.fld` file per table. Keys use the `"$blk:$val"` format and map directly to 8-byte packed binary arrays (`(Q>)*`) containing matching record IDs. Queries via `field_fetch` perform direct $O(1)$ key lookups into this unified file.
 
-2. **Bidirectional String-to-ID Dictionary (`.str`):**  
-   For non-relational free-text attributes (Category Name, Brand Name, Author, Status Tags), the engine automatically manages a companion `<table_name>_<blk>.str` dictionary:
+2. **Bidirectional String-to-ID Dictionary (`.unq`):**  
+   For non-relational free-text attributes (Category Name, Brand Name, Author, Status Tags), the engine automatically manages a companion `<table_name>.unq` dictionary:
    * **Forward Lookup (`s:<term>` $\rightarrow$ `$nid`):** Assigns an incremental numeric token ID to each unique textual string.
    * **Reverse Lookup (`n:$nid` $\rightarrow$ `<term>`):** Enables $O(1)$ reverse label translation from numeric IDs back to human-readable text.
-   * **Transparent Resolution:** When calling `field_fetch` or `field_filter`, developers can pass either the canonical numeric ID (`12`) or the textual label (`"Sony"`). The engine automatically resolves text terms via `.str` and retrieves the matching records from `.fld`.
+   * **Transparent Resolution:** When calling `field_fetch` or `field_filter`, developers can pass either the canonical numeric ID (`12`) or the textual label (`"Sony"`). The engine automatically resolves text terms via `.unq` and retrieves the matching records from `.fld`.
 
 ### 6.4 Sorting Mechanism & Developer Guide
 
@@ -852,7 +851,7 @@ These operations are **semantically coupled and mutually dependent**. If one ope
 - If the customer's payment is processed and the order record is created, but inventory deduction fails or crashes;
 - Or if stock is deducted and the cart is emptied, but the revenue entry fails to record;
 
-the system state becomes corrupted. To eliminate these anomalies, the entire sequence must be unified within a **single transaction spine (`transact_start` $\rightarrow$ `transact_end`)**. If any step encounters an error or if the process crashes, AmberDB evaluates the `.txn` undo log in reverse (LIFO) order, completely rolling back all modified tables and secondary indexes to their pristine pre-transaction state.
+the system state becomes corrupted. To eliminate these anomalies, the entire sequence must be unified within a **single transaction spine (`transact_start` $\rightarrow$ `transact_end`)**. If any step encounters an error or if the process crashes, AmberDB evaluates the undo journal (`dbstore/journal/txn_*`) in reverse (LIFO) order, completely rolling back all modified tables and secondary indexes to their pristine pre-transaction state.
 
 ### 7.2 ACID Guarantees in AmberDB
 
@@ -860,10 +859,10 @@ AmberDB guarantees the four classical ACID properties through embedded flat-file
 
 | ACID Property | Implementation Mechanism & Guarantees |
 | :--- | :--- |
-| **Atomicity** | **Disk-Backed Undo-Journaling:** When `transact_start()` is called, a microsecond-stamped `.txn` journal is created. Every `insert_id`, `modify_id`, and `delete_id` call appends reverse undo instructions. If a critical base error occurs or `transact_rollback()` is triggered, changes across base records (`.db`), soft-delete archives (`.del`), user audit logs (`.aut`), and all secondary indexes (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, `.slg`, `.jinx`, `.jsrc`, `.jfld`) are completely reverted in **reverse LIFO order**. |
+| **Atomicity** | **Disk-Backed Undo-Journaling:** When `transact_start()` is called, a microsecond-stamped undo journal (`journal/txn_*`) is created. Every `insert_id`, `modify_id`, and `delete_id` call appends reverse undo instructions. If a critical base error occurs or `transact_rollback()` is triggered, changes across base records (`.db`), soft-delete archives (`.del`), user audit logs (`.aut`), and all secondary indexes (`.inx`, `.src`, `.fld`, `.fac`, `.slg`) are completely reverted in **reverse LIFO order**. |
 | **Consistency** | **Schema, Index, and State Integrity:** Inbound records are validated against schema field rules, data types, and byte limits. Primary keys (`autoid`), inverted word indexes, columnar facets, and URL slugs are synchronized in real time. Upon rollback, both in-memory caches (`set_cache`) and secondary indexes revert to their clean pre-transaction state, preventing corrupted intermediate states. |
 | **Isolation** | **Strict Two-Phase Locking (Strict 2PL):** Every record modified within an active transaction acquires an exclusive OS-level lock (`flock LOCK_EX`). Locks are held throughout the entire transaction duration, preventing concurrent workers from modifying the locked records. Locks are released simultaneously only upon commit or rollback, providing serializable isolation. |
-| **Durability** | **Synchronous Journaling & Crash Recovery (`transact_recover`):** All journal writes invoke `$fh->flush`. When configured with `cfg => { txn_sync => 1 }`, AmberDB triggers OS/kernel `fsync` (`$fh->sync`) and Berkeley DB cache flushing (`DB_File->sync`). If a process or server crashes mid-transaction, orphaned `.txn` files are detected via non-blocking flock checks and rolled back automatically. |
+| **Durability** | **Synchronous Journaling & Crash Recovery (`transact_recover`):** All journal writes invoke `$fh->flush`. When configured with `cfg => { txn_sync => 1 }`, AmberDB triggers OS/kernel `fsync` (`$fh->sync`) and Berkeley DB cache flushing (`DB_File->sync`). If a process or server crashes mid-transaction, orphaned `txn_*` journal files are detected via non-blocking flock checks and rolled back automatically. |
 
 > **Architectural Note: Batch ETL Imports vs. Business Transactions**  
 > Methods such as `insert_list`, `modify_list`, and `delete_list` are specialized for high-throughput batch imports (e.g., ingesting large XML/JSON product catalogs). Since list records are typically independent entities without cross-dependencies, discarding thousands of valid records due to a few malformed entries in such bulk ingests is undesirable. For cyclical business logic where interdependent operations must succeed or fail as a single atomic unit (orders, inventory, billing), use single-record CRUD methods within a `transact_start` / `transact_end` block. If a list ingestion strictly requires full transactional rollback, place the dataset inside a loop executing single-record operations (`insert_id`, `modify_id`, `delete_id`) within a transaction block so the entire batch is fully transacted.
@@ -919,8 +918,8 @@ if ($res->{status} eq "commit") {
 ### 7.5 Durability and Crash Recovery
 
 - **IO::Handle Buffer Flushing & Sync:** Every journal entry is immediately flushed with `$fh->flush`. When configured with `cfg => { txn_sync => 1 }`, AmberDB enforces physical OS/disk-level synchronization (`$fh->sync` / `fsync`).
-- **`flock`-Based Ownership:** Active transactions hold an exclusive non-blocking lock (`LOCK_EX | LOCK_NB`) on their `.txn` file. If a process crashes unexpectedly, the lock is automatically released by the operating system.
-- **Orphan Recovery (`transact_recover`):** If a worker process terminates abruptly, stale `.txn` files in `txn/` are scanned. By verifying that the file lock has dropped and the process is no longer active, the journal is safely rolled back to restore consistency without race conditions against concurrent active workers.
+- **`flock`-Based Ownership:** Active transactions hold an exclusive non-blocking lock (`LOCK_EX | LOCK_NB`) on their active undo journal. If a process crashes unexpectedly, the lock is automatically released by the operating system.
+- **Orphan Recovery (`transact_recover`):** If a worker process terminates abruptly, stale journal files in `dbstore/journal/` are scanned. By verifying that the file lock has dropped and the process is no longer active, the journal is safely rolled back to restore consistency without race conditions against concurrent active workers.
 
 ### 7.6 Core Architectural Philosophy: Authoritative Data vs. Rebuildable Indexes
 
@@ -932,7 +931,7 @@ AmberDB's storage and transaction architecture is organized around a strict hier
    - **`.aut` (User Audit Trail):** Chronological, time-series history of who created, edited, or deleted records (`log_owner`). This historical data cannot be generated from any other source.
 
 2. **Derived & Rebuildable Indexes (Disposable Secondary Projections):**
-   - **`.inx` (Record Index), `.fld` (Match), `.src` (Full-Text), `.srt` (Sort), `.fac` (Facet), `.slg` (URL Slug):** All these index files are deterministic projections derived directly from `.db`.
+   - **`.inx` (Record Index + Sort), `.fld` (Match), `.src` (Full-Text), `.fac` (Facet), `.slg` (URL Slug):** All these index files are deterministic projections derived directly from `.db`.
    - If any secondary index is corrupted, deleted, or incomplete, running `AmberDB::Tools->set_index($table)` reconstructs all indexes from scratch within seconds with **zero data loss**.
 
 > **Rationale Behind Transaction Design:** `AmberDB::Transact` was deliberately engineered around this principle. A failure writing to the authoritative `.db` file (`is_index == 0`) triggers an immediate automatic `rollback`. However, if the master document is safely committed to `.db` and an index update encounters a disk error (`is_index == 1`), valid business data is never discarded; the transaction commits, and indexes can simply be repaired using `AmberDB::Tools`.
@@ -961,7 +960,7 @@ AmberDB allows declaring tables with `no_transact => 1` (either in schema `.tabl
 
 > **How It Works:**  
 > - If an error occurs on a table marked `no_transact => 1`, the error is treated as non-critical (like index errors), and `transact_end` proceeds to `commit`.  
-> - However, if a primary operation fails and triggers a `rollback`, all changes on `no_transact` tables are **still safely reverted in LIFO order via the `.txn` journal** to ensure complete database consistency without ghost records.
+> - However, if a primary operation fails and triggers a `rollback`, all changes on `no_transact` tables are **still safely reverted in LIFO order via the undo journal (`dbstore/journal/txn_*`)** to ensure complete database consistency without ghost records.
 
 ### 7.8 Multi-Process Concurrency, Lock Isolation, and Stress Verification
 
@@ -979,9 +978,9 @@ The database engine's resilience under extreme parallel load is verified by the 
 perl -Ilib xt/amberdb_concurrency_stress.t
 ```
 This test suite validates 5 mission-critical concurrency scenarios:
-- **1. Parallel Writers:** Multi-worker concurrent inserts verifying zero ID collisions, exact table counts, and synchronized secondary index compilation (`.inx`, `.fld`, `.src`, `.fac`, `.srt`, `.slg`).
+- **1. Parallel Writers:** Multi-worker concurrent inserts verifying zero ID collisions, exact table counts, and synchronized secondary index compilation (`.inx`, `.fld`, `.src`, `.fac`, `.slg`).
 - **2. Interleaved Reads & Writes:** Concurrent reader processes executing streaming scans and index queries while writers continuously insert new data without deadlocks or corruption.
-- **3. Concurrent Transactions & Crash Recovery:** Simulated sudden process termination mid-transaction, verifying that orphaned `.txn` journals are safely rolled back by `transact_recover` without interfering with active concurrent transactions.
+- **3. Concurrent Transactions & Crash Recovery:** Simulated sudden process termination mid-transaction, verifying that orphaned undo journals (`journal/txn_*`) are safely rolled back by `transact_recover` without interfering with active concurrent transactions.
 - **4. Concurrent URL Slug Collisions:** Dozens of processes simultaneously inserting identical product titles, confirming deterministic `-1`, `-2` suffix generation and 100% bidirectional bijection (`_0.slg` $\leftrightarrow$ `_1.slg`).
 - **5. High-Concurrency Inventory Decrements:** Multiple workers decrementing stock on the same product record under `flock_open` write locks, verifying atomic final inventory consistency.
 
@@ -993,11 +992,11 @@ AmberDB provides a dedicated **2-Phase Batch Pipeline** for ingesting and updati
 
 ### 8.1 Why Use `insert_list` Instead of `insert_id` in a Loop?
 
-Executing `insert_id` in a loop forces the operating system to perform $N$ independent file opens (`open/tie`), lock acquisitions (`flock`), auto-increment sequence mutations, and secondary index writes (`.inx`, `.src`, `.fld`, `.fac`, `.srt`). For $N$ records, this incurs $O(N \times K)$ file I/O operations and process context switches.
+Executing `insert_id` in a loop forces the operating system to perform $N$ independent file opens (`open/tie`), lock acquisitions (`flock`), auto-increment sequence mutations, and secondary index writes (`.inx`, `.src`, `.fld`, `.fac`). For $N$ records, this incurs $O(N \times K)$ file I/O operations and process context switches.
 
 `insert_list` splits the ingestion workflow into 2 unified phases, reducing I/O complexity to $O(K)$:
 1. **Phase 1 (Single I/O Master Table Write):** The `.db` Berkeley DB file is opened exactly **once** (`table_write`). Auto-increment IDs are allocated contiguously (`table_autoid`), field formatters and schema rules are evaluated, and all records are flushed into the hash table in one single stream (`recs_put`).
-2. **Phase 2 (Batched Secondary Index Merge):** Each secondary index file (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, and junk tier) is opened exactly **once** and the entire batch is compiled into binary bitsets and B-tree branches via unified merges (`records_add`, `search_add`, `match_add`, `facet_add`, `sort_add`).
+2. **Phase 2 (Batched Secondary Index Merge):** Each secondary index file (`.inx`, `.src`, `.fld`, `.fac`, and junk tier) is opened exactly **once** and the entire batch is compiled into binary bitsets and B-tree branches via unified merges (`records_add`, `search_add`, `match_add`, `facet_add`, `sort_add`).
 
 > [!TIP]
 > On a batch of 10,000 records, `insert_list` finishes **50x to 100x faster** than a standard `insert_id` loop.
@@ -1064,7 +1063,7 @@ AmberDB stores tables, indexes, and schema definitions in dedicated physical dir
 
 | Directory | Purpose |
 |---|---|
-| `dbstore/table/` | Base data (`.db`) and binary indexes (`.inx`, `.fld`, `.src`, `.fac`, `.srt`, `.slg`) |
+| `dbstore/table/` | Base data (`.db`) and binary indexes (`.inx`, `.fld`, `.src`, `.fac`, `.slg`) |
 | `dbstore/schema/` | Schema files (`.table`) and group configs (`.dbase`) |
 | `dbstore/config/` | Plain-text `.conf` configuration and property files |
 | `dbstore/backup/` | Daily CSV audit backups (`dbgun/YYYYMMDD/`) |
@@ -1091,7 +1090,7 @@ Schema design in AmberDB is **modular, tiered, and highly flexible**:
     record_index => 1,                      # Enable .inx primary record index & auto-increment counter
     match_block  => [ 1, 2, 3, 11 ],        # .fld Exact field match indexes (Category, Brand, Author, Status)
     search_block => [ 4, 5, 7, 9 ],         # .src Full-text search fields (Title, Subtitle, Description, Barcode)
-    sort_block   => [ 4, { blk => 10, type => 'num' } ], # .srt Pre-sorted binary ID buffers
+    sort_block   => [ 4, { blk => 10, type => 'num' } ], # .inx Pre-sorted binary ID buffers
     keep_deleted => 1,                      # Preserve soft-deleted record timestamps in .del
     log_owner    => 1,                      # Write operator audit trails to .aut log
 }
@@ -1155,7 +1154,7 @@ The following reference table details all top-level parameters supported in `.ta
 | `record_index` | `0 / 1` | `0` | `readall` | When `1`, enables the `.inx` primary binary index, `table_count`, `table_lastid`, and auto-increment. |
 | `search_block` | `ARRAY` | `[]` | - | Block numbers indexed in `.src` for full-text inverted search. |
 | `match_block` | `ARRAY` | `[]` | `fields` | Block numbers indexed in `.fld` for exact field-to-ID matching and relational lookup. |
-| `sort_block` | `ARRAY` | `[]` | - | Pre-computed `.srt` binary sort indexes (`[ 4, { blk => 10, type => 'num' } ]`). |
+| `sort_block` | `ARRAY` | `[]` | - | Pre-computed `.inx` binary sort indexes (`[ 4, { blk => 10, type => 'num' } ]`). |
 | `facet_block` | `ARRAY` | `[]` | `filter_block` | Block numbers indexed in `.fac` for columnar faceted category navigation. |
 | `slug_block` | `ARRAY` | `[]` | `rwlink` | Block numbers combined for automated bidirectional `.slg` URL slug generation (e.g. `[2, 4]`). |
 | `use_facet` | `0 / 1` | `0` | - | Enables the facet counting engine and `field_fltkeys` / `facet_menu` on the table. |
@@ -1206,10 +1205,10 @@ AmberDB uses **8 unified core storage types** across serialization (`db_encode`/
 | Field Type (`type`) | Description | `enc_validate` (Write Phase) | `dec_validate` (Read Phase) | Indexing & Sorting Behavior |
 | :--- | :--- | :--- | :--- | :--- |
 | **`auto_id`** | Auto-increment ID (Block 0) | Primary key format validation | ID scalar return | Primary key index (`.inx`) |
-| **`text`** | Standard UTF-8 Text | UTF-8 string validation | String scalar (`$val // ''`) | Inverted index (`.src`), dictionary (`.str`) |
-| **`num`** / **`number`** | Numeric (Integer / Float / Boolean) | Numeric validation (`^[+-]?[0-9]+(?:\.[0-9]+)?$`), defaults empty to `0` | Numeric scalar cast (`0 + $val`) | Numerical sorting (`<=>`) in `.srt`, `.fld` filters |
-| **`ascii`** | ASCII-Only Text | ASCII normalization via `to_ascii` | Clean ASCII text | URL slug map (`.slg`), ASCII `.srt` sorting |
-| **`date`** | Date and Time | Assigns system date if `auto_date` is active | Date string | Chronological sort in `.srt` via `str2dateid` |
+| **`text`** | Standard UTF-8 Text | UTF-8 string validation | String scalar (`$val // ''`) | Inverted index (`.src`), unique dictionary (`.unq`) |
+| **`num`** / **`number`** | Numeric (Integer / Float / Boolean) | Numeric validation (`^[+-]?[0-9]+(?:\.[0-9]+)?$`), defaults empty to `0` | Numeric scalar cast (`0 + $val`) | Numerical sorting (`<=>`) in `.inx`, `.fld` filters |
+| **`ascii`** | ASCII-Only Text | ASCII normalization via `to_ascii` | Clean ASCII text | URL slug map (`.slg`), ASCII `.inx` sorting |
+| **`date`** | Date and Time | Assigns system date if `auto_date` is active | Date string | Chronological sort in `.inx` via `str2dateid` |
 | **`array`** / **`repeat`** | List / Repeating Rows | ARRAY ref or `[split /,/]` | Perl `ARRAY` ref (`[]`) | Multi-value matching (`field_fetch`) |
 | **`hash`** | Dictionary / Object (HASH ref) | HASH ref validation | Perl `HASH` ref (`{}`) | Schemaless nested key-value store |
 | **`binary`** | Binary Payload / Base64 | Raw bytes or Base64 string | Raw binary scalar | Direct flat file storage |
@@ -1290,11 +1289,11 @@ Multiple validation rules can be chained using semicolon (`;`) (e.g. `valid => "
 
 #### 9.7.6 Unique Constraints & Bidirectional String/ID Dictionary (`.unq`)
 
-AmberDB uses `.unq` (Unique & Dictionary) index files (`${table}_${block}.unq`) to manage both **uniqueness validation** and **relational string $\leftrightarrow$ numeric ID translation** with $O(1)$ disk lookup speed:
+AmberDB uses `.unq` (Unique & Dictionary) index files (`${table}.unq`) to manage both **uniqueness validation** and **relational string $\leftrightarrow$ numeric ID translation** with $O(1)$ disk lookup speed:
 
-1. **Extension Clarity:** Renamed from legacy `.str` to `.unq` to eliminate any visual ambiguity with `.srt` (Sort indexes).
+1. **Extension Clarity:** Uses `.unq` for unique constraints and relational string dictionary mappings.
 2. **$O(1)$ Duplicate Enforcement (`valid => "unique"`):**
-   - When `valid => "unique"` is specified (e.g. `username`, `email`, `barcode`), `insert_id` and `modify_id` perform an instantaneous $O(1)$ check on `s:$value` in `${table}_${blk}.unq`.
+   - When `valid => "unique"` is specified (e.g. `username`, `email`, `barcode`), `insert_id` and `modify_id` perform an instantaneous $O(1)$ check on `s:$value` in `${table}.unq`.
    - If another record holds this value, the transaction is rejected with a unique constraint error.
    - Successfully written records store bidirectional mappings (`s:$value => $rid` and `n:$rid => $value`), which are automatically cleaned up when records are deleted.
 3. **RDBM & `match_block` String-to-ID Auto-Resolution:**
@@ -1632,7 +1631,7 @@ Unlike network-based cache layers (such as Redis or Memcached), AmberDB's RAM-di
 
 * **Native File Format Mirroring:** AmberDB stores all table files on RAM-disk using their exact native extensions (`.db`, `.inx`, `.fld`, `.src`, `.fac`, `.unq`, `.slg`). Proprietary `.cache` file formats are completely retired.
 * **Synchronous Dual-Writing:** When a record is created or modified, the engine writes to both the persistent disk and the RAM-disk synchronously. Reads are served at RAM speeds; disk permanence is never compromised.
-* **ACID Transaction Protection:** Writes to RAM-disk are fully protected by AmberDB's WAL undo-journaling (`.txn`) and Strict 2PL locking. If a transaction rolls back, changes across both persistent disk and RAM-disk are cleanly restored in reverse LIFO order.
+* **ACID Transaction Protection:** Writes to RAM-disk are fully protected by AmberDB's WAL undo-journaling (`dbstore/journal/txn_*`) and Strict 2PL locking. If a transaction rolls back, changes across both persistent disk and RAM-disk are cleanly restored in reverse LIFO order.
 * **Automated Mount Verification & Fallback:** Before accessing RAM-disk files, the engine verifies that the RAM-disk is actively mounted. If unmounted, AmberDB automatically and gracefully falls back to durable disk storage with zero downtime.
 
 ### 13.3 RAM-Disk vs. L1 Process Cache
@@ -1863,29 +1862,29 @@ $adb->table_create("catalog_product");
 
 ### 15.5 String & Text Processing Utilities (`Amber::Util::String`)
 
-Since `AmberDB` inherits from `Amber::Util::String`, a suite of fast string sanitization, formatting, and classification helpers are directly accessible on `$adb`:
+Since `AmberDB` inherits from `Amber::Util::String`, a suite of fast string sanitization, formatting, and classification helpers are directly accessible on `$String`:
 
 ```perl
 # 1. Whitespace Normalization & Flattener (trim_space)
-my $clean = $adb->trim_space("  hello \n\t world  ");      # Preserves line breaks
-my $flat  = $adb->trim_space("  hello \n\t world  ", 1);   # Flattens all whitespace to single space
+my $clean = $String->trim_space("  hello \n\t world  ");      # Preserves line breaks
+my $flat  = $String->trim_space("  hello \n\t world  ", 1);   # Flattens all whitespace to single space
 ```
 
 ```perl
 # 2. HTML Tag Stripping (remove_tags)
-my $text = $adb->remove_tags("<p>Description with <br/>line break</p>");
+my $text = $String->remove_tags("<p>Description with <br/>line break</p>");
 
 # 3. Text Truncation with Ellipsis Preservation (truncate_text / sub_str / short_title)
-my $summary = $adb->truncate_text($long_body, 120);        # Word-boundary safe truncation
-my $short   = $adb->short_title($product_title, 32);       # ASCII-normalized short slug/title
+my $summary = $String->truncate_text($long_body, 120);        # Word-boundary safe truncation
+my $short   = $String->short_title($product_title, 32);       # ASCII-normalized short slug/title
 
 # 4. Data Pattern Classifier (what_isthis)
-my $type = $adb->what_isthis("user@example.com");          # Returns: 'email'
+my $type = $String->what_isthis("user@example.com");          # Returns: 'email'
 # Recognizes: email, barcode, gsm, phone, tcno, number, ascii, letter, domain, other
 
 # 5. HTML Entity Conversion (html_ascode / code_ashtml / text2html / html2text)
-my $encoded_html = $adb->html_ascode('<a href="test">');   # Encodes special characters to HTML entities
-my $plain_text   = $adb->html2text($html_document);
+my $encoded_html = $String->html_ascode('<a href="test">');   # Encodes special characters to HTML entities
+my $plain_text   = $String->html2text($html_document);
 ```
 
 ---
@@ -2011,7 +2010,7 @@ To disable this backup stream:
 ### 17.3 Native Database Archive (`.amberdb` Dump & Restore)
 AmberDB packages all schemas (`schema/*.table`, `schema/*.dbase`) and authoritative data files (`tables/*.db`, `tables/*.del`, `tables/*.aut`, `tables/*.cnt`) alongside cryptographically verified SHA-256 checksums in a single compressed, portable **`.amberdb`** archive file that mirrors the native physical database directory structure.
 
-Derived index files (`.inx`, `.src`, `.fld`, `.fac`, `.srt`) are intentionally excluded to keep archives compact and ensure future-proof portability; `restore` deterministically rebuilds all indexes via `set_index`.
+Derived index files (`.inx`, `.src`, `.fld`, `.fac`) are intentionally excluded to keep archives compact and ensure future-proof portability; `restore` deterministically rebuilds all indexes via `set_index`.
 
 ```perl
 use AmberDB;
@@ -2102,20 +2101,16 @@ AmberDB file extensions are classified into 3 operational tiers based on their a
 | `.db` | Primary Data (Source of Truth) | **No** (Authoritative) | Berkeley DB master document table (`DB_File` Hash). |
 | `.del` | Soft-Deleted Archive | **No** (Authoritative) | Archive of soft-deleted records (`keep_deleted`). |
 | `.aut` | User Audit Trail | **No** (Authoritative) | Chronological user action log (`log_owner`). |
-| `.str` | String Dictionary Mapping | **No** (Authoritative) | Bidirectional string-to-foreign-key dictionary file (`_${blk}.str`). |
+| `.unq` | Unique & Dictionary Mapping | **No** (Authoritative) | Unique field constraints and bidirectional string dictionary. |
 | **Derived Secondary Indexes** | | | |
 | `.inx` | Record Index |  **Yes** (`set_index`) | Binary array of all active IDs, total count, highest ID. |
+| `.inx` | Sort Index |  **Yes** (`set_index`) | Pre-sorted binary array of record IDs (`sort_block`). |
 | `.fld` | Inverted Match Index |  **Yes** (`set_index`) | Block-level key-to-IDs inverted index (`match_block`). |
 | `.src` | Full-Text Search Index |  **Yes** (`set_index`) | Word-level token inverted index (`search_block`). |
-| `.srt` | Sort Index |  **Yes** (`set_index`) | Pre-sorted binary array of record IDs (`sort_block`). |
 | `.fac` | Facet Navigation Index |  **Yes** (`set_index`) | Forward index for faceted filter navigation (`facet_block`). |
 | `.slg` | URL Slug Map |  **Yes** (`set_index`) | Bidirectional map: `_0.slg` (ID→Slug) and `_1.slg` (Slug→ID). |
-| `.jinx`| Junk Record Index |  **Yes** (`set_index`) | Binary primary index for cold/archived records (`use_junk`). |
-| `.jfld`| Junk Match Index |  **Yes** (`set_index`) | Field match index for cold records (`jnktype => 'B'/'AB'`). |
-| `.jsrc`| Junk Full-Text Search |  **Yes** (`set_index`) | Word-level inverted index for cold records (`jnktype => 'B'/'AB'`). |
 | **Runtime & Transient Files** | | | |
 | `.cnt` | View / Hit Counter | Counter state | Hit/read counter file (`use_counter`). |
-| `.txn` | Transaction Undo Journal | Transient (Runtime) | Active transaction rollback journal file (`txn/`). |
 | `.tmp` | Disk Buffer File | Transient (Staging) | Disk staging buffer file under `dbstore/buffer/` (`buffer_write`). |
 | `.lock` | Process Mutex Lock | Transient (Mutex) | OS `flock` process synchronization lock file. |
 
@@ -2141,7 +2136,7 @@ dbstore/
 │   └── catalog_product.del      ← Soft-deleted records
 ├── ramdisk/                     ← RAM-Disk Mount & Storage (Linux tmpfs, macOS APFS, Windows ImDisk)
 ├── buffer/                      ← Transient Disk Buffer / Staging Files
-├── txn/                         ← Active Transaction Journals
+├── journal/                     ← Active Transaction Journals (txn_*)
 ├── pids/                        ← Lock Files
 └── backup/                      ← Daily CSV Backups
 ```
@@ -2351,7 +2346,7 @@ In AmberDB, you declare indexes once in the table's `.table` schema file:
     match_block  => [1, 3],    # Customer ID & Product ID match index (.fld)
     search_block => [4],       # Full-text search index (.src)
     facet_block  => [1, 2],    # Faceted navigation index (.fac)
-    sort_block   => [10],      # Binary sorted price index (.srt)
+    sort_block   => [10],      # Binary sorted price index (.inx)
     slug_block   => [1, 4],    # Bidirectional URL slug index (.slg)
     log_owner    => 1,         # User audit trail (.aut)
     keep_deleted => 1,         # Soft-delete archive (.del)

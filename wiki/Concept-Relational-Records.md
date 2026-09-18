@@ -105,7 +105,7 @@ print "Found $total matching products.\n";
 
 ## 4. Bidirectional Dictionary & Uniqueness Index (`.unq`)
 
-For dynamic facets and text tags, AmberDB maintains bidirectional `.unq` dictionary files (`${table}_${blk}.unq`):
+For dynamic facets and text tags, AmberDB maintains bidirectional `.unq` dictionary files (`${table}.unq`):
 - Text $\rightarrow$ Integer ID (`s:Text` $\rightarrow$ `ID`)
 - Integer ID $\rightarrow$ Text (`n:ID` $\rightarrow$ `Text`)
 

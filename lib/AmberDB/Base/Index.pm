@@ -4,7 +4,7 @@ use 5.016;
 use warnings;
 use Carp qw(croak cluck);
 
-our $VERSION = '5.25.3';
+our $VERSION = '5.26.0';
 
 my $CREATED = '2021-05-24';
 
@@ -1574,7 +1574,26 @@ sub sort_add {
         }
 
         if (%batch_put) {
-            my @sorted_keys = sort { ( $map{$a} // '' ) cmp ( $map{$b} // '' ) } keys %map;
+            my ($existing_range) = $self->index_get( $index_path, "$pfx$blk:vals", 'raw' );
+            my %uniq_vals;
+            if (defined $existing_range && length($existing_range)) {
+                $uniq_vals{$_} = 1 for split /\t/, $existing_range;
+            }
+            foreach my $rec (@$records) {
+                my $v = $rec->[$blk];
+                $uniq_vals{$v} = 1 if defined $v && $v ne '';
+            }
+            my $is_num = 1;
+            for my $k ( keys %uniq_vals ) {
+                if ( $k !~ /^-?[0-9]+(?:\.[0-9]+)?$/ ) {
+                    $is_num = 0;
+                    last;
+                }
+            }
+            my @sorted_vals = $is_num ? ( sort { $a <=> $b } keys %uniq_vals ) : ( sort { $a cmp $b } keys %uniq_vals );
+            $batch_put{"$pfx$blk:vals"} = join( "\t", @sorted_vals ) if @sorted_vals;
+
+            my @sorted_keys = sort { ( ( $map{$a} // '' ) cmp ( $map{$b} // '' ) ) || ( $a <=> $b ) } keys %map;
             $self->index_put( $index_path, $sort_key_name, \@sorted_keys, "ids" );
             $self->index_put( $index_path, \%batch_put, "raw" );
         }
@@ -1653,7 +1672,44 @@ sub sort_modify {
         }
 
         if ($modified) {
-            my @sorted_keys = sort { ( $map{$a} // '' ) cmp ( $map{$b} // '' ) } keys %map;
+            my ($existing_range) = $self->index_get( $index_path, "$pfx$blk:vals", 'raw' );
+            my %uniq_vals;
+            if (defined $existing_range && length($existing_range)) {
+                $uniq_vals{$_} = 1 for split /\t/, $existing_range;
+            }
+            my $field_path = "${table_path}.fld";
+            foreach my $pair (@$pairs) {
+                my $old_v = $pair->[1]->[$blk];
+                my $new_v = $pair->[2]->[$blk];
+                $uniq_vals{$new_v} = 1 if defined $new_v && $new_v ne '';
+                if ( defined $old_v && $old_v ne '' && ( !defined $new_v || $new_v ne $old_v ) ) {
+                    if ( -e $field_path ) {
+                        my ($rem) = $self->index_get( $field_path, "$pfx$blk:$old_v", 'raw' );
+                        if ( !defined $rem || length($rem) < 8 ) {
+                            delete $uniq_vals{$old_v};
+                        }
+                    }
+                }
+            }
+            my $is_num = ( $type eq 'num' || $type eq 'decimal' ) ? 1 : 0;
+            if ( !$is_num && %uniq_vals ) {
+                $is_num = 1;
+                for my $k ( keys %uniq_vals ) {
+                    if ( $k !~ /^-?[0-9]+(?:\.[0-9]+)?$/ ) {
+                        $is_num = 0;
+                        last;
+                    }
+                }
+            }
+            my @sorted_vals = $is_num ? ( sort { $a <=> $b } keys %uniq_vals ) : ( sort { $a cmp $b } keys %uniq_vals );
+            if (@sorted_vals) {
+                $batch_put{"$pfx$blk:vals"} = join( "\t", @sorted_vals );
+            }
+            else {
+                $self->index_del( $index_path, "$pfx$blk:vals" );
+            }
+
+            my @sorted_keys = sort { ( ( $map{$a} // '' ) cmp ( $map{$b} // '' ) ) || ( $a <=> $b ) } keys %map;
             $self->index_put( $index_path, $sort_key_name, \@sorted_keys, "ids" );
             $self->index_put( $index_path, \%batch_put, "raw" ) if %batch_put;
         }
@@ -1686,6 +1742,14 @@ sub sort_del {
             foreach my $cfg ( @{ $table_info->{sort_block} } ) {
                 my $blk = ref($cfg) eq 'HASH' ? ( $cfg->{blk} // $cfg->{block} // 0 ) : $cfg;
                 $blk    = $self->resolve_block_idx( $tableid, $blk ) if $tableid;
+                my $type = ref($cfg) eq 'HASH' ? $cfg->{type} : undef;
+                if ( ( !defined $type || $type eq '' || $type eq 'auto' ) && $table_info->{blocks} ) {
+                    if ( ref($table_info->{blocks}) eq 'ARRAY' && ref($table_info->{blocks}[$blk]) eq 'HASH' ) {
+                        $type = $table_info->{blocks}[$blk]{type};
+                    }
+                }
+                $type ||= 'string';
+
                 my $sort_key_name = "$pfx$blk:keys";
 
                 my ($raw_keys) = $self->index_get( $index_path, $sort_key_name, "raw" );
@@ -1698,6 +1762,7 @@ sub sort_del {
                         }
                         else {
                             $self->index_del( $index_path, $sort_key_name );
+                            $self->index_del( $index_path, "$pfx$blk:vals" );
                         }
                     }
                 }
@@ -1709,8 +1774,50 @@ sub sort_del {
                     }
                     else {
                         $self->index_del( $index_path, $sort_key_name );
+                        $self->index_del( $index_path, "$pfx$blk:vals" );
                     }
                 }
+
+                # Check and prune deleted values from $pfx$blk:vals if no remaining keys in .fld
+                my $field_path = "${table_path}.fld";
+                if ( -e $field_path ) {
+                    my ($existing_vals) = $self->index_get( $index_path, "$pfx$blk:vals", 'raw' );
+                    if ( defined $existing_vals && length($existing_vals) ) {
+                        my %uniq_vals = map { $_ => 1 } split /\t/, $existing_vals;
+                        my $vals_changed = 0;
+                        foreach my $rec (@$records) {
+                            my $v = $rec->[$blk];
+                            next unless defined $v && $v ne '';
+                            if ( exists $uniq_vals{$v} ) {
+                                my ($rem) = $self->index_get( $field_path, "$pfx$blk:$v", 'raw' );
+                                if ( !defined $rem || length($rem) < 8 ) {
+                                    delete $uniq_vals{$v};
+                                    $vals_changed = 1;
+                                }
+                            }
+                        }
+                        if ($vals_changed) {
+                            if (%uniq_vals) {
+                                my $is_num = ( $type eq 'num' || $type eq 'decimal' ) ? 1 : 0;
+                                if ( !$is_num ) {
+                                    $is_num = 1;
+                                    for my $k ( keys %uniq_vals ) {
+                                        if ( $k !~ /^-?[0-9]+(?:\.[0-9]+)?$/ ) {
+                                            $is_num = 0;
+                                            last;
+                                        }
+                                    }
+                                }
+                                my @sorted_vals = $is_num ? ( sort { $a <=> $b } keys %uniq_vals ) : ( sort { $a cmp $b } keys %uniq_vals );
+                                $self->index_put( $index_path, "$pfx$blk:vals", join( "\t", @sorted_vals ), 'raw' );
+                            }
+                            else {
+                                $self->index_del( $index_path, "$pfx$blk:vals" );
+                            }
+                        }
+                    }
+                }
+
                 my @del_keys = map { "$pfx$blk:$_" } @del_ids;
                 $self->index_del( $index_path, \@del_keys ) if @del_keys;
             }

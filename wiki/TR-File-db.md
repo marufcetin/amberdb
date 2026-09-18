@@ -10,7 +10,7 @@
 
 ## 1. Tanim ve Genel Bakis
 
-`.db` dosyasi, AmberDB'nin tek yetkili hakikat kaynagidir (single source of truth). Serilestirilmis kayit govdelerini birincil anahtarlara gore saklar. Diger tum ikincil indeksler (`.inx`, `.src`, `.fld`, `.fac`, `.srt`) turetilmis yapilardir ve istendigi zaman `.db` dosyasindan yeniden uretilebilir.
+`.db` dosyasi, AmberDB'nin tek yetkili hakikat kaynagidir (single source of truth). Serilestirilmis kayit govdelerini birincil anahtarlara gore saklar. Diger tum ikincil indeksler (`.inx`, `.src`, `.fld`, `.fac`, `.slg`) turetilmis yapilardir ve istendigi zaman `.db` dosyasindan yeniden uretilebilir.
 
 ---
 

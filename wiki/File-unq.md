@@ -10,9 +10,9 @@
 
 ## 1. Definition and Overview
 
-The **`.unq` (Unique & Dictionary Index)** file is an authoritative bidirectional dictionary table (`dbstore/table/${table}_${block}.unq`) that simultaneously enforces **field uniqueness constraints (`valid => "unique"`)** and transparently **maps textual attribute labels (e.g. Brands, Publishers, Variant names) to compact integer identifiers**.
+The **`.unq` (Unique & Dictionary Index)** file is an authoritative bidirectional dictionary table (`dbstore/table/${table}.unq`) that simultaneously enforces **field uniqueness constraints (`valid => "unique"`)** and transparently **maps textual attribute labels (e.g. Brands, Publishers, Variant names) to compact integer identifiers**.
 
-AmberDB standardizes on `.unq` (superseding legacy `.str`) to prevent confusion with `.srt` (Sort indexes) and unify uniqueness enforcement.
+AmberDB standardizes on `.unq` to unify field uniqueness enforcement and string-to-ID dictionary management.
 
 ```text
 .unq Bidirectional Key Mapping Architecture

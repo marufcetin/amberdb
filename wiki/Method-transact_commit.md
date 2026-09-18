@@ -10,7 +10,7 @@
 
 ## 1. Definition and Overview
 
-`transact_commit()` explicitly commits the current active transaction. It synchronizes all dirty Berkeley DB pages to physical disk, removes the active `.txn` rollback journal, and releases all acquired Strict 2PL locks.
+`transact_commit()` explicitly commits the current active transaction. It synchronizes all dirty Berkeley DB pages to physical disk, removes the active rollback journal, and releases all acquired Strict 2PL locks.
 
 > [!NOTE]
 > `transact_commit()` is an internal engine method. In normal application code, transactions should be concluded using `transact_end()`. `transact_end()` automatically calls `transact_commit()` if no errors occurred during the transaction.

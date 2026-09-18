@@ -13,7 +13,7 @@
 `delete_id()`, birincil anahtar ID'si verilen tekil bir kaydi tablodan siler.
 - **Yumusak Silme (`keep_deleted => 1`):** Semada veya ayarlarda aktifse kayit kalici olarak yok edilmez; `.del` cop kutusu tablosuna tasinir.
 - **Kalıcı Silme (`keep_deleted => 0`):** Kayit `.db` tablosundan tamamen cikarilir.
-- Kaydin ID'si tum ikincil indekslerden (`.inx`, `.fld`, `.src`, `.fac`, `.srt`) otomatik cikarilir ve WAL gunlugune islenir.
+- Kaydin ID'si tum ikincil indekslerden (`.inx`, `.fld`, `.src`, `.fac`, `.slg`) otomatik cikarilir ve WAL gunlugune islenir.
 
 ---
 

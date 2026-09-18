@@ -10,7 +10,7 @@
 
 ## 1. Definition and Overview
 
-`transact_end()` concludes the active transaction. If no errors occurred during execution, it commits changes via `transact_commit()`, deletes the `.txn` journal, releases all Strict 2PL locks, and returns `{ status => "commit" }`.
+`transact_end()` concludes the active transaction. If no errors occurred during execution, it commits changes via `transact_commit()`, deletes the undo journal, releases all Strict 2PL locks, and returns `{ status => "commit" }`.
 
 If an underlying database error occurred or if `transact_error()` was called to abort the transaction, the rollback status is returned as `{ status => "rollback" }`.
 

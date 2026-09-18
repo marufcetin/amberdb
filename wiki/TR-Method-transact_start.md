@@ -47,4 +47,3 @@ if ($@) {
 - [Metot: transact_error](TR-Method-transact_error)
 - [Metot: transact_end](TR-Method-transact_end)
 - [Metot: transact_rollback](TR-Method-transact_rollback)
-- [Dosya: .txn (Islem Gunlugu)](TR-File-txn)

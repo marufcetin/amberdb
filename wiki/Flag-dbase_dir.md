@@ -18,7 +18,7 @@ In standard mode, AmberDB organizes database files under structured subfolders b
 - `schema/` — Table schema definition files (`.table`).
 - `dbase/` — Database group and access control files (`.dbase`).
 - `del/` — Soft-deleted record archives (`.del`).
-- `txn/` — ACID transaction undo journals (`.txn`).
+- `journal/` — ACID transaction undo journals (`txn_*`).
 - `log/` — User audit logs (`.aut`) and operation logs.
 - `ramdisk/` — Default mount target for transparent physical RAM-disk storage.
 

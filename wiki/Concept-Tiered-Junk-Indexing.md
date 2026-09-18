@@ -13,8 +13,8 @@
 **Tiered Hot/Cold Storage and Junk Indexing** is AmberDB's automated lifecycle management system for partitioning active operational records from stale, expired, out-of-stock, or historical data.
 
 Rather than moving passive records to separate archive tables (which breaks ID references and complicates application logic), AmberDB keeps all data inside the single master `.db` table while partitioning secondary indexes into two distinct tiers:
-- **Hot / Active Tier (Tier A):** Active records indexed into standard files (`.inx`, `.fld`, `.src`, `.fac`, `.srt`).
-- **Cold / Junk Tier (Tier B):** Passive or out-of-stock records indexed into separate junk index files (`.jinx`, `.jfld`, `.jsrc`).
+- **Hot / Active Tier (Tier A):** Active records indexed into standard files (`.inx`, `.fld`, `.src`, `.fac`).
+- **Cold / Junk Tier (Tier B):** Passive or out-of-stock records indexed into separate junk index keys.
 
 Queries can seamlessly target active records only (`jnktype => 'A'`), historical records only (`jnktype => 'B'`), or execute high-speed single-pass hybrid searches (`jnktype => 'AB'`).
 
@@ -102,4 +102,3 @@ my ($all_count, @archive_results) = $adb->search_table(
 - [Method: field_fetch](Method-field_fetch)
 - [Flag: use_junk](Flag-use_junk)
 - [Flag: jnktype](Flag-jnktype)
-- [File: .jinx (Junk Record Index)](File-jinx)

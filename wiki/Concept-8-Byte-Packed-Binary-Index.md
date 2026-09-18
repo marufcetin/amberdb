@@ -10,7 +10,7 @@
 
 ## 1. Definition and Overview
 
-The **8-Byte Packed Binary Indexing Mechanism** is AmberDB's core indexing format for primary ID lists (`.inx`), pre-sorted query matrices (`.srt`), and cold storage primary indexes (`.jinx`).
+The **8-Byte Packed Binary Indexing Mechanism** is AmberDB's core indexing format for primary ID lists (`.inx`), pre-sorted query matrices, and cold storage primary indexes.
 
 Rather than storing record IDs as variable-length text strings or serialized Perl arrays, AmberDB packs record IDs into dense, fixed-width 8-byte binary integers using Perl's `pack("(Q>)*", @ids)` format. This ensures that every entry occupies exactly 8 bytes of physical storage, allowing sub-millisecond $O(1)$ substring slicing, zero-copy pointer arithmetic, and massive memory savings.
 
@@ -18,7 +18,7 @@ Rather than storing record IDs as variable-length text strings or serialized Per
 > For tables requiring arbitrary string keys (UUIDs, emails, slugs up to 255 bytes), AmberDB provides per-table **Simple Mode (`use_simple => 1`)**, which operates directly on Berkeley DB key-value hash storage with zero binary index overhead.
 
 ```text
-Physical 8-Byte Packed Binary Buffer Layout (.inx / .srt)
+Physical 8-Byte Packed Binary Buffer Layout (.inx)
 
  Byte 0..7     Byte 8..15    Byte 16..23   Byte 24..31   Byte (N-1)*8..N*8
 
@@ -76,4 +76,3 @@ my ($count, @product_ids) = $adb->read_all("catalog_product", { offset => 0, lim
 - [Method: read_all](Method-read_all)
 - [Flag: keys_only](Flag-keys_only)
 - [File: .inx (Packed ID Index)](File-inx)
-- [File: .srt (Pre-Sorted Index)](File-srt)

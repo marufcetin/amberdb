@@ -27,7 +27,7 @@ CRUD operations are split into single-record methods (`insert_id`, `read_id`, `m
 
 ### 2.1 Single-Record Insert (`insert_id`)
 
-When inserting a new record, specify `0` or `undef` at index 0. The engine allocates a unique 64-bit auto-increment ID, synchronizes all secondary indexes (`.inx`, `.fld`, `.src`, `.fac`, `.srt`, `.slg`), and returns the allocated ID.
+When inserting a new record, specify `0` or `undef` at index 0. The engine allocates a unique 64-bit auto-increment ID, synchronizes all secondary indexes (`.inx`, `.fld`, `.src`, `.fac`, `.slg`), and returns the allocated ID.
 
 ```perl
 # Record definition with 0 at index 0

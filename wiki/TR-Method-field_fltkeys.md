@@ -10,7 +10,7 @@
 
 ## 1. Tanim ve Genel Bakis
 
-`field_fltkeys()`, hedef bir blok icin secenek sayimlarini dogrudan ilgili kolon bitset dosyasindan (`_${blok}.fac`) hesaplar. Metin etiketlerini otomatik olarak `.unq` sozluklerinden cozer.
+`field_fltkeys()`, hedef bir blok icin secenek sayimlarini dogrudan ilgili kolon bitset dosyasindan (`.fac`) hesaplar. Metin etiketlerini otomatik olarak `.unq` sozluklerinden cozer.
 
 ---
 

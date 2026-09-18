@@ -33,7 +33,7 @@ While Global Flags govern the entire database session, Table Schema Flags allow 
 | **`match_block`**| `ARRAY-ref`| `[]` | 1-based block indexes mapped to `.fld` inverted exact-match index. |
 | **`search_block`**| `ARRAY-ref`| `[]` | 1-based block indexes mapped to `.src` full-text search token index. |
 | **`facet_block`**| `ARRAY-ref`| `[]` | 1-based block indexes mapped to `.fac` columnar facet bitsets. |
-| **`sort_block`** | `ARRAY-ref`| `[]` | 1-based block indexes pre-sorted into `.srt` binary indexes (e.g. `[ 3, 1 ]`). |
+| **`sort_block`** | `ARRAY-ref`| `[]` | 1-based block indexes pre-sorted into `.inx` binary indexes (e.g. `[ 3, 1 ]`). |
 | **`slug_block`** | `ARRAY-ref`| `[]` | Array of block indices composed into `.slg` bidirectional URL slug map (e.g. `[1, 4, 2]` $\rightarrow$ `1/4/2`). |
 | **`repeat_start`**| `integer` | `undef`| Starting block index for dynamic repeating child rows (e.g. order line items). |
 | **`repeat_ids`** | `integer` | `undef`| Target summary block where extracted child item IDs are joined and stored. |
@@ -49,7 +49,7 @@ Schema Flags to Physical Storage Mapping
  match_block        ───────────────> .fld (Inverted Match Index)
  search_block       ───────────────> .src (Full-Text Search Index)
  facet_block        ───────────────> .fac & .unq (Facet Bitsets & Dictionaries)
- sort_block         ───────────────> .srt (Pre-Sorted Binary Index)
+ sort_block         ───────────────> .inx (Pre-Sorted Binary Index)
  slug_block         ───────────────> .slg (Bidirectional URL Slug Map)
  keep_deleted       ───────────────> .del (Soft-Deleted Archive)
  log_owner          ───────────────> .aut (User Change Audit Ledger)

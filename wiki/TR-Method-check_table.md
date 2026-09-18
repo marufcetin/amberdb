@@ -10,7 +10,7 @@
 
 ## 1. Tanim ve Genel Bakis
 
-`check_table()`, bir tablonun ana veri dosyasini (`.db`) ve tum ikincil indekslerini (`.inx`, `.src`, `.fld`, `.fac`, `.srt`) tarayarak dosya butunlugunu, kayit sayisi tutarliligini ve olasi bozulmalari raporlar.
+`check_table()`, bir tablonun ana veri dosyasini (`.db`) ve tum ikincil indekslerini (`.inx`, `.src`, `.fld`, `.fac`, `.slg`) tarayarak dosya butunlugunu, kayit sayisi tutarliligini ve olasi bozulmalari raporlar.
 
 ---
 

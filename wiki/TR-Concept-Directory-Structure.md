@@ -37,7 +37,7 @@ Standart AmberDB Dizin Agaci (dbstore/)
  │       └── full_backup.amberdb  ← Sikistirilmis yedek arşivi (Pillar 2)
  ├── ramdisk/                     ← RAM-Disk Paylasimli Bellek (Linux tmpfs / macOS APFS / Windows ImDisk)
  ├── buffer/                      ← Disk Staging Tampon Gecici Dosyalari (.tmp)
- └── txn/                         ← Aktif Islem Geri Alma Gunlukleri (.txn)
+ └── journal/                     ← Aktif Islem Geri Alma Gunlukleri (txn_*)
 ```
 
 ---
@@ -47,11 +47,11 @@ Standart AmberDB Dizin Agaci (dbstore/)
 | Dizin | Tipi | Aciklama |
 | :--- | :--- | :--- |
 | **`schema/`** | Kalici | Tablo (`.table`) ve veritabani grup (`.dbase`) semalarinin bulundugu tanim klasorudur. |
-| **`tables/`** | Kalici | Master veriler (`.db`, `.del`, `.aut`, `.cnt`, `.unq`) ve yeniden uretilebilir tum indekslerin (`.inx`, `.fld`, `.src`, `.fac`, `.srt`, `.slg`) saklandigi ana veri deposudur. `table_dir` ile ozellestirilebilir. |
+| **`tables/`** | Kalici | Master veriler (`.db`, `.del`, `.aut`, `.cnt`, `.unq`) ve yeniden uretilebilir tum indekslerin (`.inx`, `.fld`, `.src`, `.fac`, `.slg`) saklandigi ana veri deposudur. `table_dir` ile ozellestirilebilir. |
 | **`backup/`** | Kalici / Arsiv | Yil bazli alt klasorlerde (`backup/YYYY/`) gunluk append-only CSV WAL gunlukleri ve `.amberdb` yedek dosyalarini barindirir. |
 | **`ramdisk/`** | Paylasimli Bellek | RAM-disk (Linux `tmpfs`, macOS `APFS RAM-Disk`, Windows `ImDisk`) mount noktasidir. Tablo bellek kopyalari (`.db`, `.inx`) ve 3. katman ucucu tablolar burada calisir. |
 | **`buffer/`** | Gecici (Staging)| `buffer_write` modunda acilan gecici staging tampon dosyalarini (`.tmp`) barindirir. |
-| **`txn/`** | Gecici (ACID) | Aktif ACID islemlerine ait gecici geri alma gunluklerini (`.txn`) barindirir. Islem bitince temizlenir. |
+| **`journal/`** | Gecici (ACID) | Aktif ACID islemlerine ait gecici geri alma gunluklerini (`txn_*`) barindirir. Islem bitince temizlenir. |
 
 ---
 

@@ -15,7 +15,7 @@
 
 ## 1. Tanim ve Genel Bakis
 
-AmberDB'de standart iliskisel tablolar varsayilan olarak 64-bit isaretsiz tam sayi birincil anahtarlar (`1, 2, 3...`) kullanir ve bunlar `.inx`, `.srt`, `.fld` ikili indekslerine `(Q>)*` formatinda paketlenir. Bu sayede $O(1)$ hizinda sifir kopyalamali (zero-copy) dilimleme saglanir.
+AmberDB'de standart iliskisel tablolar varsayilan olarak 64-bit isaretsiz tam sayi birincil anahtarlar (`1, 2, 3...`) kullanir ve bunlar `.inx`, `.fld` ikili indekslerine `(Q>)*` formatinda paketlenir. Bu sayede $O(1)$ hizinda sifir kopyalamali (zero-copy) dilimleme saglanir.
 
 Bununla birlikte bazi veri modelleri sayisal ID yerine dogal metin anahtarlara ihtiyac duyar:
 - **UUID ve GUID'ler** (orn: `9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d`)
@@ -44,7 +44,7 @@ AmberDB Hibrit Anahtar Mimarisi
 ## 2. Metin Anahtarlarin Avantajlari (`use_simple => 1`)
 
 ### 1. Sifir Indeks Ek Yuku ile Dogrudan $O(1)$ Hash Erisimi
-`use_simple => 1` tablolari Berkeley DB'nin (`DB_File`) hash bloklarina dogrudan erisir. Turetilmis ikili indeks dosyalari (`.inx`, `.src`, `.fld`, `.fac`, `.srt`) uretilmez; boylece maksimum yazma verimi elde edilir ve indeks senkronizasyon maliyeti sifirlanir.
+`use_simple => 1` tablolari Berkeley DB'nin (`DB_File`) hash bloklarina dogrudan erisir. Turetilmis ikili indeks dosyalari (`.inx`, `.src`, `.fld`, `.fac`, `.slg`) uretilmez; boylece maksimum yazma verimi elde edilir ve indeks senkronizasyon maliyeti sifirlanir.
 
 ### 2. 255 Bayta Kadar Anahtar Esnekligi
 Eski 8 baytlik `a8` sinirinin aksine, `use_simple => 1` kontrol karakterleri (`\t`, `\n`, `\0`, `\r`) haricinde 255 bayta kadar dilediginiz uzunlukta metin anahtarini kabul eder.

@@ -37,7 +37,7 @@ Standard AmberDB Directory Hierarchy (dbstore/)
  │       └── full_backup.amberdb  ← Compressed backup archive (Pillar 2)
  ├── ramdisk/                     ← RAM-Disk Shared Memory (Linux tmpfs / macOS APFS / Windows ImDisk)
  ├── buffer/                      ← Transient Disk Staging Files (.tmp)
- └── txn/                         ← Active Transaction Undo Journals (.txn)
+ └── journal/                     ← Active Transaction Undo Journals (txn_*)
 ```
 
 ---
@@ -47,11 +47,11 @@ Standard AmberDB Directory Hierarchy (dbstore/)
 | Directory | Type | Purpose |
 | :--- | :--- | :--- |
 | **`schema/`** | Persistent | Houses table schemas (`.table`) and database group configurations (`.dbase`). |
-| **`tables/`** | Persistent | Primary master data (`.db`, `.del`, `.aut`, `.cnt`, `.unq`) and derived reconstructible indexes (`.inx`, `.fld`, `.src`, `.fac`, `.srt`, `.slg`). Customizable via `table_dir`. |
+| **`tables/`** | Persistent | Primary master data (`.db`, `.del`, `.aut`, `.cnt`, `.unq`) and derived reconstructible indexes (`.inx`, `.fld`, `.src`, `.fac`, `.slg`). Customizable via `table_dir`. |
 | **`backup/`** | Persistent / Archive | Year-partitioned folders (`backup/YYYY/`) holding daily append-only CSV WAL streams and native `.amberdb` archives. |
 | **`ramdisk/`** | Shared Memory | Mount target for OS RAM-disks (Linux `tmpfs`, macOS `APFS RAM-Disk`, Windows `ImDisk`). High-frequency mirrors and Tier 3 volatile tables operate here. |
 | **`buffer/`** | Transient (Staging) | Stores staging buffer files (`.tmp`) during `buffer_write` pipelines. |
-| **`txn/`** | Transient (ACID) | Stores active transaction rollback journals (`.txn`). Removed upon successful commit. |
+| **`journal/`** | Transient (ACID) | Stores active transaction rollback journals (`txn_*`). Removed upon successful commit. |
 
 ---
 

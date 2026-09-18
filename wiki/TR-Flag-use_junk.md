@@ -11,7 +11,7 @@
 
 ## 1. Tanim ve Genel Bakis
 
-`use_junk`, iki katmanli yasam dongusu indekslemesini acar. Aktif ve vitrindeki kayitlar Katman A'ya (`.inx`, `.src`, `.fld`), pasif veya stogu bitmis kayitlar ise Katman B'ye (`.jinx`, `.jsrc`, `.jfld`) yonlendirilir.
+`use_junk`, iki katmanli yasam dongusu indekslemesini acar. Aktif ve vitrindeki kayitlar Katman A'ya (`.inx`, `.src`, `.fld`), pasif veya stogu bitmis kayitlar ise Katman B'ye (`j:` on ekiyle ayni indekslere) yonlendirilir.
 
 ---
 

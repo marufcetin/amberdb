@@ -15,7 +15,7 @@
 Her kayit icin ayri ayri dosya acma, kilitleme ve indeks guncelleme yapmak yerine:
 1. Tabloyu tek seferde kilitler ve dosyayi acar.
 2. Tum kayitlari tek bir akis halinde `.db` tablosuna yazar.
-3. Ikincil indeksleri (`.inx`, `.src`, `.fld`, `.fac`, `.srt`) tek geciste birlestirerek gunceller (single-pass index merging).
+3. Ikincil indeksleri (`.inx`, `.src`, `.fld`, `.fac`, `.slg`) tek geciste birlestirerek gunceller (single-pass index merging).
 4. Toplu veri aktarimlarinda ve ETL sureclerinde **50 ile 100 kat daha yuksek aktarim hizi** saglar.
 
 ---

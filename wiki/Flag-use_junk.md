@@ -11,7 +11,7 @@
 
 ## 1. Definition and Overview
 
-`use_junk` enables two-tier lifecycle indexing. Active, high-visibility records are indexed into Tier A (`.inx`, `.src`, `.fld`), while inactive, out-of-stock, or legacy records are partitioned into Tier B (`.jinx`, `.jsrc`, `.jfld`).
+`use_junk` enables two-tier lifecycle indexing. Active, high-visibility records are indexed into Tier A (`.inx`, `.src`, `.fld`), while inactive, out-of-stock, or legacy records are partitioned into Tier B prefixed with `j:` within the same indexes.
 
 ---
 

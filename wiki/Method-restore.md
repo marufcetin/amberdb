@@ -10,7 +10,7 @@
 
 ## 1. Definition and Overview
 
-`restore()` extracts a `.amberdb` native archive into the target database directory. It validates archive integrity via SHA-256 checksums in `manifest.json`, extracts schemas and authoritative data files, and deterministically reconstructs all binary secondary indexes (`.inx`, `.src`, `.fld`, `.fac`, `.srt`) via `set_index()`.
+`restore()` extracts a `.amberdb` native archive into the target database directory. It validates archive integrity via SHA-256 checksums in `manifest.json`, extracts schemas and authoritative data files, and deterministically reconstructs all binary secondary indexes (`.inx`, `.src`, `.fld`, `.fac`, `.slg`) via `set_index()`.
 
 ---
 

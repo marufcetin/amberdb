@@ -107,7 +107,7 @@ print "Eslesen urun sayisi: $toplam\n";
 
 ## 4. Cift Yonlu Sozluk Indeksi (`.unq`) ile Dinamik Metin Yonetimi
 
-Eger harici veriler metinsel dinamik etiketler ise (orn: Yayinevi, Marka, Renk, Beden), AmberDB `.unq` (`${tablo}_${blok}.unq`) cift yonlu sozluk dosyalarini yonetir:
+Eger harici veriler metinsel dinamik etiketler ise (orn: Yayinevi, Marka, Renk, Beden), AmberDB `.unq` (`${tablo}.unq`) cift yonlu sozluk dosyalarini yonetir:
 - Metin $\rightarrow$ Tamsayi ID (`s:Metin` $\rightarrow$ `ID`)
 - Tamsayi ID $\rightarrow$ Metin (`n:ID` $\rightarrow$ `Metin`)
 

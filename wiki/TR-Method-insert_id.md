@@ -14,9 +14,9 @@
 1. 0. indiste `0`, `undef` veya `""` verilmis ise benzersiz otomatik artan 64-bit ID tahsis eder.
 2. Alanlari sema kurallarina (`schema/*.table`) gore dogrular.
 3. Kaydi serilestirip Berkeley DB ana tablosuna (`tables/*.db`) yazar.
-4. Tanimli tum ikincil indeksleri senkronize gunceller: birincil indeks (`.inx`), esleme (`.fld`), tam metin arama (`.src`), facet (`.fac`) ve siralama (`.srt`).
+4. Tanimli tum ikincil indeksleri senkronize gunceller: birincil ve sirali indeks (`.inx`), esleme (`.fld`), tam metin arama (`.src`), facet (`.fac`) ve URL slug (`.slg`).
 5. Gunluk WAL denetim gunlugune (`backup/YYYY/YYYY-MM-DD.csv`) islem logunu yazar.
-6. Aktif transaction (`transact_start`) varsa geri alma gunlugune (`.txn`) kaydeder.
+6. Aktif transaction (`transact_start`) varsa geri alma gunlugune (`journal/txn_*`) kaydeder.
 
 ---
 

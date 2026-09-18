@@ -10,7 +10,7 @@
 
 ## 1. Tanim ve Genel Bakis
 
-`read_all()`, belirtilen tablodaki kayitlari siralar, sayfalar ve dondurur. 8-byte paketli birincil indeksi (`.inx`) ve onceden sirali indeksleri (`.srt`) kullanarak alt-milisaniye duzeyinde sayfalama yapar; `keys_only` ile yalnizca ID donduren bellek tasarruflu sorgulari destekler.
+`read_all()`, belirtilen tablodaki kayitlari siralar, sayfalar ve dondurur. 8-byte paketli birincil ve onceden siralanmis indeksleri (`.inx`) kullanarak alt-milisaniye duzeyinde sayfalama yapar; `keys_only` ile yalnizca ID donduren bellek tasarruflu sorgulari destekler.
 
 ---
 

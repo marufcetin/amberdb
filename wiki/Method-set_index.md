@@ -10,7 +10,7 @@
 
 ## 1. Definition and Overview
 
-`set_index()` reconstructs all secondary index files (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, `.slg`, Tier B `.j*`) from scratch directly from the authoritative master table (`.db`).
+`set_index()` reconstructs all secondary index files (`.inx`, `.src`, `.fld`, `.fac`, `.slg`) from scratch directly from the authoritative master table (`.db`).
 
 ---
 

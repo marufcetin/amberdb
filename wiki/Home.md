@@ -14,7 +14,7 @@ This wiki is organized as an **encyclopedic reference dictionary**. Each method,
 - **Core Concepts:** [Berkeley DB Engine](Concept-Berkeley-DB) | [Table Schema](Concept-Table-Schema) | [Global Flags](Concept-Global-Flags) | [Table Schema Flags](Concept-Schema-Flags) | [Directory Structure](Concept-Directory-Structure) | [File Structure](Concept-File-Structure) | [Repeat Blocks](Concept-Repeat-Blocks) | [Auto-Increment ID](Concept-Auto-ID) | [String Keys & Simple Mode](Concept-ASCII-ID) | [Relational Records](Concept-Relational-Records) | [Record Anatomy](Concept-Record-Anatomy) | [JOIN-Free Architecture](Concept-JOIN-Free-Architecture) | [Strict 2PL Locking](Concept-Strict-2PL-Locking)
 - **Essential Methods:** [new](Method-new) | [config](Method-config) | [insert_id](Method-insert_id) | [read_id](Method-read_id) | [read_all](Method-read_all) | [modify_id](Method-modify_id) | [delete_id](Method-delete_id) | [field_fetch](Method-field_fetch) | [search_table](Method-search_table) | [facet_menu](Method-facet_menu) | [transact_start](Method-transact_start) | [flock_open](Method-flock_open)
 - **Top Flags:** [log_owner](Flag-log_owner) | [use_counter](Flag-use_counter) | [use_junk](Flag-use_junk) | [keep_deleted](Flag-keep_deleted) | [auto_id](Flag-auto_id) | [buffer_write](Flag-buffer_write) | [simple](Flag-simple) | [jnktype](Flag-jnktype) | [keys_only](Flag-keys_only)
-- **File Types:** [.db](File-db) | [.table](File-table) | [.inx](File-inx) | [.fld](File-fld) | [.src](File-src) | [.fac](File-fac) | [.srt](File-srt) | [.slg](File-slg) | [.txn](File-txn) | [.amberdb](File-amberdb) | [.csv](File-csv)
+- **File Types:** [.db](File-db) | [.table](File-table) | [.inx](File-inx) | [.fld](File-fld) | [.src](File-src) | [.fac](File-fac) | [.slg](File-slg) | [.amberdb](File-amberdb) | [.csv](File-csv)
 
 ---
 
@@ -51,9 +51,9 @@ This wiki is organized as an **encyclopedic reference dictionary**. Each method,
 AmberDB Architecture
  Storage Engine (Berkeley DB DB_File Hash)
     Master Data: .db, .del, .aut, .cnt
-    Secondary Derived Indexes: .inx, .fld, .src, .fac, .srt, .slg
+    Secondary Derived Indexes: .inx, .fld, .src, .fac, .slg
  Schema Layer (.table, .dbase, in-memory table_attr)
- Concurrency & ACID (Strict 2PL, OS flock, Undo-Journal .txn)
+ Concurrency & ACID (Strict 2PL, OS flock, Undo-Journal)
  Indexing Subsystem (8-byte packed Q>*, columnar bitsets, accent normalizer)
  Tiered Storage Subsystem (.jnk cold tier, single-pass hybrid queries)
  RAM-Disk Subsystem (Linux tmpfs, macOS APFS, Windows ImDisk mirroring & Tier 3 volatile cache, disk buffers)
@@ -130,7 +130,7 @@ AmberDB Architecture
 - [transact_end](Method-transact_end) - Concludes transaction (commits if clean)
 - [transact_commit](Method-transact_commit) - (Internal) Commits active transaction
 - [transact_rollback](Method-transact_rollback) - (Internal) Reverts transaction in LIFO order
-- [transact_recover](Method-transact_recover) - Recovers orphaned .txn journals on startup
+- [transact_recover](Method-transact_recover) - Recovers orphaned undo journals on startup
 - [flock_open](Method-flock_open) - Acquires table or record-level lock
 - [flock_close](Method-flock_close) - Releases table or record-level lock
 
@@ -194,14 +194,12 @@ AmberDB Architecture
 - [.fld](File-fld) - Inverted exact match secondary index
 - [.src](File-src) - Inverted full-text search index
 - [.fac](File-fac) - Columnar facet bitset index
-- [.srt](File-srt) - Monotonic binary pre-sorted index
 - [.slg](File-slg) - Bidirectional URL slug mapping file
 - [.unq](File-unq) - Bidirectional dictionary & uniqueness index
 - [.del](File-del) - Soft-deleted records archive file
 - [.aut](File-aut) - User chronological audit trail log
 - [.cnt](File-cnt) - View and hit counter store
 - [.lnk](File-lnk) - Alias and merged duplicate record routing table
-- [.txn](File-txn) - Active transaction undo-journal file
 - [.amberdb](File-amberdb) - Compressed native database archive
 - [.csv](File-csv) - Daily continuous WAL audit stream
 - [.tmp](File-tmp) - Disk buffer staging file

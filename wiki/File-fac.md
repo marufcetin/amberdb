@@ -3,14 +3,14 @@
 [Turkce Dokumantasyon](TR-File-fac) | [English Documentation](File-fac)
 
 > **Category:** File Formats & Storage  
-> **Location:** `dbstore/table/${table_id}_${block_idx}.fac`  
+> **Location:** `dbstore/table/${table_id}.fac`  
 > **Format:** Columnar Fixed-Width Forward Index Bitset Array
 
 ---
 
 ## 1. Definition and Overview
 
-The `.fac` file stores columnar forward attribute values mapped directly by Record ID offset. Together with string dictionaries (`_${block_idx}.unq`), it enables instantaneous disjunctive (OR) facet menu count aggregations.
+The `.fac` file stores columnar forward attribute values mapped directly by Record ID offset. Together with string dictionaries (`.unq`), it enables instantaneous disjunctive (OR) facet menu count aggregations.
 
 ---
 

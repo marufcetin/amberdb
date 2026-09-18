@@ -24,7 +24,7 @@ use parent qw(
 our $DB_HASH;
 our $hash_info;
 
-our $VERSION = '5.25.3';
+our $VERSION = '5.26.0';
 my $CREATED = '2005-01-28';
 
 
@@ -50,6 +50,7 @@ sub new {
     $self->{_cache} ||= {};
     $self->{_auth}  ||= {};
     $self->{_pid}   ||= {};
+    $self->{_date}    = {};
 
     # Normalize connect parameters
     $self->{_connect}->{database} //= delete $self->{database} // delete $self->{dbase} // delete $self->{dbname};
@@ -126,12 +127,12 @@ sub new {
     my @allowed = grep { !$seen{$_}++ } (
         @input_keys,
         qw(
-            _dbase _table _cache _auth _pid _txn _db _dbm _fd _tie
+            _dbase _table _cache _date _auth _pid _txn _db _dbm _fd _tie
             _lock _lastid _error _adb _rdbm_memo say _connect
             _path _cfg db_ext ext date locale slug_max_len _no_txn
             day day_id dayname days hour hour_id minute minute_id
             month month_id monthname months only_time second second_id
-            short str time year year_dir
+            date_short date_str time year year_dir
             _lang _locale _collator _uc_re _lc_re _sort_re _accent_re
             _ascii_re _search_re _search_map _phonetic_rules _safe_re
             _letter_re _splitter_re _html_entities
@@ -143,6 +144,7 @@ sub new {
     lock_value( %$self, '_dbase' );
     lock_value( %$self, '_table' );
     lock_value( %$self, '_cache' );
+    lock_value( %$self, '_date' );
     lock_value( %$self, '_auth' );
     lock_value( %$self, '_pid' );
     lock_value( %$self, '_db' );
@@ -2639,6 +2641,153 @@ sub normalize_range_opts {
     return @normalized ? \@normalized : undef;
 }
 
+# Slices sorted record IDs in numerical/chronological range [min, max] using $blk:range and $blk:keys in .inx.
+# Returns packed (Q>)* binary buffer of matching record IDs, or '' if 0 matches, or undef if sort index unavailable.
+# ------------------------------------------------
+sub range_slice {
+    my ( $self, $tableid, $blk, $min, $max, %opts ) = @_;
+
+    return undef unless defined $tableid && defined $blk;
+    my $table_info = $self->table_info($tableid);
+    return undef unless $table_info;
+
+    my $blk_idx = $self->resolve_block_idx( $tableid, $blk );
+    return undef unless defined $blk_idx;
+
+    # Check if $blk_idx is configured in sort_block
+    my $is_sort = 0;
+    if ( $table_info->{sort_block} ) {
+        for my $cfg ( @{ $table_info->{sort_block} } ) {
+            my $sblk = ref($cfg) eq 'HASH' ? ( $cfg->{blk} // $cfg->{block} // 0 ) : $cfg;
+            $sblk = $self->resolve_block_idx( $tableid, $sblk );
+            if ( defined $sblk && $sblk == $blk_idx ) {
+                $is_sort = 1;
+                last;
+            }
+        }
+    }
+    return undef unless $is_sort;
+
+    # Check if $blk_idx is also configured in match_block (required for .fld boundary lookup)
+    my $is_match = 0;
+    if ( $table_info->{match_block} ) {
+        for my $mblk ( @{ $table_info->{match_block} } ) {
+            my $res_m = $self->resolve_block_idx( $tableid, $mblk );
+            if ( defined $res_m && $res_m == $blk_idx ) {
+                $is_match = 1;
+                last;
+            }
+        }
+    }
+    return undef unless $is_match;
+
+    my $use_ramdisk = $table_info ? ( $table_info->{use_ramdisk} // $table_info->{use_cache} // 0 ) : 0;
+    if ($use_ramdisk) {
+        $self->ramdisk_ensure($tableid);
+    }
+    my $table_path = $self->table_path($tableid);
+    my $idx_path   = $use_ramdisk ? $self->ramdisk_path($tableid) : $table_path;
+    my $index_path = ( -e "${idx_path}.inx" ) ? "${idx_path}.inx" : "${table_path}.inx";
+    my $field_path = ( -e "${idx_path}.fld" ) ? "${idx_path}.fld" : "${table_path}.fld";
+    return undef unless -e $index_path && -e $field_path;
+
+    my $tier = $opts{tier} // '';
+    my $pfx  = ( defined $tier && $tier =~ /^[AB]$/i ) ? uc("$tier") . ":" : "";
+
+    my ($range_raw) = $self->index_get( $index_path, "$pfx$blk_idx:vals", 'raw' );
+    ($range_raw) = $self->index_get( $index_path, "$pfx$blk_idx:range", 'raw' ) unless defined $range_raw && length($range_raw);
+    return undef unless defined $range_raw && length($range_raw);
+
+    my @vals = split /\t/, $range_raw;
+    return '' unless @vals;
+
+    my $is_num = 1;
+    my $check_limit = @vals > 20 ? 20 : $#vals;
+    for my $idx ( 0 .. $check_limit ) {
+        if ( defined $vals[$idx] && $vals[$idx] !~ /^-?[0-9]+(?:\.[0-9]+)?$/ ) {
+            $is_num = 0;
+            last;
+        }
+    }
+
+    my ($v_first, $v_last);
+
+    # Find $v_first (lowest existing value >= $min)
+    if ( defined $min && $min ne '' ) {
+        my ( $low, $high ) = ( 0, $#vals );
+        my $found_idx = -1;
+        while ( $low <= $high ) {
+            my $mid = int( ( $low + $high ) / 2 );
+            my $cmp = $is_num ? ( $vals[$mid] <=> $min ) : ( $vals[$mid] cmp $min );
+            if ( $cmp >= 0 ) {
+                $found_idx = $mid;
+                $high = $mid - 1;
+            }
+            else {
+                $low = $mid + 1;
+            }
+        }
+        return '' if $found_idx == -1;
+        $v_first = $vals[$found_idx];
+    }
+    else {
+        $v_first = $vals[0];
+    }
+
+    # Find $v_last (highest existing value <= $max)
+    if ( defined $max && $max ne '' ) {
+        my ( $low, $high ) = ( 0, $#vals );
+        my $found_idx = -1;
+        while ( $low <= $high ) {
+            my $mid = int( ( $low + $high ) / 2 );
+            my $cmp = $is_num ? ( $vals[$mid] <=> $max ) : ( $vals[$mid] cmp $max );
+            if ( $cmp <= 0 ) {
+                $found_idx = $mid;
+                $low = $mid + 1;
+            }
+            else {
+                $high = $mid - 1;
+            }
+        }
+        return '' if $found_idx == -1;
+        $v_last = $vals[$found_idx];
+    }
+    else {
+        $v_last = $vals[-1];
+    }
+
+    my $cmp_bounds = $is_num ? ( $v_first <=> $v_last ) : ( $v_first cmp $v_last );
+    return '' if $cmp_bounds > 0;
+
+    my $fld_map = $self->index_get( $field_path, [ "$pfx$blk_idx:$v_first", "$pfx$blk_idx:$v_last" ], 'raw' );
+    return undef unless $fld_map && ref($fld_map) eq 'HASH';
+
+    my $buf_first = $fld_map->{"$pfx$blk_idx:$v_first"};
+    my $buf_last  = $fld_map->{"$pfx$blk_idx:$v_last"};
+    return undef unless defined $buf_first && length($buf_first) >= 8;
+    return undef unless defined $buf_last  && length($buf_last) >= 8;
+
+    my $target_first = substr( $buf_first, 0, 8 );
+    my $target_last  = substr( $buf_last, -8, 8 );
+
+    my ($raw_keys) = $self->index_get( $index_path, "$pfx$blk_idx:keys", 'raw' );
+    return undef unless defined $raw_keys && length($raw_keys) >= 8;
+
+    my $pos_first = index( $raw_keys, $target_first );
+    while ( $pos_first != -1 && ( $pos_first % 8 != 0 ) ) {
+        $pos_first = index( $raw_keys, $target_first, $pos_first + 1 );
+    }
+    return undef if $pos_first == -1;
+
+    my $pos_last = index( $raw_keys, $target_last, $pos_first );
+    while ( $pos_last != -1 && ( $pos_last % 8 != 0 ) ) {
+        $pos_last = index( $raw_keys, $target_last, $pos_last + 1 );
+    }
+    return undef if $pos_last == -1;
+
+    return substr( $raw_keys, $pos_first, $pos_last - $pos_first + 8 );
+}
+
 # Filters a list of record IDs or records [ $id, @fields ] by numerical/chronological ranges.
 # ------------------------------------------------
 sub filter_ids_by_range {
@@ -2664,6 +2813,42 @@ sub filter_ids_by_range {
         my $min = $rng->{min};
         my $max = $rng->{max};
         last unless @survivors;
+
+        # 0. Fast path: Try range_slice from sort_block in .inx if available
+        my $slice_raw = $self->range_slice( $tableid, $blk, $min, $max );
+        if ( defined $slice_raw && length($slice_raw) >= 8 ) {
+            my $slice_count = int( length($slice_raw) / 8 );
+            # If survivors is small compared to slice size, do direct index() lookups in slice_raw (ultra fast, zero memory allocation)
+            if ( @survivors <= 250 && $slice_count > @survivors ) {
+                my @filtered;
+                for my $item (@survivors) {
+                    my $id = ref($item) eq 'ARRAY' ? $item->[0] : $item;
+                    my $target = pack( "Q>", $id );
+                    my $pos = index( $slice_raw, $target );
+                    while ( $pos != -1 && ( $pos % 8 != 0 ) ) {
+                        $pos = index( $slice_raw, $target, $pos + 1 );
+                    }
+                    if ( $pos != -1 ) {
+                        push @filtered, $item;
+                    }
+                }
+                @survivors = @filtered;
+                next;
+            }
+
+            my ( undef, @m_ids ) = $self->bin_decode($slice_raw);
+            my %m_map = map { $_ => 1 } @m_ids;
+            if ( ref( $survivors[0] ) eq 'ARRAY' ) {
+                @survivors = grep { $m_map{ $_->[0] } } @survivors;
+            }
+            else {
+                @survivors = grep { $m_map{$_} } @survivors;
+            }
+            next;
+        }
+        elsif ( defined $slice_raw && length($slice_raw) == 0 ) {
+            return (); # Conclusive: 0 records match this range
+        }
 
         if ( ref( $survivors[0] ) eq 'ARRAY' ) {
             my @filtered;
@@ -2708,7 +2893,13 @@ sub filter_ids_by_range {
             if ( $raw_hash && ref($raw_hash) eq 'HASH' ) {
                 for my $rid (@missing) {
                     my $v = $raw_hash->{"$blk:$rid"};
-                    $val_map{$rid} = $v if defined $v && $v ne '';
+                    if ( defined $v && $v ne '' ) {
+                        # If numeric sort key (offset by 1e12 in normalize_sort_key), restore raw numeric value
+                        if ( $v =~ /^\s*(\d{20}\.\d{6})\s*$/ || ( $v =~ /^\s*(\d+(?:\.\d+)?)\s*$/ && $1 >= 900_000_000_000 ) ) {
+                            $v = 0 + $v - 1_000_000_000_000;
+                        }
+                        $val_map{$rid} = $v;
+                    }
                 }
             }
         }
@@ -3341,6 +3532,9 @@ sub field_fetch {
     $tableid     or return;
     $block ne "" or return;
     $fetch ne "" or return;
+
+    my $res_block = $self->resolve_block_idx( $tableid, $block );
+    $block = $res_block if defined $res_block;
 
     my ( $offset, $limit, %opts );
     if ( @args == 1 && ref( $args[0] ) eq 'HASH' ) {
@@ -4805,10 +4999,13 @@ sub close_all {
 
     my ($self) = @_;
 
-    if ( ref( $self->{_tie} ) eq "HASH" ) {
-        foreach my $file_path ( keys %{ $self->{_tie} } ) {
-            $self->table_close($file_path);
-        }
+    my %files;
+    $files{$_} = 1 for keys %{ $self->{_tie} // {} };
+    $files{$_} = 1 for keys %{ $self->{_db}  // {} };
+    $files{$_} = 1 for keys %{ $self->{_dbm} // {} };
+
+    foreach my $file_path ( keys %files ) {
+        $self->table_close($file_path);
     }
 
     if ( ref( $self->{_lock} ) eq "HASH" ) {
@@ -5756,11 +5953,11 @@ sub recs_back {
 
     my $backup_base = $self->path('backup_dir')
       || ( $self->path('dbase_dir') ? $self->path('dbase_dir') . "/backup" : "backup" );
-    my $year = ( $self->{date} && $self->{date}->{year} ) ? $self->{date}->{year} : (localtime)[5] + 1900;
-    my $month = ( $self->{date} && $self->{date}->{month} ) ? $self->{date}->{month} : sprintf( "%02d", (localtime)[4] + 1 );
-    my $day = ( $self->{date} && $self->{date}->{day} ) ? $self->{date}->{day} : sprintf( "%02d", (localtime)[3] );
+    my $year     = $self->year;
+    my $month    = $self->month;
+    my $day      = $self->day;
     my $date_iso = "$year-$month-$day";
-    my $time_str = ( $self->{date} && $self->{date}->{str} ) ? $self->{date}->{str} : "$date_iso " . sprintf( "%02d:%02d:%02d", (localtime)[2], (localtime)[1], (localtime)[0] );
+    my $time_str = $self->date_str;
 
     my $backup_file;
     if ( $self->config('simple') ) {
@@ -5892,7 +6089,7 @@ sub auth_write {
     if ( !scalar @record ) {
         if ( $action ne "add" ) {
             @record = (
-                "root", [ "root", "add", $self->{date}->{year} . "01010000" ]
+                "root", [ "root", "add", $self->year . "01010000" ]
             );
         }
         else {
@@ -5900,7 +6097,7 @@ sub auth_write {
         }
     }
     push @record,
-      [ $user, $action, $self->{date}->{minute_id} ];
+      [ $user, $action, $self->minute_id ];
     $self->recs_put( [ $file_path, $tableid ], [ $rid, @record ] );
     $self->table_close($file_path);
 

@@ -14,7 +14,7 @@
 
 In modern e-commerce filtering, selections within the same attribute group (e.g. Color = Red OR Blue) use **Disjunctive (OR) logic**, while combinations across different attribute groups (e.g. Brand = Apple AND Color = Red) use **Conjunctive (AND) logic**. Crucially, the UI must display the accurate remaining match counts for unselected options within an active filter group.
 
-AmberDB achieves this at scale by storing facet data in partitioned columnar forward bitset files (`_${blk}.fac`) and bidirectional string dictionaries (`_${blk}.unq`), computing disjunctive facet counts across millions of records in single-digit milliseconds without full-table scanning.
+AmberDB achieves this at scale by storing facet data in partitioned columnar forward bitset files (`.fac`) and bidirectional string dictionaries (`.unq`), computing disjunctive facet counts across millions of records in single-digit milliseconds without full-table scanning.
 
 ```text
 Disjunctive Faceting Logic Pipeline
@@ -39,8 +39,8 @@ Color Filter:     [Color = Black ]                   (AND)
 
 ## 2. Key Subsystem Components
 
-1. **Partitioned Columnar Bitsets (`_${blk}.fac`):** Each facet-enabled block has an independent forward file mapping Record ID to compact value IDs. Only active, in-stock records are stored.
-2. **Bidirectional String Dictionaries (`_${blk}.unq`):** Transparently converts arbitrary text labels (e.g. "Space Gray", "16GB RAM") to compact integer dictionary IDs.
+1. **Partitioned Columnar Bitsets (`.fac`):** Each facet-enabled block has an independent forward file mapping Record ID to compact value IDs. Only active, in-stock records are stored.
+2. **Bidirectional String Dictionaries (`.unq`):** Transparently converts arbitrary text labels (e.g. "Space Gray", "16GB RAM") to compact integer dictionary IDs.
 3. **Dynamic Scoping (`base_ids`):** Facet calculations can be restricted dynamically to search result ID arrays (`search_table`) or arbitrary base record filters.
 
 ---

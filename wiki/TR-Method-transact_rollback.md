@@ -10,7 +10,7 @@
 
 ## 1. Tanim ve Genel Bakis
 
-`transact_rollback()`, aktif islemi aninda geri alir. `.txn` islem gunlugunu okuyarak eklenen, guncellenen veya silinen tum kayitlari LIFO ters sirasiyla eski durumlarina getirir, ikincil indeksleri eski haline esitler ve Strict 2PL kilitlerini serbest birakir.
+`transact_rollback()`, aktif islemi aninda geri alir. aktif geri alma gunlugunu okuyarak eklenen, guncellenen veya silinen tum kayitlari LIFO ters sirasiyla eski durumlarina getirir, ikincil indeksleri eski haline esitler ve Strict 2PL kilitlerini serbest birakir.
 
 > [!NOTE]
 > `transact_rollback()` bir ic motor metodudur. Uygulama kodlarinda is mantigi hatalarinin `$adb->transact_error($context, $mesaj)` ile bildirilmesi onerilir. `transact_error()` aktif bir islem varsa arka planda aninda `transact_rollback()` cagirarak islemi guvenle geri alir.
@@ -53,4 +53,3 @@ if ($@) {
 - [Metot: transact_start](TR-Method-transact_start)
 - [Metot: transact_error](TR-Method-transact_error)
 - [Metot: transact_end](TR-Method-transact_end)
-- [Dosya: .txn (Islem Gunlugu)](TR-File-txn)

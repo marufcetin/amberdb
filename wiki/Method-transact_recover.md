@@ -10,7 +10,7 @@
 
 ## 1. Definition and Overview
 
-`transact_recover()` scans `dbstore/txn/` for orphaned `.txn` undo journal files left behind by ungracefully terminated or crashed worker processes. It rolls back their uncommitted changes deterministically to restore database integrity and removes the orphaned journals. This method is called automatically during `AmberDB->new()`.
+`transact_recover()` scans `dbstore/journal/` for orphaned undo journals (`txn_*`) left behind by ungracefully terminated or crashed worker processes. It rolls back their uncommitted changes deterministically to restore database integrity and removes the orphaned journals. This method is called automatically during `AmberDB->new()`.
 
 ---
 
@@ -36,4 +36,3 @@ print "Recovered $recovered orphaned transaction journals.\n";
 
 - [Concept: Undo Journal Rollback](Concept-Undo-Journal-Rollback)
 - [Method: transact_rollback](Method-transact_rollback)
-- [File: .txn (Undo Journal)](File-txn)

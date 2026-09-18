@@ -13,7 +13,7 @@
 `delete_id()` deletes a single record by its primary key ID.
 - **Soft Deletion (`keep_deleted => 1`):** If enabled in schema or config, the record is archived into the soft-delete table (`tables/*.del`) rather than physically unlinked.
 - **Hard Deletion (`keep_deleted => 0`):** The record is purged permanently from `.db`.
-- Automatically removes the ID from all secondary indexes (`.inx`, `.fld`, `.src`, `.fac`, `.srt`) and logs to the continuous WAL stream.
+- Automatically removes the ID from all secondary indexes (`.inx`, `.fld`, `.src`, `.fac`, `.slg`) and logs to the continuous WAL stream.
 
 ---
 

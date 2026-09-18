@@ -10,7 +10,7 @@
 
 ## 1. Definition and Overview
 
-`transact_rollback()` forces an immediate manual rollback of the active transaction. It reads the active `.txn` journal file and reverts all inserted, modified, or deleted records in LIFO reverse order, restoring all tables and secondary indexes to their exact pre-transaction state, and releases all Strict 2PL locks.
+`transact_rollback()` forces an immediate manual rollback of the active transaction. It reads the active undo journal file and reverts all inserted, modified, or deleted records in LIFO reverse order, restoring all tables and secondary indexes to their exact pre-transaction state, and releases all Strict 2PL locks.
 
 > [!NOTE]
 > `transact_rollback()` is an internal engine method. In application code, prefer logging business logic failures via `$adb->transact_error($context, $message)`. When a transaction is active, `transact_error()` automatically invokes `transact_rollback()` immediately.
@@ -53,4 +53,3 @@ if ($@) {
 - [Method: transact_start](Method-transact_start)
 - [Method: transact_error](Method-transact_error)
 - [Method: transact_end](Method-transact_end)
-- [File: .txn (Undo Journal)](File-txn)

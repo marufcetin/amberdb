@@ -31,7 +31,7 @@ $tools->dump() veya Zamanlanmis Cron ile Tetiklenir
      - Semalari icerir: schema/*.table, schema/*.dbase
      - Yetkili ana tablolari icerir: tables/*.db, *.del, *.aut, *.cnt, *.unq
      - SHA-256 manifest.json ile kriptografik olarak dogrulanir
-     - Turetilmis indeksleri (.inx, .fld, .src, .fac, .srt) yer kazanmak icin haric tutar
+     - Turetilmis indeksleri (.inx, .fld, .src, .fac, .slg) yer kazanmak icin haric tutar
      - Geri yukleme aninda set_index ile tum indeksleri deterministik olarak yeniden insa eder
 ```
 
@@ -47,7 +47,7 @@ $tools->dump() veya Zamanlanmis Cron ile Tetiklenir
 
 ## 3. 2. Sutun: Native `.amberdb` Tasinabilir Arsivi
 
-- **Alan Tasarrufu:** Ikincil indeksler (`.inx`, `.src`, `.fld`, `.fac`, `.srt`) veritabani boyutunun yaklasik %70'ini kaplar. AmberDB bu turetilmis dosyalari `.amberdb` paketine koymaz; dosya boyutunu cok kucuk tutar.
+- **Alan Tasarrufu:** Ikincil indeksler (`.inx`, `.src`, `.fld`, `.fac`, `.slg`) veritabani boyutunun yaklasik %70'ini kaplar. AmberDB bu turetilmis dosyalari `.amberdb` paketine koymaz; dosya boyutunu cok kucuk tutar.
 - **Deterministik Yeniden Insa:** `restore(file => "yedek.amberdb")` calistirildiginda motor yetkili dosyalari acar ve tum tablolar icin otomatik olarak `set_index` cagirip binary indeksleri diske yeniden yazar.
 - **Kriptografik Dogrulama:** Her arsiv kokunde SHA-256 karmalari barindiran bir `manifest.json` tasir. Bozuk veya tahrif edilmis arsivler geri yuklenmeden once tespit edilir.
 

@@ -38,7 +38,7 @@ AmberDB Unified NoSQL Architecture
  Operating System Layer (DB_File Hash + POSIX flock + Page Cache)
                      |
                      v
- Physical Storage (dbstore/table/*.db, .inx, .fld, .src, .fac, .srt)
+ Physical Storage (dbstore/table/*.db, .inx, .fld, .src, .fac, .slg)
 ```
 
 ---
@@ -50,8 +50,8 @@ AmberDB provides a lightweight, dependency-free internal component ecosystem:
 | Module | Core Responsibility |
 | :--- | :--- |
 | **`AmberDB::Base`** | Schema loading (`.table`, `.dbase`), path routing, data serialization, 0-index primary key enforcement, and core CRUD dispatching. |
-| **`AmberDB::Index`** | 8-byte packed binary indexes (`.inx`), inverted field matching (`.fld`), full-text search (`.src`), columnar facet navigation (`.fac`), and pre-sorted indexes (`.srt`). |
-| **`AmberDB::Transact`** | ACID transaction lifecycle, disk-backed undo journaling (`.txn`), Strict 2PL multi-process locks, and automatic orphaned journal crash recovery (`transact_recover`). |
+| **`AmberDB::Index`** | 8-byte packed binary indexes (`.inx`), inverted field matching (`.fld`), full-text search (`.src`), columnar facet navigation (`.fac`), and pre-sorted indexes (`.inx`). |
+| **`AmberDB::Transact`** | ACID transaction lifecycle, disk-backed undo journaling (`dbstore/journal/txn_*`), Strict 2PL multi-process locks, and automatic orphaned journal crash recovery (`transact_recover`). |
 | **`AmberDB::Ramdisk`** | OS-level RAM-Disk (Linux `tmpfs`, macOS `APFS`, Windows `ImDisk`) shared memory acceleration, TTL expiration, and in-memory table mirroring. |
 | **`AmberDB::Locale`** | Regional language engine supporting 10 locales (`gb` [default Global Base], `en`, `tr`, `de`, `fr`, `es`, `ja`, `ru`, `ar`, `az`) with case folding, phonetic softening, accent expansion, and Unicode Collation (UCA). |
 | **`AmberDB::Array`** | High-speed array manipulation primitives (sorted comparison, deduplication, slicing, crop). |
@@ -70,7 +70,7 @@ Replaces expensive relational SQL `JOIN` operations with extensible document blo
 Primary (`.inx`) and secondary indexes are formatted as 8-byte packed binary arrays (`(Q>)*`). This minimizes memory consumption and enables $O(1)$ sub-millisecond pagination (`LIMIT / OFFSET`) using raw zero-copy `substr` slicing (with `use_simple => 1` mode available for arbitrary string keys).
 
 ### 3. Strict 2PL ACID Transactions & Undo-Journal
-Multi-table operations are guarded by disk-backed undo journals (`.txn`) and Strict Two-Phase Locking (Strict 2PL). In the event of a process crash or power loss, orphaned journals are automatically rolled back in LIFO order upon the next access.
+Multi-table operations are guarded by disk-backed undo journals (`dbstore/journal/txn_*`) and Strict Two-Phase Locking (Strict 2PL). In the event of a process crash or power loss, orphaned journals are automatically rolled back in LIFO order upon the next access.
 
 ### 4. 2-Pillar Continuous Disaster Recovery
 - **Pillar 1 (Continuous WAL Stream):** Every `insert`, `modify`, and `delete` is instantly appended to a daily audit trail at `backup/YYYY/YYYY-MM-DD.csv`.

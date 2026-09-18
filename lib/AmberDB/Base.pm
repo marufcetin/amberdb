@@ -9,7 +9,7 @@ use Fcntl qw(:DEFAULT :flock);
 use Digest::SHA qw(sha256_hex);
 use parent qw(AmberDB::Locale AmberDB::Array);
 
-our $VERSION = '5.25.3';
+our $VERSION = '5.26.0';
 my $CREATED = '2014-12-20';
 
 # ------------------------------------------------
@@ -262,8 +262,8 @@ sub set_datadir {
     # declarations
     my @dirs = qw(
       dbase_dir table_dir schema_dir backup_dir
-      ramdisk_dir table_rdir schema_rdir conf_rdir
-      buffer_dir journal_dir lock_dir session_dir
+      ramdisk_dir table_rdir schema_rdir config_rdir
+      buffer_dir journal_dir lock_dir session_dir config_dir
     );
     foreach my $dir (@dirs) {
         $self->{_path}->{$dir} //= "";
@@ -286,6 +286,7 @@ sub set_datadir {
         $self->{_path}->{journal_dir} = $dbase_dir;
         $self->{_path}->{lock_dir}    = "$dbase_dir/lock";
         $self->{_path}->{session_dir} = "$dbase_dir/session";
+        $self->{_path}->{config_dir}  = "$dbase_dir/config";
         return 1;
     }
 
@@ -296,6 +297,7 @@ sub set_datadir {
     $self->{_path}->{table_dir}   = "$dbase_dir/table";
     $self->{_path}->{lock_dir}    = "$dbase_dir/lock";
     $self->{_path}->{session_dir} = "$dbase_dir/session";
+    $self->{_path}->{config_dir}  = "$dbase_dir/config";
 
     # Auto-load connect.pl if present in datadir, or fallback database name to leaf folder
     my $conn_file = "$dbase_dir/config/connect.pl";
@@ -493,8 +495,8 @@ sub verify_password {
 
 sub _connect_file {
     my ($self) = @_;
-    my $conf_dir = $self->path('conf_dir') || ( ( $self->path('dbase_dir') || "." ) . "/config" );
-    return "$conf_dir/connect.pl";
+    my $config_dir = $self->path('config_dir') || ( ( $self->path('dbase_dir') || "." ) . "/config" );
+    return "$config_dir/connect.pl";
 }
 
 sub _load_connect_config {
@@ -558,8 +560,8 @@ sub _save_connect_config {
 sub session_file {
     my ( $self, $token ) = @_;
     return '' unless defined $token && length $token;
-    my $sess_dir = $self->path('session_dir') || ( ( $self->path('dbase_dir') || "." ) . "/session" );
-    return "$sess_dir/cli_$token";
+    my $session_dir = $self->path('session_dir') || ( ( $self->path('dbase_dir') || "." ) . "/session" );
+    return "$session_dir/cli_$token";
 }
 
 # my $token = $adb->generate_token();

@@ -10,7 +10,7 @@
 
 ## 1. Definition and Overview
 
-`field_fltkeys()` calculates facet key occurrence counts for a single target block directly from its columnar forward index (`_${target_block}.fac`). It automatically resolves dictionary string labels via `.unq`.
+`field_fltkeys()` calculates facet key occurrence counts for a single target block directly from its columnar forward index (`.fac`). It automatically resolves dictionary string labels via `.unq`.
 
 ---
 

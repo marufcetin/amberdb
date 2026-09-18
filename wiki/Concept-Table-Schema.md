@@ -59,7 +59,7 @@ AmberDB Table Schema Anatomy (.table)
     match_block  => [ 2, 5 ],       # .fld Exact-match secondary indexes
     search_block => [ 1 ],          # .src Full-text search index
     facet_block  => [ 2 ],          # .fac Columnar multi-dimensional facet index
-    sort_block   => [ 3 ],          # .srt Pre-sorted binary index (Price: Block 3)
+    sort_block   => [ 3 ],          # .inx Pre-sorted binary index (Price: Block 3)
     slug_block   => [ 1, 4, 2 ],    # .slg Bidirectional URL slug map: resolved in sequence (1/4/2)
     
     # Field Specifications:

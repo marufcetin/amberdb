@@ -33,7 +33,7 @@ Global bayraklar tum veritabani oturumunu etkilerken, tablo sema bayraklari **ta
 | **`match_block`**| `ARRAY-ref`| `[]` | Birebir eslesme ikincil indeksinin (`.fld`) olusturulacagi 1-tabanli blok numaralari listesi. |
 | **`search_block`**| `ARRAY-ref`| `[]` | Tam metin kelime indeksinin (`.src`) olusturulacagi 1-tabanli blok numaralari listesi. |
 | **`facet_block`**| `ARRAY-ref`| `[]` | Cok boyutlu facet filtre bitset indeksinin (`.fac`) olusturulacagi blok numaralari. |
-| **`sort_block`** | `ARRAY-ref`| `[]` | Tablo icin on-siralanmis binary indekslerin (`.srt`) olusturulacagi blok numaralari listesi (orn: `[ 3, 1 ]`). |
+| **`sort_block`** | `ARRAY-ref`| `[]` | Tablo icin on-siralanmis binary indekslerin (`.inx` icinde `s:`) olusturulacagi blok numaralari listesi (orn: `[ 3, 1 ]`). |
 | **`slug_block`** | `ARRAY-ref`| `[]` | Cift yonlu SEO URL haritasinin (`.slg`) cikarilacagi bloklar dizisi (orn: `[1, 4, 2]` $\rightarrow$ `1/4/2`). |
 | **`repeat_start`**| `integer` | `undef`| Dinamik genisleyen tekrarlayan alt satirlarin (siparis kalemleri) basladigi blok indeksi. |
 | **`repeat_ids`** | `integer` | `undef`| Tekrarlayan alt satirlardaki ID'lerin otomatik birlestirilip yazilacagi hedef blok. |
@@ -49,7 +49,7 @@ Sema Bayraklarinin Dosya Uretim Haritasi
  match_block        ───────────────> .fld (Birebir Eslesme Indeksi)
  search_block       ───────────────> .src (Tam Metin Arama Indeksi)
  facet_block        ───────────────> .fac & .unq (Facet Bitset & Sozluk Indeksi)
- sort_block         ───────────────> .srt (Onceden Siralanmis Binary Indeks)
+ sort_block         ───────────────> .inx (s: Onceden Siralanmis Binary Indeks)
  slug_block         ───────────────> .slg (URL Slug Haritasi)
  keep_deleted       ───────────────> .del (Cop Kutusu Tablosu)
  log_owner          ───────────────> .aut (Kullanici Denetim Gunlugu)

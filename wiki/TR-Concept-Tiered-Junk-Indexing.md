@@ -13,8 +13,8 @@
 **Katmanli Sicak/Soguk Depolama ve Junk Indeksleme**, AmberDB'nin aktif islemler goren sicak veriler ile pasif, suresi dolmus, tukenmis veya arsivlik soguk verileri otomatik olarak ayristiran yasam dongusu yonetim mekanizmasidir.
 
 Eski veya pasif kayitlari ayri tablolara tasimak yerine (bu durum kayit ID'lerinin bozulmasina ve uygulama kodunun karmasiklasmasina yol acar), AmberDB tum kayitlari tek bir ana `.db` tablosunda saklar; ancak ikincil indeksleri iki ayri katmana boler:
-- **Sicak / Aktif Katman (A Katmani):** Aktif kayitlar standart indeks dosyalarinda tutulur (`.inx`, `.fld`, `.src`, `.fac`, `.srt`).
-- **Soguk / Junk Katmani (B Katmani):** Pasif veya stogu bitmis kayitlar ayri junk indeks dosyalarinda tutulur (`.jinx`, `.jfld`, `.jsrc`).
+- **Sicak / Aktif Katman (A Katmani):** Aktif kayitlar standart indeks dosyalarinda tutulur (`.inx`, `.fld`, `.src`, `.fac`, `.slg`).
+- **Soguk / Junk Katmani (B Katmani):** Pasif veya stogu bitmis kayitlar `j:` on ekiyle ayni indeks dosyalarinda (`.inx`, `.fld`, `.src`) tutulur.
 
 Sorgular yalnizca aktif kayitlari (`jnktype => 'A'`), yalnizca arsivi (`jnktype => 'B'`) veya tek geciste her iki katmani birlestiren hibrit sirali sonuclari (`jnktype => 'AB'`) aninda getirebilir.
 
@@ -102,4 +102,3 @@ my ($toplam_sayi, @arsiv_sonuclari) = $adb->search_table(
 - [Metot: field_fetch](TR-Method-field_fetch)
 - [Bayrak: use_junk](TR-Flag-use_junk)
 - [Bayrak: jnktype](TR-Flag-jnktype)
-- [Dosya: .jinx (Junk Birincil Indeksi)](TR-File-jinx)

@@ -10,9 +10,9 @@
 
 ## 1. Tanim ve Genel Bakis
 
-**`.unq` (Unique & Dictionary Index)** dosyasi, AmberDB'de hem **alan tekilligini (`valid => "unique"`)** garanti eden hem de **metinsel nitelikleri (orn: Marka, Format, Yayinevi) sayisal ID'lere donusturen** cift yonlu sozluk tablosudur (`dbstore/table/${tablo}_${blok}.unq`).
+**`.unq` (Unique & Dictionary Index)** dosyasi, AmberDB'de hem **alan tekilligini (`valid => "unique"`)** garanti eden hem de **metinsel nitelikleri (orn: Marka, Format, Yayinevi) sayisal ID'lere donusturen** cift yonlu sozluk tablosudur (`dbstore/table/${tablo}.unq`).
 
-Eski surumlerdeki `.str` (String) uzantisinin `.srt` (Sort/Siralama) ile karismasini onlemek ve tekillik kurallarini butunlestirmek amaciyla `.unq` standardi benimsenmistir.
+Alan tekillik kurallarini butunlestirmek ve metin-ID sozluk yonetimini saglamak amaciyla `.unq` standardi benimsenmistir.
 
 ```text
 .unq Cift Yonlu Anahtar Mimarisi

@@ -27,7 +27,7 @@ CRUD operasyonlari tekil islemler (`insert_id`, `read_id`, `modify_id`, `delete_
 
 ### 2.1 Tekil Kayit Ekleme (`insert_id`)
 
-Yeni kayit eklenirken dizinin 0. indisine `0` veya `undef` atanir. `insert_id` cagrildiginda motor benzersiz bir 64-bit otomatik ID uretir, tum ikincil indeksleri (`.inx`, `.fld`, `.src`, `.fac`, `.srt`, `.slg`) aninda gunceller ve uretilen yeni ID'yi dondurur.
+Yeni kayit eklenirken dizinin 0. indisine `0` veya `undef` atanir. `insert_id` cagrildiginda motor benzersiz bir 64-bit otomatik ID uretir, tum ikincil indeksleri (`.inx`, `.fld`, `.src`, `.fac`, `.slg`) aninda gunceller ve uretilen yeni ID'yi dondurur.
 
 ```perl
 # 0. indiste 0 ile tanimlama

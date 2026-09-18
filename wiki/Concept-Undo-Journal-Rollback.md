@@ -12,29 +12,29 @@
 
 The **Undo-Journal ACID Rollback and Crash Recovery Mechanism** guarantees Atomicity and Consistency across multi-table operations in AmberDB.
 
-When a transaction is started via `transact_start`, AmberDB creates an active disk-backed undo journal file (`dbstore/txn/amberdb_processid_timestamp.txn`). Before any physical record in `.db` or secondary index file (`.inx`, `.fld`, `.src`, `.fac`, `.srt`) is mutated on disk, its original unmodified state is recorded sequentially into the journal.
+When a transaction is started via `transact_start`, AmberDB creates an active disk-backed undo journal file (`dbstore/journal/txn_*`). Before any physical record in `.db` or secondary index file (`.inx`, `.fld`, `.src`, `.fac`) is mutated on disk, its original unmodified state is recorded sequentially into the journal.
 
 If any error occurs during execution, or if the Perl process crashes/aborts unexpectedly, AmberDB replays the undo journal in **Last-In, First-Out (LIFO)** reverse order to restore all modified tables and indexes back to their exact pre-transaction state.
 
 ```text
 Undo-Journal Pipeline
-1. transact_start() > Creates .txn journal file
+1. transact_start() > Creates undo journal file (journal/txn_*)
                                         
-2. Record Mutation (Insert/Update) > Writes PREVIOUS state to .txn BEFORE modifying .db
+2. Record Mutation (Insert/Update) > Writes PREVIOUS state to undo journal BEFORE modifying .db
                                         
-3. Normal Completion (transact_end) > Flushes changes, unlinks .txn file
+3. Normal Completion (transact_end) > Flushes changes, unlinks journal file
                                         
-4. Failure / Crash / Abort > Replays .txn in reverse LIFO order to revert changes
+4. Failure / Crash / Abort > Replays journal in reverse LIFO order to revert changes
 ```
 
 ---
 
 ## 2. Crash Recovery and Orphaned Journals
 
-If a host server loses power, encounters a kernel panic, or a worker process is terminated via `kill -9`, incomplete `.txn` journal files remain on disk under `dbstore/txn/`.
+If a host server loses power, encounters a kernel panic, or a worker process is terminated via `kill -9`, incomplete undo journal files remain on disk under `dbstore/journal/`.
 
 On subsequent AmberDB initialization (`AmberDB->new`), the engine automatically triggers `transact_recover()`:
-1. Scans `dbstore/txn/` for orphaned `.txn` files left by terminated PIDs.
+1. Scans `dbstore/journal/` for orphaned undo journal files left by terminated PIDs.
 2. Reads the journal's reverse-diff entries.
 3. Automatically rolls back the incomplete changes and removes the orphaned journals.
 4. Logs diagnostic recovery events cleanly.
@@ -79,4 +79,3 @@ if ($@) {
 - [Method: transact_end](Method-transact_end)
 - [Method: transact_rollback](Method-transact_rollback)
 - [Method: transact_recover](Method-transact_recover)
-- [File: .txn (Undo Journal File)](File-txn)

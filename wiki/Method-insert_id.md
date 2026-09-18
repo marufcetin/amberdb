@@ -14,7 +14,7 @@
 1. Allocates a unique auto-incrementing 64-bit ID if index 0 is passed as `0`, `undef`, or `""`.
 2. Validates field data against table schema definitions (`schema/*.table`).
 3. Serializes and writes data into the Berkeley DB master file (`tables/*.db`).
-4. Atomically updates all configured secondary indexes: primary index (`.inx`), exact match (`.fld`), full-text search (`.src`), faceted navigation (`.fac`), and pre-sorted indexes (`.srt`).
+4. Atomically updates all configured secondary indexes: primary and pre-sorted index (`.inx`), exact match (`.fld`), full-text search (`.src`), faceted navigation (`.fac`), and URL slug map (`.slg`).
 5. Appends an audit entry to the continuous WAL stream (`backup/YYYY/YYYY-MM-DD.csv`).
 6. Participates in active transactions (`transact_start`).
 

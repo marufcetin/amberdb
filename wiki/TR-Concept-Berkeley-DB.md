@@ -23,7 +23,7 @@ AmberDB ve Berkeley DB (DB_File) Katmanlari
  ┌─────────────────────────────────────────────────────────────┐
  │                      AmberDB Katmani                        │
  │  Sema Dogrulama, 8-Byte Binary Indeksler (.inx, .fld, .src) │
- │  Strict 2PL Kilitler, Undo-Journal (.txn), Locale & Facet   │
+ │  Strict 2PL Kilitler, Undo-Journal, Locale & Facet          │
  └─────────────────────────────────────────────────────────────┘
                                 |
                                 v
@@ -67,7 +67,7 @@ AmberDB'nin tasariminda harici bir veritabani istemcisi (MySQL, Postgres, Mongo)
 Tek basina `DB_File` yalnizca basit bir key-value eslesmesidir (karmaşık yapıları saklama, arama, filtreleme, tip denetimi veya transaction yapamaz). AmberDB, `DB_File`'i kurumsal bir NoSQL motoruna donusturmustur:
 
 1. **Sema ve Blok Mimarisi:** Düz anahtar-deger alanina esnek ve tipli cok bloklu döküman yapisi kazandirildi.
-2. **Onceden Hesaplanmis Binary Indeksler:** `.fld`, `.src`, `.fac` ve `.srt` indeksleri ile SQL benzeri `WHERE`, `LIKE`, `ORDER BY` ve `GROUP BY` operasyonlari $O(1)$ seviyesinde hizlandirildi.
+2. **Onceden Hesaplanmis Binary Indeksler:** `.inx`, `.fld`, `.src` ve `.fac` indeksleri ile SQL benzeri `WHERE`, `LIKE`, `ORDER BY` ve `GROUP BY` operasyonlari $O(1)$ seviyesinde hizlandirildi.
 3. **Strict 2PL ve Undo-Journal:** Cok tablolu atomik ACID islemleri ve otomatik cokme kurtarma eklendi.
 4. **Cok Dilli Arama Motoru:** Yerel dil kurallarina duyarlı fonetik arama ve Unicode siralamasi entegre edildi.
 

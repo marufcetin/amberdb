@@ -10,7 +10,7 @@
 
 ## 1. Tanim ve Genel Bakis
 
-`transact_end()`, basariyla ilerleyen aktif islemi sonlandirir. Islem suresince hicbir hata loglanmamis ise `transact_commit()` calistirarak degisiklikleri diske basar, `.txn` gunluk dosyasini siler, tum Strict 2PL kilitlerini serbest birakir ve `{ status => "commit" }` doner.
+`transact_end()`, basariyla ilerleyen aktif islemi sonlandirir. Islem suresince hicbir hata loglanmamis ise `transact_commit()` calistirarak degisiklikleri diske basar, geri alma gunluk dosyasini siler, tum Strict 2PL kilitlerini serbest birakir ve `{ status => "commit" }` doner.
 
 Eger alttaki veritabaninda herhangi bir taban hata olusmussa veya `transact_error()` cagrilarak islem onceden geri alinmissa, son durum `{ status => "rollback" }` olarak doner.
 

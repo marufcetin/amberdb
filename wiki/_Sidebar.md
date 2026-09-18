@@ -160,10 +160,10 @@
 ### File Formats
 - [.db](File-db) · [.table](File-table) · [.dbase](File-dbase)
 - [.inx](File-inx) · [.fld](File-fld) · [.src](File-src)
-- [.fac](File-fac) · [.srt](File-srt) · [.slg](File-slg)
-- [.unq](File-unq) · [.del](File-del) · [.aut](File-aut) · [.lnk](File-lnk)
-- [.cnt](File-cnt) · [.txn](File-txn) · [.amberdb](File-amberdb)
-- [.csv](File-csv) · [.tmp](File-tmp)
+- [.fac](File-fac) · [.slg](File-slg) · [.lnk](File-lnk)
+- [.unq](File-unq) · [.del](File-del) · [.aut](File-aut) 
+- [.cnt](File-cnt) · [.amberdb](File-amberdb) · [.csv](File-csv)
+- [.tmp](File-tmp)
 
 ---
 

@@ -6,7 +6,7 @@ use Carp qw(croak cluck);
 use Cwd qw(abs_path);
 use Digest::MD5 qw(md5_hex);
 
-our $VERSION = '5.25.3';
+our $VERSION = '5.26.0';
 
 my $CREATED = '2026-08-11';
 
@@ -271,7 +271,7 @@ sub ramdisk_setup {
 
     my ( $is_mounted, $mount_desc, $ramdisk_dir, $sys ) = $self->ramdisk_is_mounted(%opts);
 
-    my ( $tbl_dir, $schema_dir, $conf_dir ) = ( '', '', '' );
+    my ( $tbl_dir, $schema_dir, $config_dir ) = ( '', '', '' );
 
     # Populate and create RAM-disk paths ONLY if RAM-disk is confirmed mounted
     if ($ramdisk_dir) {
@@ -297,27 +297,27 @@ sub ramdisk_setup {
             $schema_dir = "$ramdisk_dir/schema";
         }
 
-        my $cur_conf_rdir = $self->path('conf_rdir');
-        if ( defined $opts{conf_rdir} && length $opts{conf_rdir} ) {
-            $conf_dir = $opts{conf_rdir};
+        my $cur_config_rdir = $self->path('config_rdir');
+        if ( defined $opts{config_rdir} && length $opts{config_rdir} ) {
+            $config_dir = $opts{config_rdir};
         }
-        elsif ( length $cur_conf_rdir && $cur_conf_rdir ne ( $self->path('conf_dir') || ( ( $self->path('dbase_dir') || "." ) . "/config" ) ) ) {
-            $conf_dir = $cur_conf_rdir;
+        elsif ( length $cur_config_rdir && $cur_config_rdir ne ( $self->path('config_dir') || ( ( $self->path('dbase_dir') || "." ) . "/config" ) ) ) {
+            $config_dir = $cur_config_rdir;
         }
         else {
-            $conf_dir = "$ramdisk_dir/config";
+            $config_dir = "$ramdisk_dir/config";
         }
 
         $self->path(
             ramdisk_dir => $ramdisk_dir,
             table_rdir  => $tbl_dir,
             schema_rdir => $schema_dir,
-            conf_rdir   => $conf_dir,
+            config_rdir   => $config_dir,
             lock_dir    => "$ramdisk_dir/lock",
             session_dir => "$ramdisk_dir/session",
         );
 
-        for my $dir ( $tbl_dir, $schema_dir, $conf_dir, "$ramdisk_dir/lock", "$ramdisk_dir/session" ) {
+        for my $dir ( $tbl_dir, $schema_dir, $config_dir, "$ramdisk_dir/lock", "$ramdisk_dir/session" ) {
             $self->make_path($dir);
         }
     }
@@ -325,13 +325,13 @@ sub ramdisk_setup {
         my $dbase_dir = $self->path('dbase_dir') || ".";
         $tbl_dir    = $self->path('table_dir')   || "$dbase_dir/table";
         $schema_dir = $self->path('schema_dir')  || "$dbase_dir/schema";
-        $conf_dir   = $self->path('conf_dir')    || "$dbase_dir/config";
+        $config_dir   = $self->path('config_dir')    || "$dbase_dir/config";
 
         $self->path(
             ramdisk_dir => $dbase_dir,
             table_rdir  => $tbl_dir,
             schema_rdir => $schema_dir,
-            conf_rdir   => $conf_dir,
+            config_rdir   => $config_dir,
             lock_dir    => $self->path('lock_dir')    || "$dbase_dir/lock",
             session_dir => $self->path('session_dir') || "$dbase_dir/session",
         );
@@ -351,11 +351,11 @@ sub ramdisk_setup {
         lock_dir     => $self->path('lock_dir'),
         session_dir  => $self->path('session_dir'),
         schema_dir   => $schema_dir,
-        conf_dir     => $conf_dir,
+        config_dir     => $config_dir,
         tbl_dir      => $tbl_dir,
         table_rdir   => $tbl_dir,
         schema_rdir  => $schema_dir,
-        conf_rdir    => $conf_dir,
+        config_rdir    => $config_dir,
         ramdisk_size => $disk_size,
         is_mounted   => $is_mounted,
         mount_desc   => $mount_desc,

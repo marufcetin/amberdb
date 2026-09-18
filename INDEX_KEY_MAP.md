@@ -16,7 +16,7 @@ AmberDB ikili indeks mimarisinde dosya tanıtıcı (file descriptor) ve I/O yük
 | `${tablo}.jsrc` (`_${blk}.jsrc`) | **`${tablo}.src`** | `"j:$blk:$word"` | Bağımsız `.jsrc` kaldırıldı, Tier B (Junk) arama indeksi `j:` ön ekiyle `.src` içine alındı. |
 | `${tablo}.srt` (`_${blk}.srt`) | **`${tablo}.inx`** | `"$blk:keys"`, `"$blk:$rid"` | Bağımsız `.srt` kaldırıldı; önceden sıralanmış ID dizileri doğrudan `.inx` içine taşındı. |
 | `${tablo}.jinx` | **`${tablo}.inx`** | `"j:keys"`, `"j:count"` | Bağımsız `.jinx` kaldırıldı; soğuk kayıt ID dizisi `j:` ön ekiyle `.inx` içine alındı. |
-| `${tablo}_0.slg` / `_1.slg` (eski `.rwt`) | **`${tablo}.slg`** | `"0:$rid"`, `"1:$slug"` | Çift yönlü slug haritaları tek bir `.slg` dosyasında birleştirildi. |
+| `${tablo}.slg` / `.slg` | **`${tablo}.slg`** | `"0:$rid"`, `"1:$slug"` | Çift yönlü slug haritaları tek bir `.slg` dosyasında birleştirildi. |
 | `${tablo}_${blk}.unq` | **`${tablo}.unq`** | `"$blk:s:$val"`, `"$blk:n:$nid"` | Blok bazlı sözlükler tek bir `.unq` dosyasında birleştirildi. |
 
 ---
@@ -37,9 +37,12 @@ AmberDB ikili indeks mimarisinde dosya tanıtıcı (file descriptor) ve I/O yük
 | `j:keys` | `pack("(Q>)*", @junk_ids)` | 8-Bayt Big-Endian Binary | Tier B (Junk/Arşiv) soğuk kayıtların ID dizisi (`use_junk => 1`). |
 | `j:count` | Sayısal skaler | ASCII String | Toplam soğuk (junk) kayıt sayısı. |
 | `"$blk:keys"` | `pack("(Q>)*", @sorted_ids)` | 8-Bayt Big-Endian Binary | `$blk` blokundaki değere göre artan sırada önceden sıralanmış aktif ID listesi. |
+| `"$blk:vals"` | `join("\t", @sorted_unique_vals)` | Metin Dizisi (Tab-separated) | `$blk` blokundaki sıralı ve benzersiz değerler dizisi. Hızlı aralık (`min-max`) sorgularında ikili aramayla sınır bulmak için kullanılır. |
 | `"$blk:$rid"` | Sabit genişlikli normalize değer | Binary / String | `$rid` kaydının `$blk` alanındaki sıralama anahtarı (`normalize_sort_key`). |
-| `"j:$blk:keys"` | `pack("(Q>)*", @sorted_ids)` | 8-Bayt Big-Endian Binary | Soğuk kayıtların `$blk` alanına göre önceden sıralanmış ID listesi. |
-| `"j:$blk:$rid"` | Sabit genişlikli normalize değer | Binary / String | Soğuk kaydın `$blk` alanındaki sıralama anahtarı. |
+| `"A:$blk:keys"` | `pack("(Q>)*", @sorted_ids)` | 8-Bayt Big-Endian Binary | Tier A (Aktif) kayıtların `$blk` alanına göre önceden sıralanmış ID listesi. |
+| `"A:$blk:vals"` | `join("\t", @sorted_unique_vals)` | Metin Dizisi (Tab-separated) | Tier A (Aktif) kayıtların `$blk` alanındaki sıralı benzersiz değerler listesi. |
+| `"B:$blk:keys"` | `pack("(Q>)*", @sorted_ids)` | 8-Bayt Big-Endian Binary | Tier B (Junk/Arşiv) kayıtların `$blk` alanına göre önceden sıralanmış ID listesi. |
+| `"B:$blk:vals"` | `join("\t", @sorted_unique_vals)` | Metin Dizisi (Tab-separated) | Tier B (Junk/Arşiv) kayıtların `$blk` alanındaki sıralı benzersiz değerler listesi. |
 
 ---
 

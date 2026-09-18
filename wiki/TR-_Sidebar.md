@@ -160,10 +160,10 @@
 ### Dosya Formatlari
 - [.db](TR-File-db) · [.table](TR-File-table) · [.dbase](TR-File-dbase)
 - [.inx](TR-File-inx) · [.fld](TR-File-fld) · [.src](TR-File-src)
-- [.fac](TR-File-fac) · [.srt](TR-File-srt) · [.slg](TR-File-slg)
-- [.unq](TR-File-unq) · [.del](TR-File-del) · [.aut](TR-File-aut) · [.lnk](TR-File-lnk)
-- [.cnt](TR-File-cnt) · [.txn](TR-File-txn) · [.amberdb](TR-File-amberdb)
-- [.csv](TR-File-csv) · [.tmp](TR-File-tmp)
+- [.fac](TR-File-fac) · [.slg](TR-File-slg) · [.lnk](TR-File-lnk)
+- [.unq](TR-File-unq) · [.del](TR-File-del) · [.aut](TR-File-aut)
+- [.cnt](TR-File-cnt) · [.amberdb](TR-File-amberdb) · [.csv](TR-File-csv)
+- [.tmp](TR-File-tmp)
 
 ---
 

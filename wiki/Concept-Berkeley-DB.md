@@ -23,7 +23,7 @@ AmberDB and Berkeley DB (DB_File) Stack
  ┌─────────────────────────────────────────────────────────────┐
  │                      AmberDB Layer                          │
  │  Schema Validation, 8-Byte Binary Indexes (.inx, .fld, .src)│
- │  Strict 2PL Locks, Undo-Journal (.txn), Locale & Faceting   │
+ │  Strict 2PL Locks, Undo-Journal, Locale & Faceting          │
  └─────────────────────────────────────────────────────────────┘
                                 |
                                 v
@@ -67,7 +67,7 @@ The deliberate architectural choice of `DB_File` over client-server engines (MyS
 While raw `DB_File` is strictly a key-value store lacking query planning, validation, and multi-table transactions, AmberDB elevates it to a complete NoSQL ecosystem:
 
 1. **Schema & Block Data Model:** Transforms raw key-values into typed, extensible document arrays.
-2. **Precomputed Binary Indexes:** Implements `.fld`, `.src`, `.fac`, and `.srt` indexes, delivering instant $O(1)$ equivalents for SQL `WHERE`, `LIKE`, `GROUP BY`, and `ORDER BY`.
+2. **Precomputed Binary Indexes:** Implements `.fld`, `.src`, `.fac` indexes, delivering instant $O(1)$ equivalents for SQL `WHERE`, `LIKE`, `GROUP BY`, and `ORDER BY`.
 3. **Strict 2PL & Undo Journal:** Provides full ACID guarantees with automatic crash recovery.
 4. **Multilingual Search Engine:** Adds 9-language phonetic search and Unicode Collation.
 

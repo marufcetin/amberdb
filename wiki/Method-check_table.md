@@ -10,7 +10,7 @@
 
 ## 1. Definition and Overview
 
-`check_table()` analyzes a table's physical master file (`.db`) and all its secondary indexes (`.inx`, `.src`, `.fld`, `.fac`, `.srt`) for corruption, record count mismatches, or missing entries.
+`check_table()` analyzes a table's physical master file (`.db`) and all its secondary indexes (`.inx`, `.src`, `.fld`, `.fac`, `.slg`) for corruption, record count mismatches, or missing entries.
 
 ---
 

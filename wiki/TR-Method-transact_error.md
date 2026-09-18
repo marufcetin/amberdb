@@ -13,7 +13,7 @@
 `transact_error($file_path, $message)`, veritabani dosyalari uzerinde olusan fiziksel dosya acma ve yazma hatalarini kaydeden **ic motor metodudur**.
 
 Calisma kurali tek ve kesindir:
-- Gelen `$file_path` bir ana veri tablosu (`.$db_ext`, ornegin `.db`) ise ve tabloda `no_transact => 1` tanimli degilse **aninda `transact_rollback()` calistirir**, LIFO sirasiyla degisiklikleri geri alir, tum Strict 2PL kilitlerini serbest birakir ve `.txn` gunlugunu siler.
+- Gelen `$file_path` bir ana veri tablosu (`.$db_ext`, ornegin `.db`) ise ve tabloda `no_transact => 1` tanimli degilse **aninda `transact_rollback()` calistirir**, LIFO sirasiyla degisiklikleri geri alir, tum Strict 2PL kilitlerini serbest birakir ve geri alma gunlugunu siler.
 - Gelen dosya uzantisi ikincil bir dosya veya indeks ise (`.inx`, `.src`, `.fld`, `.fac`, `.slg`, `.aut`, `.del` vb.) sadece hata gunlugune eklenir; islemi geri almaz (`no_rollback = 1`).
 
 > [!NOTE]
@@ -70,4 +70,3 @@ if ($txn->{status} eq 'commit') {
 - [Metot: transact_start](TR-Method-transact_start)
 - [Metot: transact_end](TR-Method-transact_end)
 - [Metot: transact_rollback](TR-Method-transact_rollback)
-- [Dosya: .txn (Islem Gunlugu)](TR-File-txn)

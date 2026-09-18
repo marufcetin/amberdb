@@ -18,7 +18,7 @@ Standart modda AmberDB, veritabanı dosyalarını `dbase_dir` altında yapıland
 - `schema/` — Tablo şema tanım dosyaları (`.table`).
 - `dbase/` — Veritabanı grup ve erişim yetkilendirme dosyaları (`.dbase`).
 - `del/` — Geri dönüşüm kutusu silinmiş kayıt arşivleri (`.del`).
-- `txn/` — ACID işlem geri alma günlükleri (`.txn`).
+- `journal/` — ACID işlem geri alma günlükleri (`txn_*`).
 - `log/` — Kullanıcı denetim kayıtları (`.aut`) ve işlem günlükleri.
 - `ramdisk/` — Şeffaf fiziksel RAM-disk depolaması için varsayılan bağlama noktası.
 

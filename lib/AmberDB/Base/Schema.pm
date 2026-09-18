@@ -6,7 +6,7 @@ use Carp qw(croak cluck);
 use File::Spec;
 use parent 'AmberDB::Base';
 
-our $VERSION = '5.25.3';
+our $VERSION = '5.26.0';
 
 my $CREATED = '2026-09-06';
 
@@ -62,9 +62,9 @@ sub enc_field {
         # 3. Type: date
         elsif ( $type eq 'date' || $type eq 'datetime' || $type eq 'date_short' || $type eq 'date_long' ) {
             if ( ( !defined $val || $val eq '' ) && $valid =~ /auto_date/ ) {
-                my $y = $self->{date}->{year}  // ( 1900 + (localtime)[5] );
-                my $m = $self->{date}->{month} // sprintf( "%02d", (localtime)[4] + 1 );
-                my $d = $self->{date}->{day}   // sprintf( "%02d", (localtime)[3] );
+                my $y = $self->year;
+                my $m = $self->month;
+                my $d = $self->day;
                 $val = "$y-$m-$d";
             }
             else {
@@ -311,7 +311,7 @@ sub dbase_info {
     if ( -e $target_path ) {
         $target_path =~ s{\\}{/}g;
         $target_path = "./$target_path" unless $target_path =~ m{^(?:\./|/|[a-zA-Z]:)};
-        my $do_data = do $target_path;
+        my $do_data = eval { do $target_path };
         if ($do_data) {
             $self->{_dbase}->{$dbase} = $do_data;
             if ( $ramdisk_schema && !-e "$ramdisk_schema/$dbase.dbase" && $self->dir_exist($ramdisk_schema) ) {
@@ -551,7 +551,7 @@ sub table_info {
     if ( -e $target_path ) {
         $target_path =~ s{\\}{/}g;
         $target_path = "./$target_path" unless $target_path =~ m{^(?:\./|/|[a-zA-Z]:)};
-        my $do_data = do $target_path;
+        my $do_data = eval { do $target_path };
         if ($do_data) {
             $self->normalize_blocks( $table, $do_data );
             $self->{_table}->{$table} = $do_data;
@@ -671,7 +671,7 @@ sub table_path {
                 or $self->{_table}->{$table}->{year} )
           )
         {
-            $yeardir = $self->path('year_dir') || $self->{date}->{year};
+            $yeardir = $self->path('year_dir') || $self->year;
         }
         else {
             delete( $self->{_dbase}->{$dbase}->{year} )

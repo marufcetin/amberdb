@@ -10,7 +10,7 @@
 
 ## 1. Tanim ve Genel Bakis
 
-`transact_commit()`, aktif islemi kesinlestirir (commit). Tum BDB tamponlarini diske esler (sync), aktif `.txn` gunluk dosyasini siler ve tum Strict 2PL kilitlerini kaldirir.
+`transact_commit()`, aktif islemi kesinlestirir (commit). Tum BDB tamponlarini diske esler (sync), aktif geri alma gunluk dosyasini siler ve tum Strict 2PL kilitlerini kaldirir.
 
 > [!NOTE]
 > `transact_commit()` bir ic motor metodudur. Normal uygulama akisinda islemi sonlandirmak icin `transact_end()` kullanilmalidir. `transact_end()` islem suresince hicbir hata olusmamissa `transact_commit()` metodunu otomatik olarak cagirir.

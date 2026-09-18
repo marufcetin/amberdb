@@ -10,7 +10,7 @@
 
 ## 1. Definition and Overview
 
-`read_all()` scans, sorts, paginates, and retrieves records from a table. It leverages the 8-byte packed primary index (`.inx`) and pre-sorted indexes (`.srt`) for high-speed sub-millisecond pagination and supports `keys_only` scalar extraction pipelines.
+`read_all()` scans, sorts, paginates, and retrieves records from a table. It leverages the 8-byte packed primary and pre-sorted index (`.inx`) for high-speed sub-millisecond pagination and supports `keys_only` scalar extraction pipelines.
 
 ---
 

@@ -3,7 +3,7 @@
 [Turkce Dokumantasyon](TR-File-fld) | [English Documentation](File-fld)
 
 > **Category:** File Formats & Storage  
-> **Location:** `dbstore/table/${table_id}_${block_idx}.fld` (or Tier B `*.jfld`)  
+> **Location:** `dbstore/table/${table_id}.fld`  
 > **Format:** Inverted Exact-Match Hash Table (`DB_File`)
 
 ---

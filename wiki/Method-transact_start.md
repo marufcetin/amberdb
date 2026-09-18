@@ -47,4 +47,3 @@ if ($@) {
 - [Method: transact_error](Method-transact_error)
 - [Method: transact_end](Method-transact_end)
 - [Method: transact_rollback](Method-transact_rollback)
-- [File: .txn (Undo Journal)](File-txn)

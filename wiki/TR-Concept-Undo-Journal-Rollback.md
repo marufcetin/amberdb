@@ -12,31 +12,31 @@
 
 **Undo-Journal ACID Rollback ve Cokme Kurtarma Mekanizmasi**, AmberDB'nin cok tablolu islemlerde Atomiklik (Atomicity) ve Tutarlilik (Consistency) garantilerini saglayan disk gunlugu sistemidir.
 
-`transact_start` ile bir islem baslatildiginda, disk uzerinde o surece ozel bir geri alma gunlugu dosyasi olusturulur (`dbstore/txn/amberdb_processid_timestamp.txn`). Ana `.db` tablosunda veya turetilmis ikincil indeks dosyalarinda (`.inx`, `.fld`, `.src`, `.fac`, `.srt`) herhangi bir kayit degistirilmeden once, kaydin **degismemis orijinal hali** sirali olarak `.txn` dosyasina yazilir.
+`transact_start` ile bir islem baslatildiginda, disk uzerinde o surece ozel bir geri alma gunlugu dosyasi olusturulur (`dbstore/journal/txn_*`). Ana `.db` tablosunda veya turetilmis ikincil indeks dosyalarinda (`.inx`, `.fld`, `.src`, `.fac`, `.slg`) herhangi bir kayit degistirilmeden once, kaydin **degismemis orijinal hali** sirali olarak geri alma dosyasina yazilir.
 
 Islem sirasinda beklenmeyen bir hata, istisna veya Perl surecinin aniden sonlanmasi durumunda, AmberDB gunluk dosyasini **Son Giren Ilk Cikar (LIFO)** ters sirasiyla okuyarak tum tablolari ve indeksleri islemin basindaki haline eksiksiz dondurur.
 
 ```text
 Undo-Journal Calisma Akisi
-1. transact_start() > .txn islem gunluk dosyasi olusturulur
+1. transact_start() > Geri alma gunluk dosyasi olusturulur (journal/txn_*)
                                         
-2. Kayit Islemi (Insert/Modify) > .db degistirilmeden ONCE eski hali .txn'e yazilir
+2. Kayit Islemi (Insert/Modify) > .db degistirilmeden ONCE eski hali gunluge yazilir
                                         
-3. Normal Bitis (transact_end) > Degisiklikler diske basilir, .txn silinir
+3. Normal Bitis (transact_end) > Degisiklikler diske basilir, gunluk silinir
                                         
-4. Hata / Surec Kesintisi / Cokme > .txn dosyasi LIFO sirasiyla calistirilip geri alinir
+4. Hata / Surec Kesintisi / Cokme > Gunluk dosyasi LIFO sirasiyla calistirilip geri alinir
 ```
 
 ---
 
 ## 2. Sunucu Cokmesi ve Yetim Gunluklerin Kurtarilmasi
 
-Sunucu elektriginin kesilmesi, kernel panigi veya surecin `kill -9` ile disaridan oldurulmesi gibi durumlarda `dbstore/txn/` altinda tamamlanmamis yetim `.txn` dosyalari kalir.
+Sunucu elektriginin kesilmesi, kernel panigi veya surecin `kill -9` ile disaridan oldurulmesi gibi durumlarda `dbstore/journal/` altinda tamamlanmamis yetim gunluk dosyalari kalir.
 
 AmberDB bir sonraki baslatilmasinda (`AmberDB->new`), motor otomatik olarak `transact_recover()` metodunu calistirir:
-1. `dbstore/txn/` altinda aktif olmayan sureclere ait tum `.txn` dosyalarini tespit eder.
+1. `dbstore/journal/` altinda aktif olmayan sureclere ait tum yetim gunluk dosyalarini tespit eder.
 2. Gunlukteki degisiklikleri tersine isletir ve tablolari tutarli duruma getirir.
-3. Kurtarma tamamlandiktan sonra yetim `.txn` dosyalarini siler ve loglara bilgi duser.
+3. Kurtarma tamamlandiktan sonra yetim gunluk dosyalarini siler ve loglara bilgi duser.
 
 ---
 
@@ -79,4 +79,3 @@ if ($@) {
 - [Metot: transact_end](TR-Method-transact_end)
 - [Metot: transact_rollback](TR-Method-transact_rollback)
 - [Metot: transact_recover](TR-Method-transact_recover)
-- [Dosya: .txn (Islem Gunlugu)](TR-File-txn)

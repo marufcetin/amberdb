@@ -15,7 +15,7 @@
 
 ## 1. Definition and Overview
 
-By default, AmberDB relational tables utilize 64-bit unsigned integer primary keys (`1, 2, 3...`) packed into 8-byte binary indexes (`.inx`, `.srt`, `.fld`) via `(Q>)*`. This guarantees $O(1)$ zero-copy slicing for relational queries.
+By default, AmberDB relational tables utilize 64-bit unsigned integer primary keys (`1, 2, 3...`) packed into 8-byte binary indexes (`.inx`, `.src`, `.fld`) via `(Q>)*`. This guarantees $O(1)$ zero-copy slicing for relational queries.
 
 However, certain domain models require natural, alphanumeric, or globally unique identifiers:
 - **UUIDs and GUIDs** (e.g. `9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d`)
@@ -44,7 +44,7 @@ Hybrid Key Architecture in AmberDB
 ## 2. Advantages of String Keys via `use_simple => 1`
 
 ### 1. Zero-Overhead Direct $O(1)$ Hash Lookups
-In `use_simple => 1` mode, the table operates directly against Berkeley DB (`DB_File`) hash buckets. Secondary index files (`.inx`, `.src`, `.fld`, `.fac`, `.srt`) are automatically suppressed, delivering maximum write throughput and zero index synchronization overhead.
+In `use_simple => 1` mode, the table operates directly against Berkeley DB (`DB_File`) hash buckets. Secondary index files (`.inx`, `.src`, `.fld`, `.fac`) are automatically suppressed, delivering maximum write throughput and zero index synchronization overhead.
 
 ### 2. Up to 255 Bytes Key Flexibility
 Unlike the legacy 8-byte ASCII limit (`a8`), `use_simple => 1` accepts arbitrary UTF-8 or ASCII string identifiers up to 255 bytes (excluding control characters `\t`, `\n`, `\0`, `\r`).

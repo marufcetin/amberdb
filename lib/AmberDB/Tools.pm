@@ -5,7 +5,7 @@ use warnings;
 use Carp qw(croak cluck);
 use File::Spec;
 
-our $VERSION = '5.25.3';
+our $VERSION = '5.26.0';
 my $CREATED = '2018-10-08';
 
 # Constructor
@@ -94,7 +94,7 @@ sub set_index {
 
     # 7. Create sort index.
     if ( exists( $table_info->{sort_block} ) ) {
-        $self->{say} .= "    - Rebuilding sort index (.srt)...\n";
+        $self->{say} .= "    - Rebuilding sort index (.inx)...\n";
         my $ok = $self->set_sort( $tableid, @records );
     }
 
@@ -712,23 +712,39 @@ sub set_sort {
     foreach my $cfg ( @{ $table_info->{sort_block} } ) {
         my ( $blk, $type, $len ) = ref($cfg) eq 'HASH'
             ? ( $cfg->{blk}, $cfg->{type}, $cfg->{len} // 8 )
-            : ( $cfg, 'string', 8 );
+            : ( $cfg, undef, 8 );
+
+        if ( ( !defined $type || $type eq '' || $type eq 'auto' ) && $table_info->{blocks} ) {
+            if ( ref($table_info->{blocks}) eq 'ARRAY' && ref($table_info->{blocks}[$blk]) eq 'HASH' ) {
+                $type = $table_info->{blocks}[$blk]{type};
+            }
+        }
+        $type ||= 'string';
 
         my %map;
         my ( %act_map, %junk_map );
+        my %uniq_vals;
+        my ( %act_uniq, %junk_uniq );
         foreach my $rec (@records) {
             next unless ref($rec) eq 'ARRAY' && defined $rec->[0];
             my $rid  = $rec->[0];
-            my $norm = $adb->normalize_sort_key( $rec->[$blk], $type, $len );
+            my $val  = $rec->[$blk];
+            my $norm = $adb->normalize_sort_key( $val, $type, $len );
             $map{$rid} = $norm;
+
+            if ( defined $val && $val ne '' ) {
+                $uniq_vals{$val} = 1;
+            }
 
             if ($has_junk) {
                 my $is_junk = $adb->junk_rules( $table_info, $rec, $junk_rdbm );
                 if ($is_junk) {
                     $junk_map{$rid} = $norm;
+                    $junk_uniq{$val} = 1 if defined $val && $val ne '';
                 }
                 else {
                     $act_map{$rid} = $norm;
+                    $act_uniq{$val} = 1 if defined $val && $val ne '';
                 }
             }
         }
@@ -744,18 +760,37 @@ sub set_sort {
             $raw_batch{"$blk:$k"} = $map{$k};
         }
 
+        my $sort_vals = sub {
+            my ($href) = @_;
+            my $is_num = ( $type eq 'num' || $type eq 'decimal' ) ? 1 : 0;
+            if ( !$is_num && %$href ) {
+                $is_num = 1;
+                for my $k ( keys %$href ) {
+                    if ( $k !~ /^-?[0-9]+(?:\.[0-9]+)?$/ ) {
+                        $is_num = 0;
+                        last;
+                    }
+                }
+            }
+            my @sv = $is_num ? ( sort { $a <=> $b } keys %$href ) : ( sort { $a cmp $b } keys %$href );
+            return join("\t", @sv);
+        };
+        $raw_batch{"$blk:vals"} = $sort_vals->(\%uniq_vals) if %uniq_vals;
+
         if ($has_junk) {
             my @sorted_act = sort {
                 ( ( $act_map{$a} // '' ) cmp ( $act_map{$b} // '' ) )
                   || ( $a <=> $b )
             } keys %act_map;
             $keys_batch{"A:$blk:keys"} = \@sorted_act;
+            $raw_batch{"A:$blk:vals"} = $sort_vals->(\%act_uniq) if %act_uniq;
 
             my @sorted_junk = sort {
                 ( ( $junk_map{$a} // '' ) cmp ( $junk_map{$b} // '' ) )
                   || ( $a <=> $b )
             } keys %junk_map;
             $keys_batch{"B:$blk:keys"} = \@sorted_junk;
+            $raw_batch{"B:$blk:vals"} = $sort_vals->(\%junk_uniq) if %junk_uniq;
         }
     }
 
@@ -767,8 +802,6 @@ sub set_sort {
             $adb->table_close($inx_path);
         }
     }
-
-    unlink("${table_path}.srt");
 
     $self->{say} .= "    - Sort indexes created in ${table_path}.inx for table $tableid.\n";
     return 1;
@@ -924,7 +957,7 @@ sub tie2csv {
 
     my $i = 1;
     if ( -e "$table_path.csv" ) {
-        my $day_id = $adb->{date}->{day_id} || 'backup';
+        my $day_id = $adb->day_id || 'backup';
         rename( "$table_path.csv", "$table_path-$day_id.csv" );
     }
 
@@ -979,7 +1012,7 @@ sub csv2tie {
 
     # backup with timestamp if exists
     if ( -e "${table_path}.$adb->{db_ext}" ) {
-        my $sec_id = $adb->{date}->{second_id} || time();
+        my $sec_id = $adb->second_id;
         rename( "${table_path}.$adb->{db_ext}",
             "${table_path}-$sec_id.$adb->{db_ext}" );
         unlink("${table_path}.$adb->{db_ext}");
@@ -1053,7 +1086,7 @@ sub vacuum {
     my $tie_path   = "$table_path.$adb->{db_ext}";
     return unless -e $tie_path;
 
-    my $sec_id = $adb->{date}->{second_id} || time();
+    my $sec_id = $adb->second_id;
     my $pid_name = "$sec_id-$$";
     my $tie_back = "$table_path-$pid_name.$adb->{db_ext}";
     my $csv_path = "$table_path.csv";
@@ -1434,7 +1467,7 @@ sub update_table {
         $adb->table_close($file_path);
 
         # Eski turetilen indeks dosyalarini temizle
-    for my $iext (qw(inx src fld fac slg srt jinx jfld jsrc)) {
+    for my $iext (qw(inx src fld fac slg)) {
         my $idx_f = "$table_path.$iext";
         unlink $idx_f if -e $idx_f;
     }
@@ -1583,19 +1616,6 @@ sub update_all {
     }
 
     return wantarray ? @results : \@results;
-}
-
-# my $ok = $tools->table_exist("tableid");
-# ------------------------------------------------
-sub table_exist {
-
-    my ( $self, $table ) = @_;
-    my $adb = $self->{_adb} or return 0;
-
-    my $table_path = $adb->table_path($table);
-    my $ok         = -e "$table_path.$adb->{db_ext}" ? 1 : 0;
-
-    return $ok;
 }
 
 # my $status = dbase_tableold
@@ -1828,11 +1848,11 @@ sub dump {
     $adb->close_all();
 
     # 3. Determine output file path
-    my $year = ( $adb->{date} && $adb->{date}->{year} ) ? $adb->{date}->{year} : (localtime)[5] + 1900;
-    my $month = ( $adb->{date} && $adb->{date}->{month} ) ? $adb->{date}->{month} : sprintf( "%02d", (localtime)[4] + 1 );
-    my $day = ( $adb->{date} && $adb->{date}->{day} ) ? $adb->{date}->{day} : sprintf( "%02d", (localtime)[3] );
+    my $year     = $adb->year;
+    my $month    = $adb->month;
+    my $day      = $adb->day;
     my $date_iso = "$year-$month-$day";
-    my $time_id = ( $adb->{date} && $adb->{date}->{second_id} ) ? $adb->{date}->{second_id} : time();
+    my $time_id  = $adb->second_id;
 
     my $backup_base = $adb->path('backup_dir')
       || ( $adb->path('dbase_dir') ? $adb->path('dbase_dir') . "/backup" : "backup" );

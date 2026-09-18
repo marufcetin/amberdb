@@ -26,21 +26,16 @@ AmberDB, fiziksel depolama katmaninda deterministik ve amaca yonelik ozel dosya 
 | **`.del`** | **Yetkili Ana Veri** | **HAYIR** | `keep_deleted` aktifken silinen kayitlarin saklandigi cop kutusu tablosu. |
 | **`.aut`** | **Yetkili Ana Veri** | **HAYIR** | `log_owner` aktifken tutulan kullanici degisiklik ve denetim izi tablosu. |
 | **`.cnt`** | **Yetkili Ana Veri** | **HAYIR** | `use_counter` aktifken tutulan atomik sayac/hit depolama dosyasi. |
-| **`.unq`** | **Yetkili Ana Veri** | **HAYIR** | Cift yonlu metin-etiket $\leftrightarrow$ ID sozluk ve tekillik dosyasi (`_${blk}.unq`). |
+| **`.unq`** | **Yetkili Ana Veri** | **HAYIR** | Cift yonlu metin-etiket $\leftrightarrow$ ID sozluk ve tekillik dosyasi (`.unq`). |
 | **`.inx`** | **Turetilmis Indeks** |  **EVET** | Tum aktif kayit ID'lerini barindiran 8-byte paketli birincil binary indeks. |
 | **`.fld`** | **Turetilmis Indeks** |  **EVET** | Blok duzeyinde deger $\rightarrow$ ID listesi ters eslesme indeksi (`match_block`). |
 | **`.src`** | **Turetilmis Indeks** |  **EVET** | Kelime tokenlari $\rightarrow$ ID listesi fonetik tam metin arama indeksi (`search_block`). |
 | **`.fac`** | **Turetilmis Indeks** |  **EVET** | Kolon tabanli cok boyutlu kategori ve filtreleme bitset indeksi (`facet_block`). |
-| **`.srt`** | **Turetilmis Indeks** |  **EVET** | Onceden siralanmis binary ID dizisi (`sort_block`). |
 | **`.slg`** | **Turetilmis Indeks** |  **EVET** | Cift yonlu SEO URL Slug haritasi (`_0.slg` ID $\rightarrow$ Slug, `_1.slg` Slug $\rightarrow$ ID). |
-| **`.jinx`**| **Turetilmis Indeks** |  **EVET** | Soguk/Junk katmanindaki kayitlarin 8-byte paketli birincil indeksi (`use_junk`). |
-| **`.jfld`**| **Turetilmis Indeks** |  **EVET** | Soguk katmandaki kayitlarin ters eslesme indeksi. |
-| **`.jsrc`**| **Turetilmis Indeks** |  **EVET** | Soguk katmandaki kayitlarin tam metin arama indeksi. |
 | **`.table`**| **Sema Dosyasi** | **HAYIR** | Tablo sema tanim dosyasi (`schema/*.table`). |
 | **`.dbase`**| **Sema Dosyasi** | **HAYIR** | Veritabani grup yapilandirma dosyasi (`schema/*.dbase`). |
 | **`.amberdb`**| **Yedekleme Arsivi** | - | Sikistirilmis, SHA-256 dogrulamali tasinabilir native veritabani arşivi. |
 | **`.csv`** | **Surekli WAL** | - | Gunluk zaman damgali eklemeli denetim akisi (`backup/YYYY/YYYY-MM-DD.csv`). |
-| **`.txn`** | **ACID Gunlugu** | Gecici | Aktif islem geri alma (undo-journal) dosyasi (`txn/*.txn`). |
 | **`.tmp`** | **Disk Tamponu** | Gecici | `buffer_write` staging tampon dosyasi (`buffer/*.tmp`). |
 | **`.lock`** | **Kilit Dosyasi** | Gecici | Isletim sistemi `flock` surec senkronizasyon kilit dosyasi. |
 
@@ -48,7 +43,7 @@ AmberDB, fiziksel depolama katmaninda deterministik ve amaca yonelik ozel dosya 
 
 ## 3. Depolama Verimliligi ve Yedekleme Stratejisi
 
-AmberDB'nin `.amberdb` yedekleme araci (`AmberDB::Tools->dump`), turetilmis indeksleri (`.inx`, `.fld`, `.src`, `.fac`, `.srt`, `.slg`) bilerek arşive dahil etmez. 
+AmberDB'nin `.amberdb` yedekleme araci (`AmberDB::Tools->dump`), turetilmis indeksleri (`.inx`, `.fld`, `.src`, `.fac`, `.slg`) bilerek arşive dahil etmez. 
 
 Bu sayede 10 GB'lik bir veritabani, yalnizca saf yetkili veriler (`.db`, `.del`, `.aut`, `.cnt`, `.unq`) ve semalar (`.table`) paketlendigi icin yaklasik **500 MB - 1 GB** boyutunda sikistirilmis bir arşive donusur. Yedek geri yuklendiginde (`restore`), motor tum indeksleri sifir veri kaybiyla aninda yeniden insa eder.
 

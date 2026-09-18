@@ -10,7 +10,7 @@
 
 ## 1. Definition and Overview
 
-The `.db` file is AmberDB's single source of authoritative truth. It stores raw serialized record payloads indexed by 64-bit/ASCII primary keys. All secondary indexes (`.inx`, `.src`, `.fld`, `.fac`, `.srt`) are purely derivative structures that can be completely deleted and deterministically rebuilt from `.db` at any time.
+The `.db` file is AmberDB's single source of authoritative truth. It stores raw serialized record payloads indexed by 64-bit/ASCII primary keys. All secondary indexes (`.inx`, `.src`, `.fld`, `.fac`, `.slg`) are purely derivative structures that can be completely deleted and deterministically rebuilt from `.db` at any time.
 
 ---
 

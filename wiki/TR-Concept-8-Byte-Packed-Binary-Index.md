@@ -10,7 +10,7 @@
 
 ## 1. Tanim ve Genel Bakis
 
-**8-Byte Paketli Binary Indeksleme Mekanizmasi**, AmberDB'nin birincil kayit kimlik listeleri (`.inx`), onceden siralanmis sorgu matrisleri (`.srt`) ve soguk veri indeksleri (`.jinx`) icin kullandigi ozel ikili depolama bicimidir.
+**8-Byte Paketli Binary Indeksleme Mekanizmasi**, AmberDB'nin birincil kayit kimlik listeleri, onceden siralanmis sorgu matrisleri (`s:`) ve soguk veri indeksleri (`j:`) icin `.inx` icin kullandigi ozel ikili depolama bicimidir.
 
 Kayit ID'lerini degisken uzunluklu metinler veya serilestirilmis diziler olarak saklamak yerine, Perl'in `pack("(Q>)*", @id_list)` mekanizmasi kullanilarak her bir ID kesinlikle 8-byte (64-bit Big-Endian) sabit genislikli ikili bayt blogu olarak paketlenir. Bu mimari, bellek icinde ve diskte sifir kopyalama ile alt-milisaniye duzeyinde $O(1)$ substring dilimleme ve sayfalama imkani sunar.
 
@@ -18,7 +18,7 @@ Kayit ID'lerini degisken uzunluklu metinler veya serilestirilmis diziler olarak 
 > UUID, e-posta veya slug gibi serbest metin anahtarlarina ihtiyac duyan tablolar icin AmberDB tablo bazinda **Basit Mod (`use_simple => 1`)** sunar. Bu modda `.inx` ikili indeksi uretilmez; 255 bayta kadar serbest metin anahtarlar dogrudan Berkeley DB anahtar-deger katmaninda calisir.
 
 ```text
-Fiziksel 8-Byte Paketli Binary Tampon Yapisi (.inx / .srt)
+Fiziksel 8-Byte Paketli Binary Tampon Yapisi (.inx)
 
  Bayt 0..7     Bayt 8..15    Bayt 16..23   Bayt 24..31   Bayt (N-1)*8..N*8
 
@@ -76,4 +76,3 @@ my ($sayi, @urun_idleri) = $adb->read_all("catalog_product", { offset => 0, limi
 - [Metot: read_all](TR-Method-read_all)
 - [Bayrak: keys_only](TR-Flag-keys_only)
 - [Dosya: .inx (Paketli ID Indeksi)](TR-File-inx)
-- [Dosya: .srt (Sirali Binary Indeks)](TR-File-srt)

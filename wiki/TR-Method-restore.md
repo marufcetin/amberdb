@@ -10,7 +10,7 @@
 
 ## 1. Tanim ve Genel Bakis
 
-`restore()`, bir `.amberdb` native arşivi hedef veritabanina geri yukler. `manifest.json` dosyasindaki SHA-256 karmalarini kontrol ederek arşiv butunlugunu dogrular, semalari ve yetkili dosyalari acar ve `set_index()` calistirarak tum ikincil indeksleri (`.inx`, `.src`, `.fld`, `.fac`, `.srt`) deterministik olarak yeniden uretir.
+`restore()`, bir `.amberdb` native arşivi hedef veritabanina geri yukler. `manifest.json` dosyasindaki SHA-256 karmalarini kontrol ederek arşiv butunlugunu dogrular, semalari ve yetkili dosyalari acar ve `set_index()` calistirarak tum ikincil indeksleri (`.inx`, `.src`, `.fld`, `.fac`, `.slg`) deterministik olarak yeniden uretir.
 
 ---
 

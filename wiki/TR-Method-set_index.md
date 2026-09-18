@@ -10,7 +10,7 @@
 
 ## 1. Tanim ve Genel Bakis
 
-`set_index()`, yetkili ana `.db` veri tablosundaki kayitlari bastan sona tarayarak tum ikincil indeksleri (`.inx`, `.src`, `.fld`, `.fac`, `.srt`, `.slg` ve Tier B `.j*` dosyalari) sifirdan ve deterministik olarak yeniden insa eder.
+`set_index()`, yetkili ana `.db` veri tablosundaki kayitlari bastan sona tarayarak tum ikincil indeksleri (`.inx`, `.src`, `.fld`, `.fac`, `.slg`) sifirdan ve deterministik olarak yeniden insa eder.
 
 ---
 

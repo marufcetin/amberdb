@@ -1,6 +1,38 @@
 Revision history for AmberDB
 
-5.25.3  2026-09-15
+5.26.0  2026-09-18
+        - [FAST RANGE FILTER ENGINE]
+          * Implemented range_slice() using pre-sorted .inx keys ($blk:keys) and .fld boundaries for sub-millisecond range queries.
+          * Slices contiguous 8-byte packed binary record IDs directly via index() and substr(), replacing slow multi-key OR unions.
+          * Stored distinct block values under $blk:vals (and tiered A:$blk:vals, B:$blk:vals) in .inx for binary search boundary detection.
+          * Added candidate pruning for small survivor sets (<= 250 records) directly on the raw binary slice.
+          * Full lifecycle management for $blk:vals: automatically maintains and prunes values across sort_add, sort_modify, and sort_del.
+
+        - [FIELD QUERY ENHANCEMENTS]
+          * field_fetch now accepts named block arguments via resolve_block_idx().
+          * Fixed raw numeric value recovery for fallback queries on normalized .inx sort keys.
+
+        - [DATE ENGINE OPTIMIZATIONS]
+          * Added memoization caching to AmberDB::Date with rollover protection.
+          * Added reset_date() / clear_date_cache() methods.
+          * Replaced direct hash access with fast accessor methods across dump, vacuum, and backup routines.
+
+        - [DIRECTORY ARCHITECTURE & LOCK PATH STANDARDIZATION]
+          * Standardized lock_dir and session_dir as single-key directories in AmberDB::Base::Ramdisk and AmberDB::Base.
+          * Removed obsolete fallback keys (lock_rdir) and legacy naming aliases (conf_dir, cfg_dir).
+          * In RAM-disk environments, lock_dir and session_dir are dynamically mounted under $ramdisk_dir/lock and $ramdisk_dir/session with 0755 permissions; when unmounted, they reside cleanly under $dbase_dir/lock and $dbase_dir/session.
+          * Aligned database lock directory structures with Amber 4.x state locking specifications.
+
+        - [SCHEMA LOADING RESILIENCE]
+          * Wrapped 'do $target_path' inside eval { do $target_path } in AmberDB::Base::Schema (table_info() and dbase_info()).
+          * Prevents fatal process/worker termination when user .table or .dbase schema files contain syntax errors under global $SIG{__DIE__} handlers.
+
+        - [SLUG INDEX ARCHITECTURE VERIFICATION (.slg)]
+          * Verified flat unified .slg index access model where block numbers (formerly _0 / _1 file suffixes) reside in key prefixes:
+            - Block 0: "0:$rid" -> URL slug value
+            - Block 1: "1:$slug" -> Record ID value
+          * Enforced direct .slg table access and recs_get key lookups without legacy .rwt fallbacks.
+
         - [GROUP-LEVEL SCHEMA INHERITANCE (.dbase -> .table)]
           * Database group schema files (.dbase) now cascade common operational flags to all member tables in the group.
           * Added %INHERITABLE_DBASE_KEYS whitelist in AmberDB::Base::Schema (use_ramdisk, keep_deleted, use_counter, log_owner, table_dir, use_section, etc.) preventing table-specific blocks and rules from leaking.
@@ -311,7 +343,7 @@ Revision history for AmberDB
             - Renamed schema attributes: seo_block -> slug_block, seo_max_len -> slug_max_len.
           * Renamed test suite t/amberdb_seo_facet_bulk.t to t/amberdb_slug_facet_bulk.t.
         - [STORAGE] Standardized URL Slug Map File Extension: .rwt -> .slg:
-          * Renamed binary slug map files from _0.rwt / _1.rwt to _0.slg (ID -> Slug) and _1.slg (Slug -> ID) across AmberDB, Index, Transact, and Tools.
+          * Renamed binary slug map files from _0.rwt / _1.rwt to .slg (ID -> Slug) and .slg (Slug -> ID) across AmberDB, Index, Transact, and Tools.
           * Updated Tools->set_index() to reconstruct .slg files with zero data loss.
         - [DOCS] Caching Terminology Unification:
           * Completely removed deprecated L1/L2 caching terminology from all documentation and POD.

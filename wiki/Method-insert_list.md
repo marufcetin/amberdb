@@ -15,7 +15,7 @@
 Instead of opening, locking, updating indexes, and closing physical database handles per individual record, `insert_list()`:
 1. Acquires an exclusive table write lock once.
 2. Writes all record payloads into `.db` in a single streaming pass.
-3. Performs single-pass index merging for all secondary indexes (`.inx`, `.src`, `.fld`, `.fac`, `.srt`).
+3. Performs single-pass index merging for all secondary indexes (`.inx`, `.src`, `.fld`, `.fac`, `.slg`).
 4. Achieves **50x to 100x higher ingestion throughput** for bulk data migrations and ETL jobs.
 
 ---

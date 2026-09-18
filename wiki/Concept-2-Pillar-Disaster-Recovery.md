@@ -31,7 +31,7 @@ Triggered via $tools->dump() / Cron
      - Contains schemas: schema/*.table, schema/*.dbase
      - Contains master tables: tables/*.db, *.del, *.aut, *.cnt, *.unq
      - Verified with SHA-256 manifest.json
-     - Excludes derived indexes (.inx, .fld, .src, .fac, .srt) for space
+     - Excludes derived indexes (.inx, .fld, .src, .fac) for space
      - Auto-reconstructs indexes deterministically via set_index on restore
 ```
 
@@ -47,7 +47,7 @@ Triggered via $tools->dump() / Cron
 
 ## 3. Pillar 2: Native `.amberdb` Portable Archive
 
-- **Space Efficiency:** Secondary derived indexes (`.inx`, `.src`, `.fld`, `.fac`, `.srt`) constitute up to 70% of database disk footprint. AmberDB deliberately excludes these from `.amberdb` archives.
+- **Space Efficiency:** Secondary derived indexes (`.inx`, `.src`, `.fld`, `.fac`) constitute up to 70% of database disk footprint. AmberDB deliberately excludes these from `.amberdb` archives.
 - **Deterministic Reconstruction:** Upon running `restore(file => "backup.amberdb")`, the engine extracts schemas and authoritative master tables, then deterministically executes `set_index` on all tables to rebuild all binary indexes.
 - **Cryptographic Verification:** Every archive contains a root `manifest.json` with SHA-256 hashes for all authoritative files. Corrupted or tampered archives are rejected before restoring.
 
@@ -70,7 +70,7 @@ print "Backup created at: $archive_path\n";
 $tools->restore(
     file    => $archive_path,
     force   => 1, # Allow overwriting existing tables
-    reindex => 1  # Deterministically rebuild all .inx, .fld, .src, .fac, .srt
+    reindex => 1  # Deterministically rebuild all .inx, .fld, .src, .fac
 );
 ```
 

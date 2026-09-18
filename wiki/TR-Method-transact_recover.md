@@ -10,7 +10,7 @@
 
 ## 1. Tanim ve Genel Bakis
 
-`transact_recover()`, `dbstore/txn/` altinda kesintiye ugramis veya cokmus sureclerden kalan yetim `.txn` gunluk dosyalarini tarar. Tamamlanmamis degisiklikleri deterministik olarak geri alarak veritabani butunlugunu saglar ve eski gunlukleri siler. Bu metot `AmberDB->new()` tarafindan otomatik cagirilir.
+`transact_recover()`, `dbstore/journal/` altinda kesintiye ugramis veya cokmus sureclerden kalan yetim geri alma gunluklerini (`txn_*`) tarar. Tamamlanmamis degisiklikleri deterministik olarak geri alarak veritabani butunlugunu saglar ve eski gunlukleri siler. Bu metot `AmberDB->new()` tarafindan otomatik cagirilir.
 
 ---
 
@@ -36,4 +36,3 @@ print "Toplam $sayi adet yarida kalan islem gunlugu kurtarildi.\n";
 
 - [Kavram: Undo Journal ve Rollback](TR-Concept-Undo-Journal-Rollback)
 - [Metot: transact_rollback](TR-Method-transact_rollback)
-- [Dosya: .txn (Islem Gunlugu)](TR-File-txn)

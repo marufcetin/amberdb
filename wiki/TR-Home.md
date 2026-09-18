@@ -14,7 +14,7 @@ Bu wiki, **ansiklopedik bir kavram ve fonksiyon sozluk yapisinda** duzenlenmisti
 - **Temel Kavramlar:** [BerkeleyDB (DB_File) Motoru](TR-Concept-Berkeley-DB) | [AmberDB Tablo Semasi](TR-Concept-Table-Schema) | [Global Bayraklar](TR-Concept-Global-Flags) | [Tablo Sema Bayraklari](TR-Concept-Schema-Flags) | [Dizin Yapilandirmasi](TR-Concept-Directory-Structure) | [Dosya Yapisi (Uzantilar)](TR-Concept-File-Structure) | [Tekrarli Genisleyen Bloklar](TR-Concept-Repeat-Blocks) | [Otomatik ID](TR-Concept-Auto-ID) | [Metin Anahtarlar & Basit Mod](TR-Concept-ASCII-ID) | [Iliskisel Kayitlar](TR-Concept-Relational-Records) | [Kayit Anatomisi](TR-Concept-Record-Anatomy) | [JOIN-Free Mimari](TR-Concept-JOIN-Free-Architecture) | [Strict 2PL Kilitleri](TR-Concept-Strict-2PL-Locking)
 - **Temel Metotlar:** [new](TR-Method-new) | [config](TR-Method-config) | [insert_id](TR-Method-insert_id) | [read_id](TR-Method-read_id) | [read_all](TR-Method-read_all) | [modify_id](TR-Method-modify_id) | [delete_id](TR-Method-delete_id) | [field_fetch](TR-Method-field_fetch) | [search_table](TR-Method-search_table) | [facet_menu](TR-Method-facet_menu) | [transact_start](TR-Method-transact_start) | [flock_open](TR-Method-flock_open)
 - **One Cikan Bayraklar:** [log_owner](TR-Flag-log_owner) | [use_counter](TR-Flag-use_counter) | [use_junk](TR-Flag-use_junk) | [keep_deleted](TR-Flag-keep_deleted) | [auto_id](TR-Flag-auto_id) | [buffer_write](TR-Flag-buffer_write) | [simple](TR-Flag-simple) | [jnktype](TR-Flag-jnktype) | [keys_only](TR-Flag-keys_only)
-- **Dosya Turleri:** [.db](TR-File-db) | [.table](TR-File-table) | [.inx](TR-File-inx) | [.fld](TR-File-fld) | [.src](TR-File-src) | [.fac](TR-File-fac) | [.srt](TR-File-srt) | [.slg](TR-File-slg) | [.txn](TR-File-txn) | [.amberdb](TR-File-amberdb) | [.csv](TR-File-csv)
+- **Dosya Turleri:** [.db](TR-File-db) | [.table](TR-File-table) | [.inx](TR-File-inx) | [.fld](TR-File-fld) | [.src](TR-File-src) | [.fac](TR-File-fac) | [.slg](TR-File-slg) | [.amberdb](TR-File-amberdb) | [.csv](TR-File-csv)
 
 ---
 
@@ -50,9 +50,9 @@ Bu wiki, **ansiklopedik bir kavram ve fonksiyon sozluk yapisinda** duzenlenmisti
 AmberDB Mimari Yapisi
  Depolama Motoru (Berkeley DB DB_File Hash)
     Yetkili Ana Veri: .db, .del, .aut, .cnt
-    Turetilmis Ikincil Indeksler: .inx, .fld, .src, .fac, .srt, .slg
+    Turetilmis Ikincil Indeksler: .inx, .fld, .src, .fac, .slg
  Sema Katmani (.table, .dbase, bellek ici table_attr)
- Eszamanlilik ve ACID (Strict 2PL, OS flock, Undo-Journal .txn)
+ Eszamanlilik ve ACID (Strict 2PL, OS flock, Undo-Journal)
  Indeksleme Alt Sistemi (8-byte paketli Q>*, kolon bitsetleri, dil motoru)
  Katmanli Depolama Sistemi (.jnk soguk veri, tek gecisli hibrit sorgular)
  RAM-Disk Alt Sistemi (Linux tmpfs, macOS APFS, Windows ImDisk yansitmasi ve 3. katman ucucu onbellek, disk staging tamponlari)
@@ -129,7 +129,7 @@ AmberDB Mimari Yapisi
 - [transact_end](TR-Method-transact_end) - Islemi tamamlama (hata yoksa commit)
 - [transact_commit](TR-Method-transact_commit) - (Ic Metot) Islemi kesinlestirme
 - [transact_rollback](TR-Method-transact_rollback) - (Ic Metot) LIFO sirasiyla geri alma
-- [transact_recover](TR-Method-transact_recover) - Yetim kalmis .txn gunluklerini kurtarma
+- [transact_recover](TR-Method-transact_recover) - Yetim kalmis undo gunluklerini kurtarma
 - [flock_open](TR-Method-flock_open) - Tablo veya kayit duzeyinde flock kilidi alma
 - [flock_close](TR-Method-flock_close) - Tablo veya kayit duzeyinde flock kilidini birakma
 
@@ -193,14 +193,12 @@ AmberDB Mimari Yapisi
 - [.fld](TR-File-fld) - Birebir alan esleme ikincil indeksi
 - [.src](TR-File-src) - Kelime duzeyinde tam metin arama indeksi
 - [.fac](TR-File-fac) - Kolon tabanli facet bitset indeksi
-- [.srt](TR-File-srt) - Onceden siralanmis ikili indeks
 - [.slg](TR-File-slg) - Cift yonlu URL slug haritalama dosyasi
 - [.unq](TR-File-unq) - Cift yonlu sozluk ve tekillik indeksi dosyasi
 - [.del](TR-File-del) - Yumusak silinmis kayitlar arşivi
 - [.aut](TR-File-aut) - Kullanici kronolojik denetim izi gunlugu
 - [.cnt](TR-File-cnt) - Hit ve goruntulenme sayac deposu
 - [.lnk](TR-File-lnk) - Alias ve mukerrer kayit yonlendirme tablosu
-- [.txn](TR-File-txn) - Aktif islem geri alma undo-journal gunlugu
 - [.amberdb](TR-File-amberdb) - Sikistirilmis tasinabilir native veritabani arşivi
 - [.csv](TR-File-csv) - Gunluk surekli WAL denetim akisi
 - [.tmp](TR-File-tmp) - Disk tampon staging dosyasi

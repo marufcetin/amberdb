@@ -3,7 +3,7 @@
 [Turkce Dokumantasyon](TR-File-src) | [English Documentation](File-src)
 
 > **Category:** File Formats & Storage  
-> **Location:** `dbstore/table/${table_id}.src` (or Tier B `*.jsrc`)  
+> **Location:** `dbstore/table/${table_id}.src`  
 > **Format:** Inverted Keyword Posting Hash Table (`DB_File`)
 
 ---

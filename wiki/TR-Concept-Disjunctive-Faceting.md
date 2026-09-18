@@ -14,7 +14,7 @@
 
 Modern e-ticaret filtreleme mantiginda, ayni ozellik grubu icindeki coklu secimler (orn: Renk = Kirmizi VEYA Mavi) **Ayrik (OR) mantigi** ile calisirken, farkli ozellik gruplari arasindaki secimler (orn: Marka = Apple VE Renk = Kirmizi) **Birlestirici (AND) mantigi** ile kesistirilir. En kritik gereksinim, secilmemis diger seceneklerin de mevcut filtre kombinasyonunda kac urun getirecegini (disjunctive sayim) aninda hesaplamaktir.
 
-AmberDB, facet verilerini kolon bazli bitset dosyalarinda (`_${blk}.fac`) ve cift yonlu metin sozluklerinde (`_${blk}.unq`) saklayarak milyonlarca urun uzerinde bu sayimlari milisaniyeler icinde gerceklestirir.
+AmberDB, facet verilerini kolon bazli bitset dosyalarinda (`.fac`) ve cift yonlu metin sozluklerinde (`.unq`) saklayarak milyonlarca urun uzerinde bu sayimlari milisaniyeler icinde gerceklestirir.
 
 ```text
 Ayrik Facet Filtreleme Akis Semasi
@@ -39,8 +39,8 @@ Renk Filtresi:     [Renk = Siyah ]                    (AND)
 
 ## 2. Alt Sistem Bilesenleri
 
-1. **Kolon Tabanli Bitset Dosyalari (`_${blk}.fac`):** Her facet blogu icin kayit ID'lerini sikistirilmis deger ID'lerine esleyen ileri yonlu dosyalardir. Yalnizca aktif ve stogu bulunan urunler saklanir.
-2. **Cift Yonlu Sozlukler (`_${blk}.unq`):** Metin tabanli etiketleri (orn: "Uzay Grisi", "16GB RAM") sayisal sozluk anahtarlarina cevirir.
+1. **Kolon Tabanli Bitset Dosyalari (`.fac`):** Her facet blogu icin kayit ID'lerini sikistirilmis deger ID'lerine esleyen ileri yonlu dosyalardir. Yalnizca aktif ve stogu bulunan urunler saklanir.
+2. **Cift Yonlu Sozlukler (`.unq`):** Metin tabanli etiketleri (orn: "Uzay Grisi", "16GB RAM") sayisal sozluk anahtarlarina cevirir.
 3. **Dinamik Kapsam (`base_ids`):** Facet menusu bir arama sorgusu sonucuna (`search_table`) veya ozel bir urun listesine dinamik olarak sinirlanabilir.
 
 ---

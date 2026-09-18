@@ -3,14 +3,14 @@
 [Turkce Dokumantasyon](TR-File-fac) | [English Documentation](File-fac)
 
 > **Kategori:** Dosya Formatlari ve Depolama  
-> **Konum:** `dbstore/table/${tablo_adi}_${blok_indisi}.fac`  
+> **Konum:** `dbstore/table/${tablo_adi}.fac`  
 > **Format:** Kolon Tabanli Ileri Yonlu Sabit Genislikli Bitset Dizisi
 
 ---
 
 ## 1. Tanim ve Genel Bakis
 
-`.fac` dosyasi, kayit ID ofsetine gore ileri yonlu sutun nitelik degerlerini saklar. Cift yonlu metin sozlukleri (`_${blok}.unq`) ile birlikte calisarak ayrik (disjunctive) facet sayimlarinin aninda hesaplanmasini saglar.
+`.fac` dosyasi, kayit ID ofsetine gore ileri yonlu sutun nitelik degerlerini saklar. Cift yonlu metin sozlukleri (`.unq`) ile birlikte calisarak ayrik (disjunctive) facet sayimlarinin aninda hesaplanmasini saglar.
 
 ---
 

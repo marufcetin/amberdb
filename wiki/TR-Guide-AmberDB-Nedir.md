@@ -38,7 +38,7 @@ AmberDB Butunlesik NoSQL Mimarisi
  Isletim Sistemi Katmani (DB_File Hash + POSIX flock + Page Cache)
                      |
                      v
- Fiziksel Depolama (dbstore/table/*.db, .inx, .fld, .src, .fac, .srt)
+ Fiziksel Depolama (dbstore/table/*.db, .inx, .fld, .src, .fac, .slg)
 ```
 
 ---
@@ -50,8 +50,8 @@ AmberDB hicbir harici agir CPAN bagimliligina ihtiyac duymaksizin kendi icinde m
 | Modul | Gorev ve Sorumluluk Alani |
 | :--- | :--- |
 | **`AmberDB::Base`** | Sema yukleme (`.table`, `.dbase`), dosya yollari, veri serilestirme, 0. indis ID kurallari ve cekirdek CRUD yonetimi. |
-| **`AmberDB::Index`** | 8-byte paketli binary indeksler (`.inx`), ters eslesme (`.fld`), tam metin arama (`.src`), facet filtreleme (`.fac`) ve on-siralanmis (`.srt`) indekslerin uretimi ve esitlenmesi. |
-| **`AmberDB::Transact`** | ACID islem yonetimi, disk tabanli undo-journal gunlukleri (`.txn`), Strict 2PL cok surecli kilitler ve otomatik cokme kurtarmasi (`transact_recover`). |
+| **`AmberDB::Index`** | 8-byte paketli binary indeksler (`.inx`), ters eslesme (`.fld`), tam metin arama (`.src`), facet filtreleme (`.fac`) ve on-siralanmis (`.inx`) indekslerin uretimi ve esitlenmesi. |
+| **`AmberDB::Transact`** | ACID islem yonetimi, disk tabanli undo-journal gunlukleri (`dbstore/journal/txn_*`), Strict 2PL cok surecli kilitler ve otomatik cokme kurtarmasi (`transact_recover`). |
 | **`AmberDB::Ramdisk`** | Isletim sistemi duzeyinde RAM-Disk (Linux `tmpfs`, macOS `APFS`, Windows `ImDisk`) paylasimli bellek hizlandirmasi, TTL kontrolleri ve bellek ici ayna yonetimi. |
 | **`AmberDB::Locale`** | 10 dilde (`gb` [varsayilan Global Base], `tr`, `en`, `de`, `fr`, `es`, `ja`, `ru`, `ar`, `az`) dil duyarlı buyuk/kucuk harf donusumu, fonetik yumusama, aksan acilimi ve Unicode Collation (UCA) siralamasi. |
 | **`AmberDB::Array`** | Yuksek hizli dizi manipule yardimcilari (sirali karsilastirma, tekrarsiz fark alma, dilimleme, crop). |
@@ -70,7 +70,7 @@ Iliskisel veritabanlarinda coklu tablolari birbirine baglayan pahali `JOIN` sorg
 Birincil (`.inx`) ve ikincil indeksler 8-byte paketli binary tamponlar (`(Q>)*`) olarak saklanir. Bu sayede bellek tuketimi minimuma iner ve milyonlarca kayit iceren listelerde sayfalama (`LIMIT / OFFSET`) $O(1)$ `substr` dilimlemesiyle mikrosaniyeler icinde gerceklesir (serbest metin anahtarlar icin `use_simple => 1` modu sunulur).
 
 ### 3. Strict 2PL ACID Islemleri ve Undo-Journal
-Cok tablolu operasyonlar, disk tabanli geri alma gunlukleri (`.txn`) ve katı iki asamali kilitleme (Strict 2PL) protokolü ile guvenceye alinir. Surec aniden cokse veya elektrik kesilse dahi yetim gunlukler bir sonraki erisimde LIFO sirasiyla otomatik geri alinir.
+Cok tablolu operasyonlar, disk tabanli geri alma gunlukleri (`dbstore/journal/txn_*`) ve katı iki asamali kilitleme (Strict 2PL) protokolü ile guvenceye alinir. Surec aniden cokse veya elektrik kesilse dahi yetim gunlukler bir sonraki erisimde LIFO sirasiyla otomatik geri alinir.
 
 ### 4. 2-Sutunlu Surekli Felaket Kurtarma
 - **1. Sutun (Surekli WAL Akisi):** Her `insert`, `modify` ve `delete` islemi gunluk `backup/YYYY/YYYY-MM-DD.csv` akisina aninda eklenir.

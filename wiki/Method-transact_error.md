@@ -13,7 +13,7 @@
 `transact_error($file_path, $message)` is an **internal engine method** that records physical file access and write errors during database operations.
 
 Its decision rule is single and unambiguous:
-- If `$file_path` corresponds to a base data table (matching the configured `.$db_ext`, typically `.db`) and the table is not marked with `no_transact => 1`, it **immediately executes `transact_rollback()`**, reverting all mutations in reverse LIFO order, releasing all Strict 2PL locks, and removing the `.txn` journal.
+- If `$file_path` corresponds to a base data table (matching the configured `.$db_ext`, typically `.db`) and the table is not marked with `no_transact => 1`, it **immediately executes `transact_rollback()`**, reverting all mutations in reverse LIFO order, releasing all Strict 2PL locks, and removing the undo journal.
 - If the file extension is a secondary index or log (`.inx`, `.src`, `.fld`, `.fac`, `.slg`, `.aut`, `.del`, etc.), the error is logged into the error registry without triggering a rollback (`no_rollback = 1`).
 
 > [!NOTE]
@@ -70,4 +70,3 @@ if ($txn->{status} eq 'commit') {
 - [Method: transact_start](Method-transact_start)
 - [Method: transact_end](Method-transact_end)
 - [Method: transact_rollback](Method-transact_rollback)
-- [File: .txn (Undo Journal)](File-txn)
