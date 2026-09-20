@@ -47,6 +47,7 @@ sub new {
 
     $self->{_dbase} ||= {};
     $self->{_table} ||= {};
+    $self->{_norm}  ||= {};
     $self->{_cache} ||= {};
     $self->{_auth}  ||= {};
     $self->{_pid}   ||= {};
@@ -127,7 +128,7 @@ sub new {
     my @allowed = grep { !$seen{$_}++ } (
         @input_keys,
         qw(
-            _dbase _table _cache _date _auth _pid _txn _db _dbm _fd _tie
+            _dbase _table _norm _cache _date _auth _pid _txn _db _dbm _fd _tie
             _lock _lastid _error _adb _rdbm_memo say _connect
             _path _cfg db_ext ext date locale slug_max_len _no_txn
             day day_id dayname days hour hour_id minute minute_id
@@ -143,6 +144,7 @@ sub new {
     # 2. Lock key values for core containers to prevent accidental reassignment
     lock_value( %$self, '_dbase' );
     lock_value( %$self, '_table' );
+    lock_value( %$self, '_norm' );
     lock_value( %$self, '_cache' );
     lock_value( %$self, '_date' );
     lock_value( %$self, '_auth' );
@@ -3039,7 +3041,8 @@ sub read_all {
     }
 
     # 1. Primary record index (.inx binary key sequence)
-    if ( $table_info->{record_index} && !$no_index ) {
+    my $is_simple = $self->config('simple') || ( $table_info->{use_simple} ) || ( $table_info->{id_type} && $table_info->{id_type} eq 'ascii' );
+    if ( !$is_simple && $table_info->{record_index} && !$no_index ) {
         my $index_path = ( -e "$idx_path.inx" ) ? "$idx_path.inx" : "$table_path.inx";
         my $use_junk   = $table_info->{use_junk};
         my $jnkmode    = $use_junk ? $self->get_jnktype( $table_info, \%opts ) : 'ALL';
@@ -4595,7 +4598,7 @@ sub table_count {
     return $cached_count if defined $cached_count;
 
     my $count = 0;
-    my $is_simple = $self->config('simple') || ( $table_info && $table_info->{use_simple} ) || ( $table_info && $table_info->{id_type} && $table_info->{id_type} eq 'ascii' );
+    my $is_simple = $self->config('simple') || ( $table_info && $table_info->{use_simple} ) || ( $table_info->{id_type} && $table_info->{id_type} eq 'ascii' );
 
     # Read from index file if record_index exists and table is not in simple mode, otherwise count all records
     if ( !$is_simple && $table_info->{record_index} ) {
@@ -5669,13 +5672,9 @@ sub index_put {
             elsif ( ( $type eq 'bin' || $type eq 'raw_bin' ) && !ref($v_item) ) {
                 $v_encoded = $v_item;
             }
-            elsif ($is_unq) {
-                # .unq dictionary strings may contain Unicode
-                $v_encoded = $self->utf_encode($v_item);
-            }
             else {
-                # .inx, .fac, .slg, .fld, .src: numeric or binary payloads — zero utf overhead
-                $v_encoded = $v_item;
+                # .inx, .fac, .slg, .fld, .src: encode if string has utf8 flag to prevent DB_File wide character crash
+                $v_encoded = $self->utf_encode($v_item);
             }
 
             next unless defined $v_encoded && $v_encoded ne '';
@@ -5751,13 +5750,9 @@ sub index_put {
     elsif ( ( $type eq 'bin' || $type eq 'raw_bin' ) && !ref($val) ) {
         $v_encoded = $val;
     }
-    elsif ($is_unq) {
-        # .unq dictionary strings may contain Unicode
-        $v_encoded = $self->utf_encode($val);
-    }
     else {
-        # .inx, .fac, .slg, .fld, .src: numeric or binary payloads — zero utf overhead
-        $v_encoded = $val;
+        # .inx, .fac, .slg, .fld, .src: encode if string has utf8 flag to prevent DB_File wide character crash
+        $v_encoded = $self->utf_encode($val);
     }
 
     return unless defined $v_encoded && $v_encoded ne '';

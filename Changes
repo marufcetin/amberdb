@@ -1,6 +1,17 @@
 Revision history for AmberDB
 
 5.26.0  2026-09-18
+        - [DYNAMIC FIELD NORMALIZATION ENGINE (.norm)]
+          * Implemented field_normalize() and norm_info() in AmberDB::Base::Schema for domain-agnostic feature extraction from unstructured raw text strings.
+          * Normalization rules reside in dedicated <table_id>.norm schema files, eliminating runtime overhead for ordinary read/query workloads.
+          * Supports pipeline stages: preprocess boundary regexes, categorical mapping, single matches (integer, titlecase, trim, code callbacks), and multi-matches (min/max selection).
+          * Optional schema block array mapping via { as_array => 1 }.
+          * Registered _norm container in AmberDB core constructor with lock_keys and lock_value protection.
+          * Added comprehensive unit test suite in t/amberdb_field_normalize.t.
+
+        - [INDEXING UTF-8 ROBUSTNESS]
+          * Protected index_put() against DB_File XS "Wide character in subroutine entry" crashes by ensuring utf_encode() is applied to any Unicode string values across secondary index targets (.inx, .fac, .slg, .fld, .src).
+
         - [FAST RANGE FILTER ENGINE]
           * Implemented range_slice() using pre-sorted .inx keys ($blk:keys) and .fld boundaries for sub-millisecond range queries.
           * Slices contiguous 8-byte packed binary record IDs directly via index() and substr(), replacing slow multi-key OR unions.

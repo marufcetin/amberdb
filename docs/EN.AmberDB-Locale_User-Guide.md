@@ -532,8 +532,8 @@ $tr->first_char("İzmir");        # "İ"
 
 ```perl
 AmberDB::Locale::Currency->by_code('TRY');   # { num=>'949', name=>'Türk Lirası', symbol=>'₺', digits=>2 }
-AmberDB::Locale::Currency->symbol('EUR');    # "€"
-AmberDB::Locale::Currency->name('USD');      # "ABD Doları"
+AmberDB::Locale::Currency->cur_symbol('EUR');    # "€"
+AmberDB::Locale::Currency->cur_name('USD');      # "ABD Doları"
 AmberDB::Locale::Currency->all();            # [ ['TRY','Türk Lirası'], ['USD','ABD Doları'], ... ]
 AmberDB::Locale::Currency->active_codes();   # qw(TRY USD EUR GBP RUB AZN SAR JPY CHF CAD AUD CNY)
 ```

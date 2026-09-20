@@ -94,6 +94,7 @@ t/amberdb_encapsulation.t
 t/amberdb_escape_encode.t
 t/amberdb_facet_columnar.t
 t/amberdb_field_ops.t
+t/amberdb_field_normalize.t
 t/amberdb_index.t
 t/amberdb_inflate_deflate.t
 t/amberdb_inmemory_cache.t

@@ -28,16 +28,16 @@ my %CURRENCIES = (
 my @CURRENCY_ORDER = qw(TRY USD EUR GBP RUB AZN SAR JPY CHF CAD AUD CNY);
 
 # Get currency hash by 3-letter ISO code
-# AmberDB::Locale::Currency->by_code('TRY') -> { num=>'949', name=>'Türk Lirası', symbol=>'₺', digits=>2 }
-sub by_code {
+# AmberDB::Locale::Currency->cur_code('TRY') -> { num=>'949', name=>'Türk Lirası', symbol=>'₺', digits=>2 }
+sub cur_code {
     my ( $class_or_self, $code ) = @_;
     return unless defined $code;
     return $CURRENCIES{ uc($code) };
 }
 
 # Get currency symbol by ISO code
-# AmberDB::Locale::Currency->symbol('TRY') -> '₺'
-sub symbol {
+# AmberDB::Locale::Currency->cur_symbol('TRY') -> '₺'
+sub cur_symbol {
     my ( $class_or_self, $code ) = @_;
     return '' unless defined $code;
     my $c = $CURRENCIES{ uc($code) };
@@ -45,8 +45,8 @@ sub symbol {
 }
 
 # Get currency name by ISO code
-# AmberDB::Locale::Currency->name('TRY') -> 'Türk Lirası'
-sub name {
+# AmberDB::Locale::Currency->cur_name('TRY') -> 'Türk Lirası'
+sub cur_name {
     my ( $class_or_self, $code ) = @_;
     return '' unless defined $code;
     my $c = $CURRENCIES{ uc($code) };
@@ -54,7 +54,7 @@ sub name {
 }
 
 # Get all currencies as [ [$code, $name], ... ] for form selects/dropdowns
-sub all {
+sub cur_all {
     return map { [ $_, $CURRENCIES{$_}->{name} ] } @CURRENCY_ORDER;
 }
 

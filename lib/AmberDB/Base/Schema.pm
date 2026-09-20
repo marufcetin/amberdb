@@ -917,4 +917,139 @@ sub table_infset {
     return 1;
 }
 
+# my $norm_info = $adb->norm_info($table_id);
+# ------------------------------------------------
+sub norm_info {
+    my ( $self, $arg ) = @_;
+
+    return {} unless $arg;
+    return {} if $self->config('simple');
+
+    my ( $table, $norm_path ) = $self->schema_arg( $arg, "norm" );
+    $table && $norm_path or return {};
+
+    $self->{_norm} ||= {};
+    if ( $self->{_norm}->{$table} && %{ $self->{_norm}->{$table} } ) {
+        return { %{ $self->{_norm}->{$table} } };
+    }
+
+    if ( -e $norm_path ) {
+        $norm_path =~ s{\\}{/}g;
+        $norm_path = "./$norm_path" unless $norm_path =~ m{^(?:\./|/|[a-zA-Z]:)};
+        my $do_data = eval { do $norm_path };
+        if ( $do_data && ref($do_data) eq 'HASH' ) {
+            $self->{_norm}->{$table} = $do_data;
+            return $do_data;
+        }
+        elsif ($@) {
+            cluck "[AMBERDB_SCHEMA] Syntax error in table norm file '$norm_path': $@\n";
+        }
+    }
+    return {};
+}
+
+# my $norm_hash = $adb->field_normalize($table_id, $raw_string, [$opts]);
+# ------------------------------------------------
+sub field_normalize {
+    my ( $self, $table_id, $raw, $opts ) = @_;
+    return {} unless defined $raw && $raw ne '';
+
+    my $norm_info = $self->norm_info($table_id);
+    return { raw_features => $raw } unless $norm_info && %$norm_info;
+
+    my $str = "$raw";
+    $str =~ s/<br\s*\/?>/ /gi;
+    $str =~ s/\\n/ /g;
+    $str =~ s/\\r/ /g;
+    $str =~ s/\\t/ /g;
+
+    # Preprocess
+    if ( $norm_info->{preprocess} ) {
+        for my $p ( @{ $norm_info->{preprocess} } ) {
+            my ( $pat, $repl ) = @$p;
+            if ( $repl eq q{$1 $2} ) {
+                $str =~ s/$pat/$1 $2/g;
+            }
+            elsif ( $repl eq q{. $1} ) {
+                $str =~ s/$pat/. $1/g;
+            }
+            elsif ( $repl eq q{$1 $2 Sayfa} ) {
+                $str =~ s/$pat/$1 $2 Sayfa/gi;
+            }
+            else {
+                $str =~ s/$pat/$repl/g;
+            }
+        }
+    }
+
+    my %res;
+    if ( $norm_info->{rules} ) {
+        for my $r ( @{ $norm_info->{rules} } ) {
+            my $field = $r->{field};
+
+            if ( $r->{map} ) {
+                for my $m ( @{ $r->{map} } ) {
+                    my ( $pat, $target ) = @$m;
+                    if ( $str =~ $pat ) {
+                        $res{$field} = $target;
+                        last;
+                    }
+                }
+            }
+            elsif ( $r->{match_all} ) {
+                my @matches = ( $str =~ /$r->{match_all}/g );
+                if (@matches) {
+                    if ( ( $r->{select} // 'max' ) eq 'max' ) {
+                        my ($m) = sort { $b <=> $a } @matches;
+                        $res{$field} = $m + 0;
+                    }
+                    elsif ( $r->{select} eq 'min' ) {
+                        my ($m) = sort { $a <=> $b } @matches;
+                        $res{$field} = $m + 0;
+                    }
+                }
+            }
+            elsif ( $r->{match} ) {
+                if ( $str =~ $r->{match} ) {
+                    if ( $r->{format} && ref( $r->{format} ) eq 'CODE' ) {
+                        $res{$field} = $r->{format}->( $1, $2, $3 );
+                    }
+                    elsif ( ( $r->{type} // '' ) eq 'integer' ) {
+                        $res{$field} = $1 + 0;
+                    }
+                    elsif ( ( $r->{type} // '' ) eq 'titlecase' ) {
+                        $res{$field} = ucfirst( lc($1) );
+                    }
+                    elsif ( ( $r->{type} // '' ) eq 'trim' ) {
+                        my $val = $1;
+                        $val =~ s/^\s+|\s+$//g;
+                        $res{$field} = $val;
+                    }
+                    else {
+                        $res{$field} = $1;
+                    }
+                }
+            }
+        }
+    }
+
+    $res{raw_features} = $raw;
+
+    # If source_block or target table schema mapping is requested
+    if ( $opts && $opts->{as_array} ) {
+        my $table_info = $self->table_info($table_id);
+        if ( $table_info && $table_info->{blocks} ) {
+            my @rec;
+            my $blocks = $table_info->{blocks};
+            for my $b (@$blocks) {
+                my $fid = $b->{id};
+                push @rec, ( $res{$fid} // '' );
+            }
+            return \@rec;
+        }
+    }
+
+    return \%res;
+}
+
 1;
