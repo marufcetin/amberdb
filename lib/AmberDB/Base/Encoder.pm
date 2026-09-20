@@ -467,7 +467,10 @@ sub bin_encode {
 
     return '' unless ref($rids) eq 'ARRAY' && @$rids;
 
-    return pack( "(Q>)*", @$rids );
+    my @valid = grep { defined && /^\d+$/ && $_ > 0 } @$rids;
+    return '' unless @valid;
+
+    return pack( "(Q>)*", @valid );
 }
 
 # $adb->bin_decode($binary_buffer, $offset, $limit, $dir)
@@ -505,7 +508,7 @@ sub bin_decode {
         return ( $total, () ) if $real_limit <= 0;
 
         my $slice = substr( $buffer, $real_start * $rec_size, $real_limit * $rec_size );
-        my @ids = unpack( "(Q>)*", $slice );
+        my @ids = grep { defined && /^\d+$/ && $_ > 0 } unpack( "(Q>)*", $slice );
         my @ids_rev = reverse @ids;
         return ( $total, @ids_rev );
     }
@@ -520,7 +523,7 @@ sub bin_decode {
     return ( $total, () ) if $bytes_to_read <= 0;
 
     my $slice = substr( $buffer, $offset * $rec_size, $bytes_to_read );
-    my @ids = unpack( "(Q>)*", $slice );
+    my @ids = grep { defined && /^\d+$/ && $_ > 0 } unpack( "(Q>)*", $slice );
     return ( $total, @ids );
 }
 
@@ -671,13 +674,13 @@ sub bin_add {
 
     if ( length($buffer) < 8 ) {
         my %seen;
-        my @valid = grep { defined && /^\d+$/ && !$seen{$_}++ } @ids;
+        my @valid = grep { defined && /^\d+$/ && $_ > 0 && !$seen{$_}++ } @ids;
         return @valid ? pack( "(Q>)*", @valid ) : '';
     }
 
     my %seen_in_input;
     for my $id (@ids) {
-        next unless defined $id && $id =~ /^\d+$/;
+        next unless defined $id && $id =~ /^\d+$/ && $id > 0;
         next if $seen_in_input{$id}++;
 
         my $target_bytes = pack( "Q>", $id );
@@ -705,7 +708,7 @@ sub bin_punch {
     my @del_list = ref($del_rids) eq 'ARRAY' ? @$del_rids : ($del_rids);
     return $buffer unless @del_list;
 
-    my @sorted_del = sort { $b <=> $a } grep { defined && /^\d+$/ } @del_list;
+    my @sorted_del = sort { $b <=> $a } grep { defined && /^\d+$/ && $_ > 0 } @del_list;
     return $buffer unless @sorted_del;
 
     for my $del_id (@sorted_del) {

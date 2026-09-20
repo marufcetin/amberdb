@@ -10,7 +10,7 @@
 
 ## 1. Giris ve Baslatma Prensipleri
 
-AmberDB ile calisirken nesne `$adb` (AmberDB Handle) olarak baslatilir. Veritabani kok dizini (varsayilan: `./dbstore`) altinda `schema/`, `tables/`, `backup/`, `ramdisk/` ve `txn/` klasorleri otomatik olarak yonetilir.
+AmberDB ile calisirken nesne `$adb` (AmberDB Handle) olarak baslatilir. Veritabani kok dizini (varsayilan: `./dbstore`) altinda `table/`, `schema/`, `config/`, `backup/`, `journal/`, `lock/` ve `session/` klasorleri otomatik olarak yonetilir.
 
 ```perl
 use strict;

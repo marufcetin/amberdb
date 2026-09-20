@@ -173,7 +173,7 @@ AmberDB Architecture
 - [log_owner](Flag-log_owner) - User audit trail logging (.aut)
 - [use_counter](Flag-use_counter) - High-concurrency hit/view counter store (.cnt)
 - [use_junk](Flag-use_junk) - Hot/cold two-tier indexing enablement
-- [use_ramdisk](Flag-use_ramdisk) - Physical RAM-disk acceleration mode (Tiers 0-3)
+- [use_ramdisk](Flag-use_ramdisk) - Physical RAM-disk acceleration mode (Tiers 0-4)
 - [ramdisk_ttl](Flag-ramdisk_ttl) - Sliding expiration time for volatile Tier 3 tables
 - [keep_deleted](Flag-keep_deleted) - Soft deletion recycle bin archive (.del)
 - [auto_id](Flag-auto_id) - Auto-incrementing 64-bit ID generation

@@ -172,7 +172,7 @@ AmberDB Mimari Yapisi
 - [log_owner](TR-Flag-log_owner) - Kullanici denetim izi (.aut)
 - [use_counter](TR-Flag-use_counter) - Yuksek eszamanli goruntulenme sayaci (.cnt)
 - [use_junk](TR-Flag-use_junk) - Sicak/soguk cift katmanli indeksleme
-- [use_ramdisk](TR-Flag-use_ramdisk) - Fiziksel RAM-disk hizlandirma modu (Kademe 0-3)
+- [use_ramdisk](TR-Flag-use_ramdisk) - Fiziksel RAM-disk hizlandirma modu (Kademe 0-4)
 - [ramdisk_ttl](TR-Flag-ramdisk_ttl) - Kademe 3 ucucu tablolar icin kayan zaman asimi suresi
 - [keep_deleted](TR-Flag-keep_deleted) - Yumusak silme / cop kutusu arşivi (.del)
 - [auto_id](TR-Flag-auto_id) - Otomatik artan 64-bit ID uretimi

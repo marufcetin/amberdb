@@ -53,6 +53,29 @@ sub set_index {
     my $table_path = $adb->table_path($tableid);
     return unless ( -e "$table_path.$adb->{db_ext}" );
 
+    # 1. Clean up previous index files on physical storage and RAM-disk before rebuilding
+    my @idx_exts = qw( inx src fld fac slg unq );
+    for my $ext (@idx_exts) {
+        my $p_file = "$table_path.$ext";
+        if ( -e $p_file ) {
+            $adb->table_close($p_file);
+            unlink $p_file;
+        }
+    }
+    if ( $adb->ramdisk_is_mounted() ) {
+        my $rm_path = $adb->ramdisk_path($tableid);
+        if ($rm_path) {
+            for my $ext (@idx_exts) {
+                my $rm_file = "$rm_path.$ext";
+                if ( -e $rm_file ) {
+                    $adb->table_close($rm_file);
+                    unlink $rm_file;
+                }
+            }
+        }
+    }
+    $adb->clear_cache($tableid);
+
     # 2. Read records if list empty.
     if ( !@records ) {
         @records = $adb->read_all($tableid, 0, 0, no_index => 1, dir => 'asc');
@@ -115,8 +138,28 @@ sub set_index {
         $adb->unique_add( $table_path, $table_info, \@records );
     }
 
+    # 10. If RAM-disk is active, sync freshly built index files to RAM-disk
+    if ( $adb->ramdisk_is_mounted() ) {
+        my $rm_path = $adb->ramdisk_path($tableid);
+        if ($rm_path) {
+            require File::Copy;
+            for my $ext (@idx_exts) {
+                my $src_file = "$table_path.$ext";
+                my $dst_file = "$rm_path.$ext";
+                if ( -e $src_file ) {
+                    $adb->table_close($src_file);
+                    $adb->table_close($dst_file);
+                    unlink $dst_file if -e $dst_file;
+                    File::Copy::copy( $src_file, $dst_file );
+                    chmod 0777, $dst_file if -e $dst_file;
+                }
+            }
+        }
+    }
+
     return 1;
 }
+
 
 # Rebuilds Read All index.
 # my $ok = $tools->set_readall($tableid);
@@ -145,6 +188,7 @@ sub set_readall {
     }
     scalar @records or return;
     my @all_records = ref( $records[0] ) eq 'ARRAY' ? ( map { $_->[0] } @records ) : @records;
+    @all_records = grep { defined $_ && /^\d+$/ && $_ > 0 } @all_records;
 
     my ( @active_records, @junk_records );
     my $has_junk = $table_info->{use_junk} ? 1 : 0;
@@ -155,7 +199,7 @@ sub set_readall {
             my $rdbm_recs = $adb->prefetch_junk_rdbm( $table_info, \@records );
             for my $rec (@records) {
                 my $rid = $rec->[0];
-                next unless defined $rid && $rid =~ /^\d+$/;
+                next unless defined $rid && $rid =~ /^\d+$/ && $rid > 0;
                 if ( $adb->junk_rules($table_info, $rec, $rdbm_recs) ) {
                     push @junk_records, $rid;
                 }
@@ -167,12 +211,12 @@ sub set_readall {
         else {
             for my $rec (@records) {
                 my $rid = $rec->[0];
-                push @active_records, $rid if defined $rid && $rid =~ /^\d+$/;
+                push @active_records, $rid if defined $rid && $rid =~ /^\d+$/ && $rid > 0;
             }
         }
     }
     else {
-        my @clean_rids = grep { /^\d+$/ } @records;
+        my @clean_rids = grep { defined $_ && /^\d+$/ && $_ > 0 } @records;
         if ($has_junk) {
             for my $rid (@clean_rids) {
                 my @rec = $adb->table_readid($file_path, $rid);
@@ -191,9 +235,10 @@ sub set_readall {
 
     # Deduplicate in original order
     my %seen_act;
-    @active_records = grep { !$seen_act{$_}++ } @active_records;
+    @active_records = grep { defined $_ && /^\d+$/ && $_ > 0 && !$seen_act{$_}++ } @active_records;
     my %seen_junk;
-    @junk_records   = grep { !$seen_junk{$_}++ } @junk_records;
+    @junk_records   = grep { defined $_ && /^\d+$/ && $_ > 0 && !$seen_junk{$_}++ } @junk_records;
+
 
     my $cur_max = 0;
     if ( @all_records && $all_records[-1] > $cur_max ) {
@@ -216,8 +261,12 @@ sub set_readall {
         }
 
         $adb->table_close($tmp_path);
+        $adb->table_close($index_path);
         unlink($index_path);
-        rename( $tmp_path, $index_path );
+        rename( $tmp_path, $index_path ) or do {
+            require File::Copy;
+            File::Copy::move( $tmp_path, $index_path );
+        };
         $self->{say} .= "    - Readall records created: \n";
         $self->{say} .= "          * $table_path.inx created ($cnt total records, " . scalar(@active_records) . " active, " . scalar(@junk_records) . " junk)\n";
     }
@@ -372,12 +421,16 @@ sub set_search {
           };
         $adb->index_put( $tmp_path, \%batch_put, "ids" );
         $adb->table_close($tmp_path);
-
+        $adb->table_close($file_path);
         unlink($file_path);
-        rename( $tmp_path, $file_path );
+        rename( $tmp_path, $file_path ) or do {
+            require File::Copy;
+            File::Copy::move( $tmp_path, $file_path );
+        };
         $self->{say} .= "          * $file_path created.\n";
     }
     else {
+        $adb->table_close($file_path);
         unlink($file_path);
     }
 
@@ -517,12 +570,17 @@ sub set_fields {
           };
         $adb->index_put( $tmp_path, \%batch_put, "ids" );
         $adb->table_close($tmp_path);
+        $adb->table_close($file_path);
         unlink($file_path);
-        rename( $tmp_path, $file_path );
+        rename( $tmp_path, $file_path ) or do {
+            require File::Copy;
+            File::Copy::move( $tmp_path, $file_path );
+        };
 
         $self->{say} .= "          * $file_path \n";
     }
     else {
+        $adb->table_close($file_path);
         unlink($file_path);
     }
 
@@ -601,9 +659,12 @@ sub set_filters {
     }
 
     $adb->table_close($tmp_path);
-
+    $adb->table_close($fac_path);
     unlink($fac_path);
-    rename( $tmp_path, $fac_path );
+    rename( $tmp_path, $fac_path ) or do {
+        require File::Copy;
+        File::Copy::move( $tmp_path, $fac_path );
+    };
 
     $self->{say} .= "          * $fac_path \n";
 
@@ -669,14 +730,18 @@ sub set_rwlnkall {
           };
         $adb->recs_put( $tmp_path, @slg_records );
         $adb->table_close($tmp_path);
-
+        $adb->table_close($slg_path);
         unlink($slg_path);
-        rename( $tmp_path, $slg_path );
+        rename( $tmp_path, $slg_path ) or do {
+            require File::Copy;
+            File::Copy::move( $tmp_path, $slg_path );
+        };
 
         $self->{say} .= "    - Slug indexes are being created.: \n";
         $self->{say} .= "          * $slg_path \n";
     }
     else {
+        $adb->table_close($slg_path);
         unlink($slg_path);
     }
 
@@ -723,7 +788,7 @@ sub set_sort {
         my %uniq_vals;
         my ( %act_uniq, %junk_uniq );
         foreach my $rec (@records) {
-            next unless ref($rec) eq 'ARRAY' && defined $rec->[0];
+            next unless ref($rec) eq 'ARRAY' && defined $rec->[0] && $rec->[0] =~ /^\d+$/ && $rec->[0] > 0;
             my $rid  = $rec->[0];
             my $val  = $rec->[$blk];
             my $norm = $adb->normalize_sort_key( $val, $type, $len );
@@ -746,8 +811,8 @@ sub set_sort {
             }
         }
 
-        # Sort all keys in-memory with deterministic tie-breaker
-        my @sorted_ids = sort {
+        # Sort all keys in-memory with deterministic tie-breaker (strictly numeric IDs)
+        my @sorted_ids = grep { defined $_ && /^\d+$/ && $_ > 0 } sort {
             ( ( $map{$a} // '' ) cmp ( $map{$b} // '' ) )
               || ( $a <=> $b )
         } keys %map;
@@ -775,20 +840,21 @@ sub set_sort {
         $raw_batch{"$blk:vals"} = $sort_vals->(\%uniq_vals) if %uniq_vals;
 
         if ($has_junk) {
-            my @sorted_act = sort {
+            my @sorted_act = grep { defined $_ && /^\d+$/ && $_ > 0 } sort {
                 ( ( $act_map{$a} // '' ) cmp ( $act_map{$b} // '' ) )
                   || ( $a <=> $b )
             } keys %act_map;
             $keys_batch{"A:$blk:keys"} = \@sorted_act;
             $raw_batch{"A:$blk:vals"} = $sort_vals->(\%act_uniq) if %act_uniq;
 
-            my @sorted_junk = sort {
+            my @sorted_junk = grep { defined $_ && /^\d+$/ && $_ > 0 } sort {
                 ( ( $junk_map{$a} // '' ) cmp ( $junk_map{$b} // '' ) )
                   || ( $a <=> $b )
             } keys %junk_map;
             $keys_batch{"B:$blk:keys"} = \@sorted_junk;
             $raw_batch{"B:$blk:vals"} = $sort_vals->(\%junk_uniq) if %junk_uniq;
         }
+
     }
 
     if ( %keys_batch || %raw_batch ) {

@@ -4768,6 +4768,7 @@ sub table_keys {
     # Index check (.inx)
     if ( -e $index_path ) {
         my ( $total, @keys_list ) = $self->index_get( $index_path, "keys", "ids", 0, 0, $dir );
+        @keys_list = grep { defined $_ && /^\d+$/ && $_ > 0 } @keys_list;
         if (@keys_list) {
             $self->set_cache( $tableid, $cache_key, \@keys_list );
             $self->set_cache( $tableid, 'keys', \@keys_list ) if $dir eq 'desc';
@@ -4783,6 +4784,7 @@ sub table_keys {
     $self->table_close($scan_path);
 
     my $id_sort_type = ( $self->config('simple') || ( $table_info && $table_info->{use_simple} ) ) ? 'ascii' : 'num';
+    @keys = grep { defined $_ && /^\d+$/ && $_ > 0 } @keys if $id_sort_type eq 'num';
     @keys = $self->array_sort( $id_sort_type, $dir, undef, @keys );
     $self->set_cache( $tableid, $cache_key, \@keys );
     $self->set_cache( $tableid, 'keys', \@keys ) if $dir eq 'desc';
@@ -5672,15 +5674,26 @@ sub index_put {
 
             my $v_encoded;
             if ( ref($v_item) eq 'ARRAY' ) {
-                next unless @$v_item;
-                $v_encoded = $self->bin_encode($v_item);
+                my @ids = @$v_item;
+                if ( $type ne 'raw' ) {
+                    @ids = grep { defined && /^\d+$/ && $_ > 0 } @ids;
+                }
+                next unless @ids;
+                $v_encoded = $self->bin_encode(\@ids);
             }
             elsif ( ( $type eq 'bin' || $type eq 'raw_bin' ) && !ref($v_item) ) {
                 $v_encoded = $v_item;
             }
             else {
-                # .inx, .fac, .slg, .fld, .src: encode if string has utf8 flag to prevent DB_File wide character crash
-                $v_encoded = $self->utf_encode($v_item);
+                if ( $type ne 'raw' ) {
+                    # Non-raw scalar must be a positive integer key/ID
+                    next unless defined $v_item && $v_item =~ /^\d+$/ && $v_item > 0;
+                    $v_encoded = $self->bin_encode([ $v_item ]);
+                }
+                else {
+                    # .inx, .fac, .slg, .fld, .src: encode if string has utf8 flag to prevent DB_File wide character crash
+                    $v_encoded = $self->utf_encode($v_item);
+                }
             }
 
             next unless defined $v_encoded && $v_encoded ne '';
@@ -5750,15 +5763,25 @@ sub index_put {
 
     my $v_encoded;
     if ( ref($val) eq 'ARRAY' ) {
-        return unless @$val;
-        $v_encoded = $self->bin_encode($val);
+        my @ids = @$val;
+        if ( $type ne 'raw' ) {
+            @ids = grep { defined && /^\d+$/ && $_ > 0 } @ids;
+        }
+        return unless @ids;
+        $v_encoded = $self->bin_encode(\@ids);
     }
     elsif ( ( $type eq 'bin' || $type eq 'raw_bin' ) && !ref($val) ) {
         $v_encoded = $val;
     }
     else {
-        # .inx, .fac, .slg, .fld, .src: encode if string has utf8 flag to prevent DB_File wide character crash
-        $v_encoded = $self->utf_encode($val);
+        if ( $type ne 'raw' && ( $type eq 'ids' || $key eq 'keys' || $key =~ /:keys$/ || $key eq 'active' ) ) {
+            return unless defined $val && $val =~ /^\d+$/ && $val > 0;
+            $v_encoded = $self->bin_encode([ $val ]);
+        }
+        else {
+            # .inx, .fac, .slg, .fld, .src: encode if string has utf8 flag to prevent DB_File wide character crash
+            $v_encoded = $self->utf_encode($val);
+        }
     }
 
     return unless defined $v_encoded && $v_encoded ne '';
@@ -6392,11 +6415,13 @@ Tables can be assigned an acceleration tier via the C<use_ramdisk> schema flag o
 
 =over 4
 
-=item * B<Tier 1 (Hybrid Index-Only, C<use_ramdisk =E<gt> 1>):> Only secondary index files (C<.inx>, C<.fld>, C<.src>, C<.fac>, C<.unq>, C<.slg>) are placed in RAM-disk. Primary table data (C<.db>) remains on persistent disk. Lookups and filters run at memory speeds, while RAM consumption remains minimal.
+=item * B<Tier 1 (Hybrid Index-Only, C<use_ramdisk =E<gt> 1>):> Only secondary index files (C<.inx>, C<.fld>, C<.src>, C<.fac>, C<.unq>, C<.slg>) are placed in RAM-disk and synchronously dual-written to physical disk. Primary table data (C<.db>) remains on persistent disk. Lookups and filters run at memory speeds, while RAM consumption remains minimal and index integrity persists across reboots.
 
 =item * B<Tier 2 (Full Table Mirror, C<use_ramdisk =E<gt> 2>):> Both primary records (C<.db>) and all index files are mirrored on RAM-disk. Reads are served directly from RAM-disk with synchronous dual-writing to permanent storage.
 
 =item * B<Tier 3 (Volatile In-Memory, C<use_ramdisk =E<gt> 3>):> Operates purely in RAM-disk as an unindexed simple store (C<use_simple =E<gt> 1>) with zero physical disk files. Ideal for ephemeral sessions, shopping carts, and temporary tokens. Supports sliding TTL expiration (C<ramdisk_ttl =E<gt> 300>).
+
+=item * B<Tier 4 (Asynchronous Write-Behind, C<use_ramdisk =E<gt> 4>):> Primary records and indexes are updated immediately in RAM-disk for maximum throughput. Write operations append dirty sync events to C<journal/sync_ramdisk>, and a background daemon (C<bin/amberdb_daemon.pl>) flushes modified records to persistent disk asynchronously. Active transactions (C<transact_start>) automatically switch to synchronous dual-write for ACID safety.
 
 =back
 

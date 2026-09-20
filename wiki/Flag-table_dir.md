@@ -13,14 +13,14 @@
 
 `table_dir` defines a custom storage subdirectory under `dbase_dir` (and under `ramdisk_dir` when RAM-disk acceleration is active) for a specific database table's files.
 
-By default, AmberDB stores all table data (`.db`) and index files under `dbstore/table/` (and `dbstore/ramdisk/table/`). Specifying `table_dir` allows applications to partition and isolate tables into specialized subfolders:
+By default, AmberDB stores all table data (`.db`) and index files under `dbstore/table/` (and under `$ramdisk_dir/table/` when an OS RAM-disk is mounted). Specifying `table_dir` allows applications to partition and isolate tables into specialized subfolders:
 
 - **Named Subfolder (e.g. `table_dir => 'orders'`):**  
-  Stored under `dbstore/orders/$table.*` on permanent disk and `dbstore/ramdisk/orders/$table.*` on RAM-disk.
+  Stored under `dbstore/orders/$table.*` on permanent disk and `$ramdisk_dir/orders/$table.*` on RAM-disk.
 - **Root Placement (e.g. `table_dir => ''`):**  
-  Overrides the default `tables/` prefix entirely, placing the table's files directly into the root `dbstore/$table.*` and `ramdisk/$table.*`.
+  Overrides the default `table/` prefix entirely, placing the table's files directly into the root `dbstore/$table.*` and `$ramdisk_dir/$table.*`.
 - **Volatile RAM-Disk Routing (Tier 3):**  
-  Routes ephemeral RAM-disk simple stores (`use_ramdisk => 3`) into isolated memory subdirectories (e.g. `ramdisk/sessions/`).
+  Routes ephemeral RAM-disk simple stores (`use_ramdisk => 3`) into isolated memory subdirectories (e.g. `$ramdisk_dir/sessions/`).
 
 ---
 
@@ -40,7 +40,7 @@ use_ramdisk => 1,
 # Route orders table to 'orders/' subfolder
 $adb->table_attr("orders", table_dir => 'orders');
 
-# Place table directly at database root (no 'tables/' prefix)
+# Place table directly at database root (no 'table/' prefix)
 $adb->table_attr("global_settings", table_dir => '');
 
 # Configure volatile RAM-disk session store in custom subfolder
@@ -55,7 +55,7 @@ $adb->table_attr("user_sessions", {
 
 ```perl
 # Standard queries automatically resolve to the custom table directory:
-# Reads from dbstore/orders/orders.db (or ramdisk/orders/orders.db)
+# Reads from dbstore/orders/orders.db (or $ramdisk_dir/orders/orders.db)
 my @order = $adb->read_id("orders", 501);
 ```
 

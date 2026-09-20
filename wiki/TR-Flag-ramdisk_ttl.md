@@ -14,11 +14,11 @@
 `ramdisk_ttl`, **uçucu RAM-disk tabloları (`use_ramdisk => 3`)** için saniye cinsinden kayan yaşam süresini (zaman aşımı) tanımlar.
 
 Bir tablo Seviye 3 uçucu modda yapılandırıldığında:
-- Veriler kalıcı diske yazılmaksızın yalnızca paylaşımlı bellekte (`dbstore/ramdisk/` veya tanımlanan özel klasör altında) tutulur.
+- Veriler kalıcı diske yazılmaksızın yalnızca paylaşımlı bellekte (`$ramdisk_dir/table/` veya tanımlanan özel klasör altında) tutulur.
 - Tablodan yapılan her başarılı okuma işlemi dosya erişim zamanını (`utime`) güncelleyerek zaman aşımı süresini baştan başlatır (kayan zaman aşımı - sliding TTL).
 - TTL süresi boyunca erişilmeyen kayıtlar, süre dolduktan sonraki ilk erişimde AmberDB tarafından otomatik olarak temizlenir.
 
-*Not: `ramdisk_ttl` parametresi yalnızca Kademe 3 uçucu tablolar için geçerlidir. Kademe 1 ve 2 tabloları kalıcı disk ile sürekli senkronize olduğundan zaman aşımına uğramaz.*
+*Not: `ramdisk_ttl` parametresi yalnızca Kademe 3 uçucu tablolar için geçerlidir. Kademe 1, 2 ve 4 tabloları kalıcı disk ile senkronize olduğundan zaman aşımına uğramaz.*
 
 ---
 

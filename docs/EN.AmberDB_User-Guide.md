@@ -1065,14 +1065,14 @@ AmberDB stores tables, indexes, and schema definitions in dedicated physical dir
 |---|---|
 | `dbstore/table/` | Base data (`.db`) and binary indexes (`.inx`, `.fld`, `.src`, `.fac`, `.slg`) |
 | `dbstore/schema/` | Schema files (`.table`) and group configs (`.dbase`) |
-| `dbstore/config/` | Plain-text `.conf` configuration and property files |
+| `dbstore/config/` | Plain-text `.conf` configuration files, `connect.pl` authentication profile |
 | `dbstore/backup/` | Daily CSV audit backups (`dbgun/YYYYMMDD/`) |
-| `dbstore/ramdisk/` | **Unified Shared RAM-Disk (Linux tmpfs, Windows ImDisk, macOS APFS RAM-Disk) Root:** |
-| `dbstore/ramdisk/table/` | Mirrored hot `.db` and `.inx` tables in RAM for `use_ramdisk => 1, 2, 3` |
-| `dbstore/ramdisk/config/` | Compiled high-speed config cache (`*.pl` hash references) |
-| `dbstore/ramdisk/schema/` | Cached / pre-compiled table schemas in RAM (`*.table`, `*.dbase`) |
-| `dbstore/ramdisk/lock/` | Process and table-level `flock` lock files in RAM (`*.lock`) |
-| `dbstore/ramdisk/pids/` | Process lock files and login error state logs (`*.pid`, `*.error`) |
+| `dbstore/journal/`| Transaction undo WAL logs and Tier 4 write-behind queues (`txn_*`, `sync_ramdisk`) |
+| `dbstore/lock/` | Process and table-level `flock` lock files when RAM-disk is unmounted (`*.lock`) |
+| `dbstore/session/`| Process session token files when RAM-disk is unmounted (`*.sess`) |
+
+> [!NOTE]
+> **RAM-Disk Directory Structure:** When an OS RAM-disk is mounted (e.g. `R:/amberdb_$dbname` on Windows, `/dev/shm/amberdb_$dbname` on Linux, `/Volumes/amberdb_$dbname` on macOS), subdirectories (`table/`, `schema/`, `config/`, `lock/`, `session/`, `shmem/`) are dynamically managed under the RAM-disk root. When unmounted, all RAM-disk paths evaluate strictly to empty strings (`""`) and the database operates directly against persistent physical storage.
 
 > [!IMPORTANT]
 > **Directory Structure Compatibility Note:** The only manual action required when upgrading legacy projects is to rename your database directory's `dbstore/scheme/` folder to **`dbstore/schema/`**. All programmatic path resolutions and API calls are automatically handled by the engine.
@@ -1610,16 +1610,16 @@ AmberDB provides native, transparent physical RAM-disk acceleration (Linux `tmpf
 
 ```text
                                ┌─────────────────────────────────────────────────────────────┐
-                               │ dbstore/ramdisk/ (Linux tmpfs, macOS APFS, Windows ImDisk)  │
+                               │ $ramdisk_dir (Linux /dev/shm, macOS /Volumes, Windows R:)   │
                                ├──────────────────────────┬──────────────────────────────────┤
-                               │ ramdisk/${table}.db      │ ramdisk/${table}.inx             │
+                               │ table/${table}.db        │ table/${table}.inx               │
                                │ (Native Berkeley DB)     │ (Native 8-Byte Binary Indexes)   │
                                └──────────────────────────┴──────────────────────────────────┘
 ```
 
 ### 13.1 What is RAM-Disk Acceleration?
 
-Unlike network-based cache layers (such as Redis or Memcached), AmberDB's RAM-disk engine operates directly at the operating system filesystem block level. It maps tables and indexes to an in-memory mount point (`dbstore/ramdisk/` or custom OS mount points such as `R:\amberdb` or `/Volumes/AmberDB_RAM`).
+Unlike network-based cache layers (such as Redis or Memcached), AmberDB's RAM-disk engine operates directly at the operating system filesystem block level. It maps tables and indexes directly to an operating-system-level in-memory mount point (Windows ImDisk `R:/amberdb_$dbname`, Linux tmpfs `/dev/shm/amberdb_$dbname`, or macOS APFS `/Volumes/amberdb_$dbname`).
 
 **Key Architectural Differences:**
 * **Zero External Daemons:** No Redis or Memcached server processes to install, configure, monitor, or manage.
@@ -1632,7 +1632,7 @@ Unlike network-based cache layers (such as Redis or Memcached), AmberDB's RAM-di
 * **Native File Format Mirroring:** AmberDB stores all table files on RAM-disk using their exact native extensions (`.db`, `.inx`, `.fld`, `.src`, `.fac`, `.unq`, `.slg`). Proprietary `.cache` file formats are completely retired.
 * **Synchronous Dual-Writing:** When a record is created or modified, the engine writes to both the persistent disk and the RAM-disk synchronously. Reads are served at RAM speeds; disk permanence is never compromised.
 * **ACID Transaction Protection:** Writes to RAM-disk are fully protected by AmberDB's WAL undo-journaling (`dbstore/journal/txn_*`) and Strict 2PL locking. If a transaction rolls back, changes across both persistent disk and RAM-disk are cleanly restored in reverse LIFO order.
-* **Automated Mount Verification & Fallback:** Before accessing RAM-disk files, the engine verifies that the RAM-disk is actively mounted. If unmounted, AmberDB automatically and gracefully falls back to durable disk storage with zero downtime.
+* **Automated Mount Verification & Strict Zero-Fallback:** Before accessing RAM-disk files, the engine verifies that the RAM-disk is actively mounted. When unmounted, all RAM-disk paths (`ramdisk_dir`, `table_rdir`, `schema_rdir`, `config_rdir`) evaluate strictly to empty strings (`""`). AmberDB creates no phantom on-disk cache directories and throws no errors; operations proceed directly and seamlessly against persistent disk storage.
 
 ### 13.3 RAM-Disk vs. L1 Process Cache
 
@@ -1642,7 +1642,7 @@ AmberDB distinguishes between two distinct caching and in-memory layers:
 | :--- | :--- | :--- |
 | **Scope** | Cross-process, system-wide shared memory | Single Perl process / worker memory |
 | **Storage Engine** | Native `DB_File` and binary index files | Internal Perl hash references |
-| **Persistence** | Synchronized with permanent disk (Tiers 1 & 2) | Process lifetime only |
+| **Persistence** | Synchronized with permanent disk (Tiers 1, 2 & 4) | Process lifetime only |
 | **Methods** | `insert_id`, `read_id`, `search_table`, `modify_id` | `$adb->get_cache()`, `$adb->set_cache()` |
 
 ```perl
@@ -1657,9 +1657,10 @@ $adb->set_cache("dashboard", "active_users", undef); # Invalidate
 Tables are assigned an acceleration tier in their `.table` schema or dynamically via `table_attr()`:
 
 * **`0` (Disabled):** Standard persistent disk access.
-* **`1` (Hybrid Index-Only Acceleration):** Only secondary index files (`.inx`, `.src`, `.fld`, `.fac`, `.unq`, `.slg`) are placed in RAM-disk. Master data (`.db`) remains on physical disk. Searches, filters, and lookups run at memory speed while RAM footprint is kept minimal.
+* **`1` (Hybrid Index-Only Acceleration):** Only secondary index files (`.inx`, `.src`, `.fld`, `.fac`, `.unq`, `.slg`) are placed in RAM-disk and synchronously dual-written to physical disk. Master data (`.db`) remains on physical disk. Searches, filters, and lookups run at memory speed while RAM footprint is kept minimal and indexes survive reboots.
 * **`2` (Full RAM-Disk Mirror - Dual-Write):** Both data (`.db`) and all index files are mirrored on RAM-disk. Reads are served directly from RAM-disk; writes dual-write synchronously to both layers.
 * **`3` (Volatile Pure RAM-Disk - Simple Key-Value):** Data exists **strictly on RAM-disk** (`.db`). Zero physical disk files and zero index files are created (`use_simple => 1`). Designed for ephemeral sessions, shopping carts, and transient tokens. Supports sliding TTL expiration (`ramdisk_ttl`).
+* **`4` (Asynchronous Write-Behind):** Reads and writes execute at microsecond RAM speeds. Disk writes are deferred and dirty events are queued to `dbstore/journal/sync_ramdisk`. A background daemon (`amberdb_daemon.pl`) flushes changes to disk. During active transactions (`transact_start`), operations automatically escalate to synchronous dual-write.
 
 ### 13.5 Transparent Management: `use_ramdisk` Configuration
 
@@ -1694,7 +1695,7 @@ $adb->table_attr("audit_archive", use_ramdisk => 0);
 Developers only use standard AmberDB methods. The underlying engine transparently handles RAM-disk preloading, memory-speed reads, and synchronous dual-writes:
 
 ```perl
-# Reads: If use_ramdisk is 1 or 2, queries return directly from RAM in microseconds
+# Reads: If use_ramdisk is defined, queries return directly from RAM in microseconds
 my @product = $adb->read_id("catalog_product", 101);
 my ($count, @results) = $adb->search_table("catalog_product", "wireless headphones");
 
@@ -1703,14 +1704,15 @@ $adb->insert_id("catalog_product", 0, @new_product);
 $adb->modify_id("catalog_product", 101, @updated_data);
 ```
 
-### 13.6 RAM-Disk Administration (`amberdb_setup.pl`)
+### 13.6 RAM-Disk Administration & OS Integration
 
-AmberDB provides unified RAM-disk configuration and maintenance across all platforms (Linux, macOS, Windows) via `amberdb_setup.pl`:
+AmberDB natively supports platform-specific RAM-disk mounts:
 
-- **Mount RAM-Disk (Start):** `perl bin/amberdb_setup.pl --action=ramdisk --start --size 512M`
-- **Inspect Status:** `perl bin/amberdb_setup.pl --action=ramdisk --status`
-- **Unmount RAM-Disk (Stop):** `perl bin/amberdb_setup.pl --action=ramdisk --stop`
-- **Full Infrastructure Setup:** `perl bin/amberdb_setup.pl --action=install --user=eticaretim --size 256M --cron`
+- **Windows:** Mount via `bin\setup_windows.bat start 512M R:`, inspect status via `bin\setup_windows.bat status`, and unmount via `bin\setup_windows.bat stop R:`.
+- **Linux:** `/dev/shm` is automatically utilized as the native shared-memory mount point.
+- **macOS:** Mounted APFS RAM-disks under `/Volumes` are detected automatically.
+- **Background Sync Daemon (Tier 4):** Started via `perl bin/amberdb_daemon.pl start`, inspected with `status`, and gracefully stopped with `stop`.
+- **Storage Layout Synchronization:** Synchronize all required directories via `amberdb update storage` or `perl bin/amberdb_cli.pl update storage --force`.
 
 ### 13.7 Volatile Storage & Sliding TTL (`ramdisk_ttl`)
 

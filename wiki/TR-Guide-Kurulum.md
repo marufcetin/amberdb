@@ -80,69 +80,52 @@ Kaynak koddan calisiyorsaniz, yeni surumu `git pull` ile aldiktan sonra testleri
 
 ## 4. RAM-Disk Paylasimli Bellek Yapilandirmasi
 
-AmberDB, yuksek trafikli tablolarda mikrosaniye alti ($<1\mu s$) okuma/yazma hizlarina ulasmak icin isletim sistemi duzeyinde bir RAM-Disk paylasimli bellek alanini (`dbstore/ramdisk/`) kullanabilir.
+AmberDB, yuksek trafikli tablolarda mikrosaniye alti ($<1\mu s$) okuma/yazma hizlarina ulasmak icin isletim sistemi duzeyinde bir RAM-Disk paylasimli bellek alanini kullanabilir.
 
 ```text
 RAM-Disk Baglanti Mimarisi
 
- Linux:    /dev/shm veya tmpfs mount ──> dbstore/ramdisk/
- Windows:  ImDisk Sanal Surucu (R:)  ──> dbstore/ramdisk/ (Junction / Symlink)
- macOS:    APFS RAM-Disk (hdiutil)   ──> dbstore/ramdisk/ (/Volumes/AmberDB_RAM)
+ Linux:    /dev/shm/amberdb_$dbname (Yerel Paylasimli Bellek)
+ Windows:  R:/amberdb_$dbname (ImDisk Sanal Surucu)
+ macOS:    /Volumes/amberdb_$dbname (APFS RAM-Disk)
 ```
 
-### Neden Root / Administrator Yetkisi Gereklidir?
-RAM-Disk olusturma, isletim sisteminin cekirdek bellek alanindan ozel bir blok tahsis edilmesini ve sanal bir dosya sistemi (Linux'ta `tmpfs`, Windows'ta `ImDisk`, macOS'ta `APFS RAM-Disk` / `hdiutil`) olarak dosya agacina baglanmasini (`mount`) icerir. Isletim sistemi cekirdek guvenligi geregi, dosya sistemi baglama (mount) ve surucu olusturma islemleri **kesinlikle `root` (Linux/macOS) veya `Administrator` (Windows)** yetkisi gerektirir.
+### 4.1 RAM-Disk Yonetimi ve Komutlar
 
-### 4.1 RAM-Disk Yonetim Aracinin Kullanimi (`bin/amberdb_setup.pl`)
+#### Windows (ImDisk ile):
+Windows ortamında `bin\setup_windows.bat` betiği ile RAM-disk yönetilir:
+```cmd
+:: RAM-Diski Baslatma (512MB, R: Surucusu):
+bin\setup_windows.bat start 512M R:
 
-AmberDB, tum platformlarda RAM-disk yonetimini otomatize eden `bin/amberdb_setup.pl` araciyla birlikte gelir.
+:: Durum Denetimi:
+bin\setup_windows.bat status
 
-#### Durum Denetimi (Yetki Gerektirmez):
-```bash
-perl bin/amberdb_setup.pl --action=ramdisk --status
-```
-
-#### RAM-Diski Baslatma (Mount):
-```bash
-# Linux / macOS (Sudo ile):
-sudo perl bin/amberdb_setup.pl --action=ramdisk --start --size 512M
-
-# Windows (Yonetici PowerShell / CMD):
-perl bin/amberdb_setup.pl --action=ramdisk --start --size 512M --drive R:
-```
-
-#### RAM-Diski Sonlandirma (Unmount):
-```bash
-# Linux / macOS:
-sudo perl bin/amberdb_setup.pl --action=ramdisk --stop
-
-# Windows:
-perl bin/amberdb_setup.pl --action=ramdisk --stop
-```
-
-### 4.2 Otomatik Kurulum ve Servis Entegrasyonu
-
-`amberdb_setup.pl` tek bir komutla dizinleri, dosya izinlerini, RAM-diski ve self-healing watchdog cron yapısını yapılandırır:
-
-```bash
-# Linux / macOS (Sudo ile):
-sudo perl bin/amberdb_setup.pl --action=install --user=eticaretim --size=512M --cron
-
-# Windows (Yönetici konsolunda):
-perl bin/amberdb_setup.pl --action=install --size=512M --drive=R: --cron
+:: RAM-Diski Sonlandirma:
+bin\setup_windows.bat stop R:
 ```
 
 > [!IMPORTANT]
 > **Windows'ta ImDisk Gereksinimi:**  
 > Windows ortaminda RAM-disk kullanmak icin sisteminizde **ImDisk Toolkit** kurulu olmalidir (`choco install imdisk-toolkit` veya resmi yukleyiciden).
 
-> [!NOTE]
-> **macOS'ta Dahili APFS RAM-Disk Desteği:**  
-> macOS ortaminda Apple'in yerel `hdiutil` araci kullanilarak bellek uzerinde APFS RAM-disk olusturulur ve `/Volumes/AmberDB_RAM` altina baglanir. Ek bir 3. parti surucu yazilimi gerektirmez.
+#### Linux:
+Linux ortamında `/dev/shm` dizini işletim sistemi tarafından doğrudan paylaşımlı bellek olarak sunulur ve AmberDB tarafından otomatik olarak kullanılır.
 
-### 4.3 Perl İçerisinden Şeffaf Entegrasyon
+#### macOS:
+macOS ortaminda Apple'in yerel `hdiutil` araci ile `/Volumes` altina baglanan APFS RAM-disk birimleri motor tarafindan otomatik olarak tespit edilir.
 
-RAM-disk bağlandıktan sonra, AmberDB ile entegrasyon tamamen şeffaf gerçekleşir. `use_ramdisk` seçeneği küresel veya tablo bazında yapılandırıldığında motor otomatik olarak RAM-diskin bağlı olup olmadığını doğrular. Bağlıysa işlemler bellek hızında yürütülür; bağlı değilse AmberDB hataya düşmeden kalıcı disk depolamasına geri döner (fallback).
+#### Arka Plan Eşitleme Daemon'ı (Tier 4):
+Tier 4 (asenkron gecikmeli yazma) kullanılan ortamlarda günlüğü diske yansıtmak için supervisor daemon başlatılır:
+```bash
+perl bin/amberdb_daemon.pl start
+perl bin/amberdb_daemon.pl status
+perl bin/amberdb_daemon.pl stop
+```
+
+### 4.2 Perl İçerisinden Şeffaf Entegrasyon
+
+RAM-disk bağlandıktan sonra, AmberDB ile entegrasyon tamamen şeffaf gerçekleşir. `use_ramdisk` seçeneği küresel veya tablo bazında yapılandırıldığında motor otomatik olarak RAM-diskin bağlı olup olmadığını doğrular. Bağlıysa işlemler doğrudan RAM hızında yürütülür; bağlı değilse AmberDB katı Sıfır-Fallback (`Strict Zero-Fallback`) mimarisiyle tüm RAM-disk yollarını boş dize (`""`) olarak değerlendirir ve doğrudan kalıcı disk depolaması üzerinden çalışır.
 
 ```perl
 use AmberDB;

@@ -298,7 +298,7 @@ sub set_datadir {
     $self->{_path}->{session_dir} = "$dbase_dir/session";
     $self->{_path}->{config_dir}  = "$dbase_dir/config";
 
-    # Auto-load connect.pl if present in datadir, or fallback database name to leaf folder
+    # Auto-load connect.pl if present in datadir
     my $conn_file = "$dbase_dir/config/connect.pl";
     if ( -f $conn_file ) {
         my $target = ( $conn_file =~ m{^(?:\./|[a-zA-Z]:|/|\\)} ) ? $conn_file : "./$conn_file";
@@ -307,10 +307,8 @@ sub set_datadir {
             $self->{_connect}->{database} = $cfg->{database};
         }
     }
-    if ( !defined $self->{_connect}->{database} || !length $self->{_connect}->{database} ) {
-        my ($leaf) = $dbase_dir =~ m{([^/\\\\]+)[/\\\\]*$};
-        $self->{_connect}->{database} = $leaf if defined $leaf && length $leaf;
-    }
+
+
 
     unless ( $self->config('test') || $^C ) {
         if ( defined $dbase_dir && $dbase_dir ne "." && $dbase_dir ne "" ) {
@@ -691,17 +689,16 @@ sub connect {
     # Sub-case B: Authenticate credentials & generate session token
     my $connect_cfg = $self->_load_connect_config();
 
-    # Dbase dir leaf name as default database if not specified
+    # Database default if not specified in connect
     if ( !defined $database || !length $database ) {
         if ( $connect_cfg && $connect_cfg->{database} ) {
             $database = $connect_cfg->{database};
         }
         else {
-            my $dbase_dir = $self->path('dbase_dir') || ".";
-            my ($leaf) = $dbase_dir =~ m{([^/\\\\]+)[/\\\\]*$};
-            $database = $leaf // 'amberdb';
+            $database = 'amberdb';
         }
     }
+
 
     $username //= 'cli';
     $password //= '';

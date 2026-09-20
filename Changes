@@ -36,6 +36,11 @@ Revision history for AmberDB
             - Guarantees immediate read-your-own-writes consistency directly from the active RAM-disk before the asynchronous background flush daemon writes dirty records to physical disk.
 
         - [STORAGE DIRECTORY LAYOUT & TEST SUITE ENHANCEMENTS]
+          * Modernized xt/amberdb_ramdisk.t and t/amberdb_ramdisk_tiers.t to completely eliminate all legacy "ramdisk" folder references, hardcoded subfolder paths, and regex expectations.
+          * Upgraded all test instances to pass explicit database names and isolated RAM-disk mounts ($mock_mount/amberdb_<dbname>).
+          * Hardened AmberDB::Base::Ramdisk test emulation mode ($ENV{AMBERDB_TEST_RAMDISK}) to strictly use temporary directories instead of defaulting to the host's physical RAM-disk (R:), completely preventing test artifacts from polluting production RAM-disks.
+          * Completely eliminated the legacy "$dbase_dir/ramdisk" fallback in AmberDB::Base::Ramdisk; when no database name is provided in production, RAM-disk mounting is strictly disabled (zero-fallback).
+          * Fixed test emulation fallback in AmberDB::Base::Ramdisk when database name is omitted under $ENV{AMBERDB_TEST_RAMDISK}, defaulting to isolated tmpdir()/amberdb_test to ensure clean schema inheritance testing (t/amberdb_dbase_inheritance.t) without host R: pollution.
           * Updated AmberDB::Tools::Update::update_storage to exclude the obsolete 'ramdisk' folder from canonical directory layouts.
           * Purged all orphaned physical dbstore/ramdisk directories across active projects.
           * Standardized lock directory resolution in t/amberdb_lock.t using $adb->path('lock_dir').
@@ -52,8 +57,15 @@ Revision history for AmberDB
           * Registered _norm container in AmberDB core constructor with lock_keys and lock_value protection.
           * Added comprehensive unit test suite in t/amberdb_field_normalize.t.
 
-        - [INDEXING UTF-8 ROBUSTNESS]
-          * Protected index_put() against DB_File XS "Wide character in subroutine entry" crashes by ensuring utf_encode() is applied to any Unicode string values across secondary index targets (.inx, .fac, .slg, .fld, .src).
+        - [INDEX INTEGRITY & STRICT NUMERIC ID REINDEXING]
+          * Enforced strict positive integer filtering (/^\d+$/ && $_ > 0) across all binary index buffers (keys, A:keys, B:keys, $blk:keys, bin_encode, bin_decode, bin_add, bin_punch), completely preventing non-numeric or non-positive IDs from entering .inx files.
+          * Updated set_index in AmberDB::Tools::Index to close and unlink all existing index files (.inx, .src, .fld, .fac, .slg, .unq) on both physical disk and RAM-disk before rebuilding, ensuring clean and deterministic recreation.
+          * Added RAM-disk synchronization to set_index: freshly rebuilt index files are atomically mirrored to RAM-disk upon completion with safe filehandle management.
+          * Fixed UTF-8 double-encoding in $blk:vals across sort_add, sort_modify, and sort_del in AmberDB::Base::Index to prevent exponential byte bloat on multibyte character updates.
+          * Enhanced amberdb_cli.pl with database name auto-detection from connect.pl, core.conf (site_id), and project directories, ensuring CLI maintenance commands attach to active RAM-disk instances.
+          * Disallowed generic 'dbstore' as a valid database name across Ramdisk and CLI modules to eliminate unintended directory creation on RAM-disk.
+          * Enforced strict CLI connect argument validation: positional argument after 'connect' is strictly the database name (amberdb connect <database_name> [user] [pass]). Explicitly rejected 'connect dbstore' and directory paths with a descriptive error directing users to use --db=<dir> for custom data directories.
+          * Added non-numeric key and record ID enforcement in index_put(): when $type is not 'raw', non-numeric IDs in array references are filtered out and non-numeric scalar values are rejected from entering index files (.inx, .src, .fld, etc.).
 
         - [FAST RANGE FILTER ENGINE]
           * Implemented range_slice() using pre-sorted .inx keys ($blk:keys) and .fld boundaries for sub-millisecond range queries.

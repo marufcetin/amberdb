@@ -1072,14 +1072,14 @@ AmberDB tabloları, şemaları ve geçici/kalıcı dosyaları, belirlenen `dbsto
 |---|---|
 | `dbstore/table/` | Kalıcı `.db` ana veri, `.inx` kayıt ve sıralama indeksi, `.fld` eşleştirme, `.src` arama, `.fac` facet, `.slg` slug dosyaları |
 | `dbstore/schema/` | Kalıcı `.table` tablo şemaları ve `.dbase` grup yapılandırma dosyaları |
-| `dbstore/config/` | Kalıcı `.conf` düz metin ayar ve konfigürasyon dosyaları |
+| `dbstore/config/` | Kalıcı `.conf` düz metin ayar ve konfigürasyon dosyaları, `connect.pl` profil dosyası |
 | `dbstore/backup/` | Günlük CSV denetim yedekleri (`dbgun/YYYYMMDD/`) |
-| `dbstore/ramdisk/` | **Birleşik RAM-Disk (Linux tmpfs, Windows ImDisk, macOS APFS RAM-Disk) Kök Dizini:** |
-| `dbstore/ramdisk/table/` | `use_ramdisk => 1, 2, 3` için RAM'e aynalanmış sıcak `.db` ve `.inx` tabloları |
-| `dbstore/ramdisk/config/` | Derlenmiş hızlı yapılandırma önbelleği (`*.pl` hash referansları) |
-| `dbstore/ramdisk/schema/` | RAM'de önbelleğe alınmış / derlenmiş tablo şemaları (`*.table`, `*.dbase`) |
-| `dbstore/ramdisk/lock/` | Yalnızca RAM'de yaşayan kayıt ve tablo seviyesi `flock` kilitleri (`*.lock`) |
-| `dbstore/ramdisk/pids/` | Yalnızca RAM'de yaşayan süreç kilitleri, login attempt hataları (`*.pid`, `*.error`) |
+| `dbstore/journal/`| İşlem geri alma (WAL) ve Tier 4 gecikmeli yazma günlükleri (`txn_*`, `sync_ramdisk`) |
+| `dbstore/lock/` | RAM-disk bağlı değilken süreç ve tablo seviyesi kilit dosyaları (`*.lock`) |
+| `dbstore/session/`| RAM-disk bağlı değilken süreç oturum dosyaları (`*.sess`) |
+
+> [!NOTE]
+> **RAM-Disk Dizin Yapısı:** İşletim sisteminde RAM-disk bağlandığında (Windows'ta `R:/amberdb_$dbname`, Linux'ta `/dev/shm/amberdb_$dbname`, macOS'ta `/Volumes/amberdb_$dbname`), RAM-disk kök dizini altında dinamik olarak `table/`, `schema/`, `config/`, `lock/`, `session/` ve `shmem/` alt dizinleri yönetilir. RAM-disk bağlı olmadığında tüm RAM-disk yolları boş dize (`""`) olarak değerlendirilir ve sistem doğrudan kalıcı fiziksel depolama üzerinden çalışır.
 
 > [!IMPORTANT]
 > **Dizin Yapısı Uyumluluk Notu:** Eski projelerden yükseltme yaparken yapmanız gereken tek fiziksel işlem; veritabanı dizininizdeki `dbstore/scheme/` klasörünün adını **`dbstore/schema/`** olarak yeniden adlandırmaktır. Kod ve API tarafındaki tüm çözümlemeleri motor otomatik olarak yönetir.
@@ -1609,16 +1609,16 @@ AmberDB, yerel ve şeffaf bir fiziksel RAM-Disk hızlandırma motoruna sahiptir 
 
 ```text
                                ┌─────────────────────────────────────────────────────────────┐
-                               │ dbstore/ramdisk/ (Linux tmpfs, macOS APFS, Windows ImDisk)  │
+                               │ $ramdisk_dir (Linux /dev/shm, macOS /Volumes, Windows R:)   │
                                ├──────────────────────────┬──────────────────────────────────┤
-                               │ ramdisk/${tablo}.db      │ ramdisk/${tablo}.inx             │
+                               │ table/${tablo}.db        │ table/${tablo}.inx               │
                                │ (Yerel Berkeley DB)      │ (Yerel 8-Byte Binary İndeksler)  │
                                └──────────────────────────┴──────────────────────────────────┘
 ```
 
 ### 13.1 RAM-Disk Hızlandırması Nedir?
 
-Ağ tabanlı önbellek sistemlerinin (Redis veya Memcached gibi) aksine, AmberDB'nin RAM-disk motoru doğrudan işletim sistemi dosya sistemi blok seviyesinde çalışır. Tabloları ve indeksleri RAM üzerinde ayrılmış bir bağlama noktasına (`dbstore/ramdisk/` veya Windows `R:\amberdb`, macOS `/Volumes/AmberDB_RAM`) yönlendirir.
+Ağ tabanlı önbellek sistemlerinin (Redis veya Memcached gibi) aksine, AmberDB'nin RAM-disk motoru doğrudan işletim sistemi dosya sistemi blok seviyesinde çalışır. Tabloları ve indeksleri doğrudan işletim sistemi seviyesindeki RAM-disk bağlama noktasına (Windows'ta `R:/amberdb_$dbname`, Linux'ta `/dev/shm/amberdb_$dbname`, macOS'ta `/Volumes/amberdb_$dbname`) yönlendirir.
 
 **Temel Mimari Farklar:**
 * **Harici Sunucu ve Süreç Yok:** Ayrı bir Redis/Memcached sunucusu kurma, konfigüre etme, izleme ve ağ portu açma gereksinimi yoktur.
@@ -1631,7 +1631,7 @@ Ağ tabanlı önbellek sistemlerinin (Redis veya Memcached gibi) aksine, AmberDB
 * **Yerel Dosya Formatı Aynalama:** AmberDB tüm tablo dosyalarını kendi özgün uzantılarıyla (`.db`, `.inx`, `.fld`, `.src`, `.fac`, `.unq`, `.slg`) RAM-disk üzerinde saklar. Tescilli veya farklı bir `.cache` dosya formatı kullanılmaz.
 * **Eşzamanlı Çift Yazma (Dual-Write):** Bir kayıt eklendiğinde veya güncellendiğinde, motor hem kalıcı diske hem de RAM-diske eşzamanlı olarak yazar. Okumalar doğrudan bellek hızında RAM-diskten karşılanırken, veri dayanıklılığı ve sürekliliği kalıcı diskte korunur.
 * **ACID İşlem Güvenliği:** RAM-disk katmanındaki tüm yazma işlemleri AmberDB'nin disk tabanlı WAL geri alma günlükleri (`dbstore/journal/txn_*`) ve Strict 2PL kilitleri ile korunur. Bir işlem iptal edilirse (rollback), her iki katmandaki değişiklikler LIFO sırasıyla geri alınır.
-* **Otomatik Bağlantı Denetimi ve Kesintisiz Fallback:** Motor, RAM-disk dosyalarına erişmeden önce dosya sisteminin bağlı (`mounted`) olup olmadığını denetler. RAM-disk bağlı değilse, AmberDB hata üretmeden kesintisiz olarak standart kalıcı disk üzerinden çalışmaya devam eder.
+* **Otomatik Bağlantı Denetimi ve Katı Sıfır-Fallback:** Motor, RAM-disk dosyalarına erişmeden önce dosya sisteminin bağlı (`mounted`) olup olmadığını denetler. RAM-disk bağlı olmadığında tüm RAM-disk yolları (`ramdisk_dir`, `table_rdir`, `schema_rdir`, `config_rdir`) boş dize (`""`) olarak döner. AmberDB disk üzerinde sahte önbellek klasörleri açmaz veya hata üretmez; kesintisiz olarak doğrudan standart kalıcı disk üzerinden çalışmaya devam eder.
 
 ### 13.3 RAM-Disk ile L1 Süreç İçi Önbellek Karşılaştırması
 
@@ -1641,7 +1641,7 @@ AmberDB bünyesinde iki farklı bellek katmanı bulunur ve amaçları birbirinde
 | :--- | :--- | :--- |
 | **Kapsam** | Süreçler arası ortak, sistem çapında paylaşımlı | Tek bir Perl süreci / iş parçacığı belleği |
 | **Depolama Motoru** | Yerel `DB_File` ve ikili indeks dosyaları | Süreç içi Perl hash referansları |
-| **Kalıcılık** | Kalıcı disk ile senkronize (Seviye 1 & 2) | Yalnızca süreç çalışma süresi boyunca |
+| **Kalıcılık** | Kalıcı disk ile senkronize (Seviye 1, 2 & 4) | Yalnızca süreç çalışma süresi boyunca |
 | **Metotlar** | `insert_id`, `read_id`, `search_table`, `update_id` | `$adb->get_cache()`, `$adb->set_cache()` |
 
 ```perl
@@ -1656,9 +1656,10 @@ $adb->set_cache("panel", "aktif_kullanicilar", undef); # Önbelleği temizle
 Tablolar şema dosyasında veya dinamik olarak `table_attr()` ile hızlandırma seviyesine bağlanır:
 
 * **`0` (Kapalı):** Standart kalıcı disk erişimi.
-* **`1` (Hibrit İndeks Hızlandırması):** Yalnızca ikincil indeks dosyaları (`.inx`, `.src`, `.fld`, `.fac`, `.unq`, `.slg`) RAM-diske alınır. Ana veri (`.db`) kalıcı diskte saklanır. Arama, filtreleme ve sıralama bellek hızında çalışırken RAM tüketimi minimum düzeyde tutulur.
+* **`1` (Hibrit İndeks Hızlandırması):** Yalnızca ikincil indeks dosyaları (`.inx`, `.src`, `.fld`, `.fac`, `.unq`, `.slg`) RAM-diske alınır ve diske senkron çift yazılır. Ana veri (`.db`) kalıcı diskte saklanır. Arama, filtreleme ve sıralama bellek hızında çalışırken RAM tüketimi minimum düzeyde tutulur ve indeks dayanıklılığı korunur.
 * **`2` (Tam Tablo RAM Aynası - Dual-Write):** Tablo verileri (`.db`) ve tüm indeks dosyaları RAM-diske aynalanır. Okumalar doğrudan RAM'den döner; yazma anında kalıcı diske ve RAM-diske eşzamanlı çift yazma yapılır.
 * **`3` (Uçucu RAM-Disk - Pure Volatile Key-Value):** Veri **yalnızca RAM-disk üzerinde** `.db` dosyasında tutulur. Fiziksel diskte hiçbir dosya ve indeks oluşturulmaz (`use_simple => 1`). Oturumlar (session), sepetler ve geçici tokenlar için tasarlanmıştır. Kayan zaman aşımını (`ramdisk_ttl`) destekler.
+* **`4` (Asenkron Diske Yazma - Write-Behind):** Tüm okuma ve yazmalar RAM-diskte mikrosaniye hızında gerçekleştirilir. Diske yazma ertelenir ve `dbstore/journal/sync_ramdisk` günlüğüne dirty olayı fırlatılır. `amberdb_daemon.pl` arka plan servisi kayıtları diske yansıtır. Aktif bir `transact_start` işlemi başladığında sistem otomatik olarak senkron çift yazma moduna geçer.
 
 ### 13.5 Şeffaf Yönetim: `use_ramdisk` Kullanımı
 
@@ -1693,7 +1694,7 @@ $adb->table_attr("audit_archive", use_ramdisk => 0);
 Geliştirici yalnızca standart AmberDB metotlarını kullanır. Motor, arka planda RAM-disk kopyalamasını, bellekten okumayı ve diske çift yazmayı şeffaf olarak yürütür:
 
 ```perl
-# Okuma: use_ramdisk 1 veya 2 tanımlıysa sorgular doğrudan RAM üzerinden mikrosaniyede döner
+# Okuma: use_ramdisk tanımlıysa sorgular doğrudan RAM üzerinden mikrosaniyede döner
 my @urun = $adb->read_id("catalog_product", 101);
 my ($adet, @sonuclar) = $adb->search_table("catalog_product", "kablosuz kulaklik");
 
@@ -1702,14 +1703,15 @@ $adb->insert_id("catalog_product", 0, @yeni_urun);
 $adb->update_id("catalog_product", 101, @guncel_veri);
 ```
 
-### 13.6 RAM-Disk Yönetimi (`amberdb_setup.pl`)
+### 13.6 RAM-Disk Yönetimi ve Yardımcı Araçlar
 
-AmberDB, tüm işletim sistemlerinde (Linux, macOS, Windows) RAM-disk yapılandırmasını ve bakımını `amberdb_setup.pl` üzerinden tek merkezden yürütür:
+AmberDB, işletim sistemine özgü RAM-disk bağlama noktalarını yerleşik olarak destekler:
 
-- **RAM-Disk Başlatma (Mount):** `perl bin/amberdb_setup.pl --action=ramdisk --start --size 512M`
-- **Durum Denetimi (Status):** `perl bin/amberdb_setup.pl --action=ramdisk --status`
-- **RAM-Disk Sonlandırma (Stop):** `perl bin/amberdb_setup.pl --action=ramdisk --stop`
-- **Tam Altyapı Kurulumu (Install):** `perl bin/amberdb_setup.pl --action=install --user=eticaretim --size 256M --cron`
+- **Windows:** `bin\setup_windows.bat start 512M R:` ile ImDisk sanal sürücüsü oluşturulur. Durum denetimi `bin\setup_windows.bat status`, bağlantı sonlandırma ise `bin\setup_windows.bat stop R:` ile yapılır.
+- **Linux:** `/dev/shm` dizini otomatik olarak paylaşımlı bellek alanı olarak tanınır.
+- **macOS:** `/Volumes` altındaki APFS RAM-disk birimleri otomatik olarak kullanılır.
+- **Arka Plan Eşitleme Daemon'ı (Tier 4):** `perl bin/amberdb_daemon.pl start` komutuyla başlatılır, `status` ile izlenir ve `stop` ile güvenle durdurulur.
+- **Depolama Düzeni Senkronizasyonu:** `amberdb update storage` veya `perl bin/amberdb_cli.pl update storage --force` ile tüm dizinler güncellenir.
 
 ### 13.7 Uçucu Tablolar ve Kayan TTL Zaman Aşımı (`ramdisk_ttl`)
 

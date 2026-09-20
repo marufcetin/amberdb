@@ -13,14 +13,14 @@
 
 `table_dir`, belirli bir veritabanı tablosunun fiziksel dosyaları için `dbase_dir` (ve RAM-disk devredeyken `ramdisk_dir`) altında özel bir alt depolama dizini tanımlar.
 
-AmberDB varsayılan olarak tüm tablo verilerini (`.db`) ve indeks dosyalarını `dbstore/table/` (ve `dbstore/ramdisk/table/`) altında saklar. `table_dir` kullanılarak tablolar özel alt klasörlere bölümlendirilebilir ve izole edilebilir:
+AmberDB varsayılan olarak tüm tablo verilerini (`.db`) ve indeks dosyalarını `dbstore/table/` (ve RAM-disk bağlıyken `$ramdisk_dir/table/`) altında saklar. `table_dir` kullanılarak tablolar özel alt klasörlere bölümlendirilebilir ve izole edilebilir:
 
 - **Özel İsimli Alt Klasör (örn: `table_dir => 'siparis'`):**  
-  Tablo diskte `dbstore/siparis/$table.*` ve RAM-diskte `dbstore/ramdisk/siparis/$table.*` altında saklanır.
+  Tablo diskte `dbstore/siparis/$table.*` ve RAM-diskte `$ramdisk_dir/siparis/$table.*` altında saklanır.
 - **Kök Dizin Yerleşimi (örn: `table_dir => ''`):**  
-  Varsayılan `tables/` önekini tamamen kaldırır ve dosyanın doğrudan kök `dbstore/$table.*` ve `ramdisk/$table.*` altına yazılmasını sağlar.
+  Varsayılan `table/` önekini tamamen kaldırır ve dosyanın doğrudan kök `dbstore/$table.*` ve `$ramdisk_dir/$table.*` altına yazılmasını sağlar.
 - **Uçucu RAM-Disk Yönlendirmesi (Kademe 3):**  
-  Uçucu bellek tablolarını (`use_ramdisk => 3`) RAM-disk üzerinde ayrılmış alt klasörlere (örn: `ramdisk/sessions/`) yönlendirir.
+  Uçucu bellek tablolarını (`use_ramdisk => 3`) RAM-disk üzerinde ayrılmış alt klasörlere (örn: `$ramdisk_dir/sessions/`) yönlendirir.
 
 ---
 
@@ -40,7 +40,7 @@ use_ramdisk => 1,
 # Siparişler tablosunu 'siparis/' klasörüne yönlendirme
 $adb->table_attr("siparis", table_dir => 'siparis');
 
-# Tabloyu doğrudan kök dizine yerleştirme ('tables/' klasörü kullanılmaz)
+# Tabloyu doğrudan kök dizine yerleştirme ('table/' klasörü kullanılmaz)
 $adb->table_attr("genel_ayarlar", table_dir => '');
 
 # Uçucu oturum tablosunu RAM-diskte özel klasöre yönlendirme
@@ -55,7 +55,7 @@ $adb->table_attr("kullanici_oturum", {
 
 ```perl
 # Standart sorgular özel tablo dizinini otomatik olarak çözer:
-# dbstore/siparis/siparis.db (veya ramdisk/siparis/siparis.db) üzerinden okur
+# dbstore/siparis/siparis.db (veya $ramdisk_dir/siparis/siparis.db) üzerinden okur
 my @siparis = $adb->read_id("siparis", 501);
 ```
 

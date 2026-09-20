@@ -156,7 +156,7 @@ sub ramdisk_setup {
     };
 
     my $dbname = $self->{_connect}->{database};
-    $dbname = '' if !defined $dbname || $dbname eq '.';
+    $dbname = '' if !defined $dbname || $dbname eq '.' || $dbname eq 'dbstore';
 
     my $is_mounted  = 0;
     my $mount_desc  = "Local Storage (No RAM-disk active)";
@@ -169,12 +169,35 @@ sub ramdisk_setup {
         $mount_desc  = "Local Storage (No RAM-disk active)";
     }
     elsif ( $ENV{AMBERDB_TEST_RAMDISK} ) {
-        $ramdisk_dir = ( $ENV{AMBERDB_TEST_RAMDISK} ne '1' )
-            ? $ENV{AMBERDB_TEST_RAMDISK}
-            : ( $opts{ramdisk_dir} || $self->path('ramdisk_dir') || "$dbase_dir/ramdisk" );
-        $ramdisk_dir =~ s{[\\/]+$}{};
-        $is_mounted = 1;
-        $mount_desc = "Test RAM-Disk Emulation ($ramdisk_dir)";
+        if ( $ENV{AMBERDB_TEST_RAMDISK} ne '1' ) {
+            $ramdisk_dir = $ENV{AMBERDB_TEST_RAMDISK};
+        }
+        elsif ( $opts{ramdisk_dir} || $self->path('ramdisk_dir') ) {
+            $ramdisk_dir = $opts{ramdisk_dir} || $self->path('ramdisk_dir');
+        }
+        else {
+            my $test_target = ( length $dbname && $dbname ne '.' && $dbname ne 'dbstore' )
+                ? "amberdb_$dbname"
+                : "amberdb_test";
+            my $rm_base = $opts{ramdisk_base};
+            my $chk_base = $rm_base;
+            $chk_base .= '/' if defined $chk_base && $os eq 'windows' && $chk_base =~ /^[a-zA-Z]:$/;
+            if ( defined $rm_base && length $rm_base && -d $chk_base ) {
+                $ramdisk_dir = "$rm_base/$test_target";
+            }
+            else {
+                $ramdisk_dir = File::Spec->catdir( File::Spec->tmpdir(), $test_target );
+            }
+        }
+        if ( length $ramdisk_dir ) {
+            $ramdisk_dir =~ s{[\\/]+$}{};
+            $is_mounted = 1;
+            $mount_desc = "Test RAM-Disk Emulation ($ramdisk_dir)";
+        }
+        else {
+            $is_mounted = 0;
+            $mount_desc = "Local Storage (No RAM-disk active)";
+        }
     }
     # 2. Database name check: if dbname is empty/missing, direct fallback to local storage
     elsif ( !length $dbname ) {

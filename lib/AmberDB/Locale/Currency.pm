@@ -58,9 +58,8 @@ sub cur_all {
     return map { [ $_, $CURRENCIES{$_}->{name} ] } @CURRENCY_ORDER;
 }
 
-# List active ISO codes
-sub active_codes {
-    return @CURRENCY_ORDER;
-}
+# Aliases
+*by_code = \&cur_code;
+*all     = \&cur_all;
 
 1;

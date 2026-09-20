@@ -16,11 +16,13 @@ use lib 'lib';
 use AmberDB;
 
 my $tmpdir = tempdir( CLEANUP => 1 );
-my $ram_root = File::Spec->catdir( $tmpdir, 'ramdisk' );
+my $ram_mount = tempdir( CLEANUP => 1 );
+my $ram_root = File::Spec->catdir( $ram_mount, 'amberdb_testdb' );
 make_path($ram_root);
 $ENV{AMBERDB_TEST_RAMDISK} = 1;
 
 my $adb = AmberDB->new(
+    database => 'testdb',
     cfg  => { language => 'gb' },
     path => {
         dbase_dir   => $tmpdir,
@@ -42,7 +44,7 @@ subtest 'Method Existence & Path Symmetry' => sub {
     my $t_path = $adb->table_path('sample_tbl');
     my $r_path = $adb->ramdisk_path('sample_tbl');
     ok( $r_path, 'ramdisk_path resolved successfully' );
-    like( $r_path, qr/ramdisk[\\\/]table[\\\/]sample_tbl$/, 'ramdisk_path points to ramdisk/table/sample_tbl' );
+    like( $r_path, qr/amberdb_testdb[\\\/]table[\\\/]sample_tbl$/, 'ramdisk_path points to amberdb_testdb/table/sample_tbl' );
 };
 
 subtest 'use_ramdisk => 1 (Hybrid Index-Only Acceleration)' => sub {
@@ -241,7 +243,8 @@ subtest 'ramdisk_setup helper scripts naming & detection' => sub {
     {
         local $ENV{AMBERDB_TEST_RAMDISK} = 0;
         my $plain_db = AmberDB->new(
-            path => { dbase_dir => $t_root, ramdisk_dir => $plain_ram }
+            database => 'plain_db',
+            path     => { dbase_dir => $t_root, ramdisk_dir => $plain_ram }
         );
         is( $plain_db->config('ramdisk_mounted'), 0, 'Plain local dir config ramdisk_mounted is 0' );
         my $plain_info = $plain_db->ramdisk_setup();
@@ -253,7 +256,8 @@ subtest 'ramdisk_setup helper scripts naming & detection' => sub {
     {
         local $ENV{AMBERDB_TEST_RAMDISK} = 0;
         my $direct_db = AmberDB->new(
-            path => { dbase_dir => $t_root, ramdisk_dir => ($^O eq 'MSWin32' || $^O eq 'msys' || $^O eq 'cygwin') ? 'R:/amberdb_test' : '/dev/shm/amberdb_test' }
+            database => 'test',
+            path     => { dbase_dir => $t_root, ramdisk_dir => ($^O eq 'MSWin32' || $^O eq 'msys' || $^O eq 'cygwin') ? 'R:/amberdb_test' : '/dev/shm/amberdb_test' }
         );
         my $d_info = $direct_db->ramdisk_setup();
         ok( defined $d_info->{is_mounted}, 'Direct RAM path diagnostics evaluated' );
@@ -264,7 +268,9 @@ subtest 'Global use_ramdisk => 1 and 2 configuration' => sub {
     plan tests => 13;
 
     my $g_tmp = tempdir( CLEANUP => 1 );
-    my $g_ram = File::Spec->catdir( $g_tmp, 'ramdisk' );
+    my $g_mount = tempdir( CLEANUP => 1 );
+    my $g_ram = File::Spec->catdir( $g_mount, 'amberdb_catalog' );
+    make_path($g_ram);
 
     # 1. First, create database schema and records on permanent disk without RAM-disk
     my $schema_dir = File::Spec->catdir( $g_tmp, 'schema' );
@@ -286,8 +292,10 @@ subtest 'Global use_ramdisk => 1 and 2 configuration' => sub {
     }
 
     {
+        local $ENV{AMBERDB_TEST_RAMDISK} = 0;
         my $init_db = AmberDB->new(
-            path => { dbase_dir => $g_tmp }
+            database => 'catalog',
+            path     => { dbase_dir => $g_tmp }
         );
 
         $init_db->insert_id( 'catalog_books', 1, 'Book One' );
@@ -297,6 +305,7 @@ subtest 'Global use_ramdisk => 1 and 2 configuration' => sub {
 
     # 2. Open with global cfg => { use_ramdisk => 1 }
     my $adb_g1 = AmberDB->new(
+        database => 'catalog',
         cfg  => { use_ramdisk => 1 },
         path => { dbase_dir => $g_tmp, ramdisk_dir => $g_ram }
     );
@@ -323,6 +332,7 @@ subtest 'Global use_ramdisk => 1 and 2 configuration' => sub {
 
     # 3. Open with global cfg => { use_ramdisk => 2 } (Full Table Acceleration)
     my $adb_g2 = AmberDB->new(
+        database => 'catalog',
         cfg  => { use_ramdisk => 2 },
         path => { dbase_dir => $g_tmp, ramdisk_dir => $g_ram }
     );
@@ -352,12 +362,17 @@ subtest 'Unmounted RAM-disk strips use_ramdisk from table_info and table_attr' =
         close $fh;
     }
 
+    my $u_mount = File::Temp->newdir( CLEANUP => 1 );
+    my $u_ram = File::Spec->catdir( $u_mount, 'amberdb_unmount_test' );
+    make_path($u_ram);
+
     # Ensure unmounted state
     local $ENV{AMBERDB_TEST_RAMDISK} = 0;
 
     my $adb_unmounted = AmberDB->new(
-        cfg  => { use_ramdisk => 1 },
-        path => { dbase_dir => $u_tmp }
+        database => 'unmount_test',
+        cfg      => { use_ramdisk => 1 },
+        path     => { dbase_dir => $u_tmp, ramdisk_dir => $u_ram }
     );
 
     # 1. From schema file
@@ -377,8 +392,9 @@ subtest 'Unmounted RAM-disk strips use_ramdisk from table_info and table_attr' =
     # 4. Now simulate mounted RAM-disk
     local $ENV{AMBERDB_TEST_RAMDISK} = 1;
     my $adb_mounted = AmberDB->new(
-        cfg  => { use_ramdisk => 1 },
-        path => { dbase_dir => $u_tmp }
+        database => 'unmount_test',
+        cfg      => { use_ramdisk => 1 },
+        path     => { dbase_dir => $u_tmp, ramdisk_dir => $u_ram }
     );
 
     my $m_file_info = $adb_mounted->table_info('books_rd');
@@ -390,12 +406,16 @@ subtest 'Unmounted RAM-disk strips use_ramdisk from table_info and table_attr' =
 
 subtest 'use_ramdisk => 3 (Volatile RAM-Disk Tier 3 & TTL)' => sub {
     my $tmp = File::Temp->newdir( CLEANUP => 1 );
+    my $t3_mount = File::Temp->newdir( CLEANUP => 1 );
+    my $t3_ram = File::Spec->catdir( $t3_mount, 'amberdb_session_db' );
+    make_path($t3_ram);
     local $ENV{AMBERDB_TEST_RAMDISK} = 1;
 
     # 1. Global use_ramdisk => 3 rejection/fallback to 0
     my $adb_global = AmberDB->new(
-        cfg  => { use_ramdisk => 3 },
-        path => { dbase_dir => $tmp }
+        database => 'session_db',
+        cfg      => { use_ramdisk => 3 },
+        path     => { dbase_dir => $tmp, ramdisk_dir => $t3_ram }
     );
     is( $adb_global->config('use_ramdisk'), 0, 'Global use_ramdisk => 3 in constructor falls back to 0' );
 
@@ -407,7 +427,8 @@ subtest 'use_ramdisk => 3 (Volatile RAM-Disk Tier 3 & TTL)' => sub {
 
     # 2. Per-table use_ramdisk => 3 configuration and schema stripping
     my $adb = AmberDB->new(
-        path => { dbase_dir => $tmp }
+        database => 'session_db',
+        path     => { dbase_dir => $tmp, ramdisk_dir => $t3_ram }
     );
     my $ramdisk_dir = $adb->ramdisk_dir();
 
@@ -491,10 +512,14 @@ subtest 'use_ramdisk => 3 (Volatile RAM-Disk Tier 3 & TTL)' => sub {
 
 subtest 'table_dir custom storage directory (Disk & RAM-Disk)' => sub {
     my $tmp = File::Temp->newdir( CLEANUP => 1 );
+    my $tbl_mount = File::Temp->newdir( CLEANUP => 1 );
+    my $tbl_ram = File::Spec->catdir( $tbl_mount, 'amberdb_siparis' );
+    make_path($tbl_ram);
     local $ENV{AMBERDB_TEST_RAMDISK} = 1;
 
     my $adb = AmberDB->new(
-        path => { dbase_dir => $tmp }
+        database => 'siparis',
+        path     => { dbase_dir => $tmp, ramdisk_dir => $tbl_ram }
     );
     my $ramdisk_dir = $adb->ramdisk_dir();
 
@@ -520,7 +545,7 @@ subtest 'table_dir custom storage directory (Disk & RAM-Disk)' => sub {
     unlike( $root_tpath, qr{[\\/]tables[\\/]}, 'table_path does not contain tables/' );
 
     my $root_rpath = $adb->ramdisk_path('root_tbl');
-    like( $root_rpath, qr{[\\/]ramdisk[\\/]root_tbl$}, 'ramdisk_path with table_dir => "" placed directly in ramdisk root' );
+    like( $root_rpath, qr{amberdb_siparis[\\/]root_tbl$}, 'ramdisk_path with table_dir => "" placed directly in amberdb_siparis root' );
     unlike( $root_rpath, qr{[\\/]tables[\\/]}, 'ramdisk_path does not contain tables/' );
 
     ok( $adb->insert_id( 'root_tbl', 1, 'root_content' ), 'Record inserted into root_tbl' );
@@ -533,7 +558,7 @@ subtest 'table_dir custom storage directory (Disk & RAM-Disk)' => sub {
         table_dir   => 'cart'
     );
     my $cart_tpath = $adb->table_path('volatile_cart');
-    like( $cart_tpath, qr{[\\/]ramdisk[\\/]cart[\\/]volatile_cart$}, 'table_path points to ramdisk/cart/volatile_cart' );
+    like( $cart_tpath, qr{amberdb_siparis[\\/]cart[\\/]volatile_cart$}, 'table_path points to amberdb_siparis/cart/volatile_cart' );
 
     ok( $adb->insert_id( 'volatile_cart', 55, 'cart_item_55' ), 'Cart record inserted' );
 
@@ -541,7 +566,7 @@ subtest 'table_dir custom storage directory (Disk & RAM-Disk)' => sub {
     ok( !-e $phys_cart, 'Zero physical disk files in dbstore/cart/' );
 
     my $ram_cart = File::Spec->catfile( $ramdisk_dir, 'cart', 'volatile_cart.db' );
-    ok( -e $ram_cart, 'RAM-disk file created in ramdisk/cart/volatile_cart.db' );
+    ok( -e $ram_cart, 'RAM-disk file created in amberdb_siparis/cart/volatile_cart.db' );
 
     my @cart_rec = $adb->read_id( 'volatile_cart', 55 );
     is( $cart_rec[1], 'cart_item_55', 'Cart record read from custom RAM-disk directory' );
@@ -571,7 +596,7 @@ subtest 'Shared Memory (shmem) Store & Zero-Fallback Validation' => sub {
 
     # Verify physical file existence in $ramdisk_dir/shmem/
     my $shm_path = File::Spec->catfile( $adb->path('shmem_dir'), 'test_scalar.shm' );
-    ok( -e $shm_path, 'Physical .shm file exists in ramdisk/shmem/' );
+    ok( -e $shm_path, 'Physical .shm file exists in shmem/' );
 
     # 2. Deletion
     ok( $adb->del_shmem('test_scalar'), 'del_shmem removed test_scalar' );

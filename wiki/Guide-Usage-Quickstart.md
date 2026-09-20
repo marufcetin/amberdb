@@ -10,7 +10,7 @@
 
 ## 1. Introduction and Initialization
 
-When building applications with AmberDB, the database handle is conventionally initialized as `$adb`. AmberDB automatically organizes its internal directories (`schema/`, `tables/`, `backup/`, `ramdisk/`, `txn/`) beneath the configured database root (`./dbstore`).
+When building applications with AmberDB, the database handle is conventionally initialized as `$adb`. AmberDB automatically organizes its internal directories (`table/`, `schema/`, `config/`, `backup/`, `journal/`, `lock/`, `session/`) beneath the configured database root (`./dbstore`).
 
 ```perl
 use strict;

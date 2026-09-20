@@ -14,11 +14,11 @@
 `ramdisk_ttl` specifies the sliding time-to-live (expiration) duration in seconds for **volatile pure RAM-disk tables (`use_ramdisk => 3`)**.
 
 When a table is configured in Tier 3 mode:
-- Data resides exclusively in memory (`dbstore/ramdisk/` or configured subfolder) with no persistent disk footprint.
+- Data resides exclusively in memory (`$ramdisk_dir/table/` or configured subfolder) with no persistent disk footprint.
 - Successful reads automatically update the file modification timestamp (`utime`), resetting the expiration window (sliding expiration).
 - When a record is accessed after its TTL duration has elapsed without activity, AmberDB automatically cleans up and invalidates the expired entry.
 
-*Note: `ramdisk_ttl` strictly applies to Tier 3 volatile tables. Tiers 1 and 2 maintain synchronized persistent disk copies and do not expire.*
+*Note: `ramdisk_ttl` strictly applies to Tier 3 volatile tables. Tiers 1, 2, and 4 maintain synchronized persistent disk copies and do not expire.*
 
 ---
 

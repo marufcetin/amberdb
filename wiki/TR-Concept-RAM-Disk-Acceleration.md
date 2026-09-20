@@ -10,7 +10,7 @@
 
 ## 1. Tanım ve Genel Bakış
 
-**RAM-Disk Paylaşımlı Bellek Hızlandırması**, AmberDB'nin `dbstore/ramdisk/` dizinine işletim sistemi seviyesinde bir paylaşımlı bellek dosya sistemi (Linux'ta `tmpfs`, Windows'ta `ImDisk` veya macOS'ta `APFS RAM-Disk` / `hdiutil`) bağlayarak mikrosaniyenin altında okuma/yazma erişim sürelerine ulaşmasını sağlayan mimarisidir.
+**RAM-Disk Paylaşımlı Bellek Hızlandırması**, AmberDB'nin işletim sistemi seviyesinde doğrudan bir paylaşımlı bellek dosya sistemine (Windows'ta `ImDisk` `R:/amberdb_$dbname`, Linux'ta `/dev/shm/amberdb_$dbname` veya macOS'ta `APFS RAM-Disk` `/Volumes/amberdb_$dbname`) bağlanarak mikrosaniyenin altında okuma/yazma erişim sürelerine ulaşmasını sağlayan mimarisidir.
 
 AmberDB standart Berkeley DB (`DB_File`) hash yapısını kullandığı için önbellek tek bir Perl sürecinin içinde hapsolmaz. Tüm paralel web/arkaplan süreçleri (Starman, Apache mod_perl, Plack worker'ları) aynı paylaşımlı bellek dosyalarına eşzamanlı olarak işletim sistemi page cache ve `flock` kilitleri üzerinden erişir.
 
@@ -18,8 +18,8 @@ AmberDB standart Berkeley DB (`DB_File`) hash yapısını kullandığı için ö
 RAM-Disk Çok Süreçli Paylaşımlı Bellek Mimarisi
   
  Perl Worker Süreci 1        Perl Worker Süreci 2        Perl Worker Süreci N      
-                     Paylaşımlı RAM-Disk Alanı (/dev/shm, ImDisk R: veya /Volumes/AmberDB_RAM)
-             dbstore/ramdisk/table/catalog_category.db & .inx (Bellek İçi Hash)
+                     Paylaşımlı RAM-Disk Alanı (/dev/shm, ImDisk R: veya /Volumes)
+             $ramdisk_dir/table/catalog_category.db & .inx (Bellek İçi Hash)
                                       
                                        Otomatik Şeffaf Eşleme (use_ramdisk)
                                       
@@ -33,20 +33,21 @@ RAM-Disk Çok Süreçli Paylaşımlı Bellek Mimarisi
 Tablo şemasında (`schema/*.table`) veya çalışma anında `$adb->table_attr($table, use_ramdisk => $tier)` ile yapılandırılır:
 
 - **`use_ramdisk => 0` (Kapalı):** Standart kalıcı disk erişimi.
-- **`use_ramdisk => 1` (Hibrit İndeks Hızlandırması):** RAM-disk üzerinde **sadece indeks dosyaları** (`.inx`, `.src`, `.fld`, `.fac`, `.unq`, `.slg`) tutulur. Ana veri (`.db`) kalıcı diskte kalır. İndeks aramaları bellek hızında yapılır; yazma anında her iki katman da atomik güncellenir. Kalıcı diskle her zaman senkron kaldığı için TTL uygulanmaz.
-- **`use_ramdisk => 2` (Tam Tablo Aynalama - Dual-Write Mirror):** Hem veri (`.db`) hem de tüm indeksler hem fiziksel diskte hem de RAM-diskte tutulur. Okumalar RAM-disk üzerinden mikrosaniyede gerçekleşir; yazmalar hem RAM-diske hem kalıcı diske çift yazılır (dual-write). Veri bayatlaması olmadığından TTL uygulanmaz.
+- **`use_ramdisk => 1` (Hibrit İndeks Hızlandırması):** RAM-disk üzerinde **sadece indeks dosyaları** (`.inx`, `.src`, `.fld`, `.fac`, `.unq`, `.slg`) tutulur ve kalıcı diske senkron çift yazılır. Ana veri (`.db`) kalıcı diskte kalır. İndeks aramaları bellek hızında yapılır; sistem yeniden başlatıldığında indeksler korunur. Kalıcı diskle her zaman senkron kaldığı için TTL uygulanmaz.
+- **`use_ramdisk => 2` (Tam Tablo Aynalama - Dual-Write Mirror):** Hem veri (`.db`) hem de tüm indeksler hem fiziksel diskte hem de RAM-diskte tutulur. Okumalar RAM-disk üzerinden mikrosaniyede gerçekleşir; yazmalar hem RAM-diske hem kalıcı diske senkron çift yazılır (dual-write). Veri bayatlaması olmadığından TTL uygulanmaz.
 - **`use_ramdisk => 3` (Uçucu RAM-Disk - Pure Volatile Key-Value):** Veri **yalnızca RAM-disk üzerinde** `.db` dosyasında tutulur. Kalıcı diskte hiçbir dosya ve hiçbir indeks dosyası (`.inx`, vb.) oluşturulmaz; tablo yalın anahtar-değer modunda (`use_simple => 1`) çalışır. Oturumlar (session), sepetler, geçici tokenlar için tasarlanmıştır.
   - **Global Tanım Kısıtlaması:** `use_ramdisk => 3` küresel konfigürasyonda (`new` veya `config`) kabul edilmez, verilirse otomatik olarak `0`'a düşer (fallback). Yalnızca tablo bazında (`table_attr` veya `.table` şema) tanımlanabilir.
   - **Zaman Aşımı (`ramdisk_ttl`):** `ramdisk_ttl` parametresi **yalnızca Tier 3 için geçerlidir** (varsayılan: 300 saniye). Süresi dolan geçici veriler otomatik olarak bellekten kaldırılır. Başarılı okumalarda kayan zaman aşımı (sliding expiration) ile süre yenilenir.
+- **`use_ramdisk => 4` (Asenkron Diske Yazma - Write-Behind):** Tüm okuma ve yazmalar doğrudan RAM-diskte mikrosaniye hızında işlenir. Diske yazma ertelenir ve `dbstore/journal/sync_ramdisk` günlüğüne dirty olayı yazılır. `amberdb_daemon.pl` servisi periyodik olarak kayıtları kalıcı diske yansıtır. Aktif bir transaction (`transact_start`) başladığında sistem otomatik olarak senkron çift yazmaya geçer.
 
 ---
 
 ## 3. Özel Tablo Dizini Belirleme (`table_dir`)
 
-AmberDB varsayılan olarak tabloları `dbstore/table/` ve RAM-diskte `dbstore/ramdisk/table/` altında depolar. `table_dir` parametresi ile bu dizin özelleştirilebilir:
+AmberDB varsayılan olarak tabloları fiziksel diskte `dbstore/table/` ve RAM-diskte `$ramdisk_dir/table/` altında depolar. `table_dir` parametresi ile bu dizin özelleştirilebilir:
 
-- **`table_dir => 'siparis'`:** Tablo diskte `dbstore/siparis/$table` ve RAM-diskte `dbstore/ramdisk/siparis/$table` altında tutulur.
-- **`table_dir => ''`:** Varsayılan `table/` önekini ezer ve tabloyu doğrudan kök dizin altına (`dbstore/$table` ve `ramdisk/$table`) yerleştirir.
+- **`table_dir => 'siparis'`:** Tablo diskte `dbstore/siparis/$table` ve RAM-diskte `$ramdisk_dir/siparis/$table` altında tutulur.
+- **`table_dir => ''`:** Varsayılan `table/` önekini ezer ve tabloyu doğrudan kök dizin altına (`dbstore/$table` ve `$ramdisk_dir/$table`) yerleştirir.
 - **Tanımlanmazsa:** Standart `table/` hiyerarşisi kullanılır.
 
 ```perl
@@ -81,11 +82,11 @@ $adb->insert_id("catalog_category", 0, @yeni_kategori);
 $adb->modify_id("catalog_category", 12, @guncel_veri);
 ```
 
-### RAM-Disk Yönetimi (`amberdb_setup.pl`)
-Tüm platformlarda RAM-disk yapılandırması tek elden `amberdb_setup.pl` ile yönetilir:
-- **RAM-Diski Başlatma:** `perl bin/amberdb_setup.pl --action=ramdisk --start --size 512M`
-- **Durum Denetimi:** `perl bin/amberdb_setup.pl --action=ramdisk --status`
-- **RAM-Diski Durdurma:** `perl bin/amberdb_setup.pl --action=ramdisk --stop`
+### RAM-Disk Yönetimi ve Yardımcı Komutlar
+- **Windows (ImDisk):** `bin\setup_windows.bat start 512M R:`, `bin\setup_windows.bat status`, `bin\setup_windows.bat stop R:`
+- **Linux:** `/dev/shm` doğrudan kernel tarafından paylaşımlı bellek olarak sunulur.
+- **macOS:** `/Volumes` altındaki APFS RAM-disk birimleri otomatik olarak kullanılır.
+- **Tier 4 Background Daemon:** `perl bin/amberdb_daemon.pl start`
 
 ---
 

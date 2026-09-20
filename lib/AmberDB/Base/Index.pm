@@ -1032,6 +1032,10 @@ sub records_add {
     return unless exists $table_info->{record_index};
     return unless ref($new_rids) eq 'ARRAY' && @$new_rids;
 
+    my @clean_rids = grep { defined && /^\d+$/ && $_ > 0 } @$new_rids;
+    return unless @clean_rids;
+    $new_rids = \@clean_rids;
+
     my $pfx = defined $tier && $tier =~ /^[AB]$/i ? uc("$tier") . ":" : "";
     my $key_name   = "${pfx}keys";
     my $count_name = "${pfx}count";
@@ -1125,6 +1129,10 @@ sub records_del {
 
     return unless exists $table_info->{record_index};
     return unless ref($del_rids) eq 'ARRAY' && @$del_rids;
+
+    my @clean_dels = grep { defined && /^\d+$/ && $_ > 0 } @$del_rids;
+    return unless @clean_dels;
+    $del_rids = \@clean_dels;
 
     my $index_path = "$table_path.inx";
     return unless -e $index_path && $self->table_write($index_path);
@@ -1577,10 +1585,12 @@ sub sort_add {
             my ($existing_range) = $self->index_get( $index_path, "$pfx$blk:vals", 'raw' );
             my %uniq_vals;
             if (defined $existing_range && length($existing_range)) {
+                $existing_range = $self->utf_decode($existing_range);
                 $uniq_vals{$_} = 1 for split /\t/, $existing_range;
             }
             foreach my $rec (@$records) {
                 my $v = $rec->[$blk];
+                $v = $self->utf_decode($v) if defined $v;
                 $uniq_vals{$v} = 1 if defined $v && $v ne '';
             }
             my $is_num = 1;
@@ -1593,10 +1603,11 @@ sub sort_add {
             my @sorted_vals = $is_num ? ( sort { $a <=> $b } keys %uniq_vals ) : ( sort { $a cmp $b } keys %uniq_vals );
             $batch_put{"$pfx$blk:vals"} = join( "\t", @sorted_vals ) if @sorted_vals;
 
-            my @sorted_keys = sort { ( ( $map{$a} // '' ) cmp ( $map{$b} // '' ) ) || ( $a <=> $b ) } keys %map;
+            my @sorted_keys = grep { defined $_ && /^\d+$/ } sort { ( ( $map{$a} // '' ) cmp ( $map{$b} // '' ) ) || ( $a <=> $b ) } keys %map;
             $self->index_put( $index_path, $sort_key_name, \@sorted_keys, "ids" );
             $self->index_put( $index_path, \%batch_put, "raw" );
         }
+
     }
 
     $self->table_close($index_path);
@@ -1675,16 +1686,18 @@ sub sort_modify {
             my ($existing_range) = $self->index_get( $index_path, "$pfx$blk:vals", 'raw' );
             my %uniq_vals;
             if (defined $existing_range && length($existing_range)) {
+                $existing_range = $self->utf_decode($existing_range);
                 $uniq_vals{$_} = 1 for split /\t/, $existing_range;
             }
             my $field_path = "${table_path}.fld";
             foreach my $pair (@$pairs) {
-                my $old_v = $pair->[1]->[$blk];
-                my $new_v = $pair->[2]->[$blk];
+                my $old_v = defined $pair->[1]->[$blk] ? $self->utf_decode($pair->[1]->[$blk]) : undef;
+                my $new_v = defined $pair->[2]->[$blk] ? $self->utf_decode($pair->[2]->[$blk]) : undef;
                 $uniq_vals{$new_v} = 1 if defined $new_v && $new_v ne '';
                 if ( defined $old_v && $old_v ne '' && ( !defined $new_v || $new_v ne $old_v ) ) {
                     if ( -e $field_path ) {
-                        my ($rem) = $self->index_get( $field_path, "$pfx$blk:$old_v", 'raw' );
+                        my $old_raw = $self->utf_encode($old_v);
+                        my ($rem) = $self->index_get( $field_path, "$pfx$blk:$old_raw", 'raw' );
                         if ( !defined $rem || length($rem) < 8 ) {
                             delete $uniq_vals{$old_v};
                         }
@@ -1709,10 +1722,11 @@ sub sort_modify {
                 $self->index_del( $index_path, "$pfx$blk:vals" );
             }
 
-            my @sorted_keys = sort { ( ( $map{$a} // '' ) cmp ( $map{$b} // '' ) ) || ( $a <=> $b ) } keys %map;
+            my @sorted_keys = grep { defined $_ && /^\d+$/ && $_ > 0 } sort { ( ( $map{$a} // '' ) cmp ( $map{$b} // '' ) ) || ( $a <=> $b ) } keys %map;
             $self->index_put( $index_path, $sort_key_name, \@sorted_keys, "ids" );
             $self->index_put( $index_path, \%batch_put, "raw" ) if %batch_put;
         }
+
     }
 
     $self->table_close($index_path);
@@ -1783,19 +1797,22 @@ sub sort_del {
                 if ( -e $field_path ) {
                     my ($existing_vals) = $self->index_get( $index_path, "$pfx$blk:vals", 'raw' );
                     if ( defined $existing_vals && length($existing_vals) ) {
+                        $existing_vals = $self->utf_decode($existing_vals);
                         my %uniq_vals = map { $_ => 1 } split /\t/, $existing_vals;
                         my $vals_changed = 0;
                         foreach my $rec (@$records) {
-                            my $v = $rec->[$blk];
+                            my $v = defined $rec->[$blk] ? $self->utf_decode($rec->[$blk]) : undef;
                             next unless defined $v && $v ne '';
                             if ( exists $uniq_vals{$v} ) {
-                                my ($rem) = $self->index_get( $field_path, "$pfx$blk:$v", 'raw' );
+                                my $raw_v = $self->utf_encode($v);
+                                my ($rem) = $self->index_get( $field_path, "$pfx$blk:$raw_v", 'raw' );
                                 if ( !defined $rem || length($rem) < 8 ) {
                                     delete $uniq_vals{$v};
                                     $vals_changed = 1;
                                 }
                             }
                         }
+
                         if ($vals_changed) {
                             if (%uniq_vals) {
                                 my $is_num = ( $type eq 'num' || $type eq 'decimal' ) ? 1 : 0;
