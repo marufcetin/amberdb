@@ -54,7 +54,7 @@ sub new {
     $self->{_date}    = {};
 
     # Normalize connect parameters
-    $self->{_connect}->{database} //= delete $self->{database} // delete $self->{dbase} // delete $self->{dbname};
+    $self->{_connect}->{database} //= delete $self->{database} // delete $self->{dbase} // delete $self->{dbname} // delete $self->{db};
     $self->{_connect}->{username} //= delete $self->{username} // delete $self->{user}  // delete $self->{_cfg}->{user} // "user_system";
     $self->{_connect}->{password} //= delete $self->{password} // delete $self->{pass}  // delete $self->{passwd};
     $self->{_connect}->{token}    = '';
@@ -2987,7 +2987,7 @@ sub read_all {
     }
     my $table_path  = $self->table_path($tableid);
     my $idx_path    = $use_ramdisk ? $self->ramdisk_path($tableid) : $table_path;
-    my $file_path   = ( $use_ramdisk == 2 && -e "$idx_path.$self->{db_ext}" ) ? "$idx_path.$self->{db_ext}" : "$table_path.$self->{db_ext}";
+    my $file_path   = ( ( $use_ramdisk == 2 || $use_ramdisk == 4 ) && -e "$idx_path.$self->{db_ext}" ) ? "$idx_path.$self->{db_ext}" : "$table_path.$self->{db_ext}";
 
     if ( $use_ramdisk == 3 ) {
         return unless $self->_check_ramdisk_ttl( $tableid, $file_path );
@@ -3201,9 +3201,9 @@ sub read_list {
 
     my $links      = $self->read_links( $tableid, @$ids );
     my $table_path = $self->table_path($tableid);
-    my $data_path  = ( $use_ramdisk == 2 ) ? $self->ramdisk_path($tableid) : $table_path;
+    my $data_path  = ( $use_ramdisk == 2 || $use_ramdisk == 4 ) ? $self->ramdisk_path($tableid) : $table_path;
     my $file_path  = "$data_path.$self->{db_ext}";
-    if ( $use_ramdisk == 2 && !-e $file_path ) {
+    if ( ( $use_ramdisk == 2 || $use_ramdisk == 4 ) && !-e $file_path ) {
         $file_path = "$table_path.$self->{db_ext}";
     }
     if ( $use_ramdisk == 3 ) {
@@ -3579,7 +3579,7 @@ sub field_fetch {
     }
     my $table_path = $self->table_path($tableid);
     my $idx_path   = $use_ramdisk ? $self->ramdisk_path($tableid) : $table_path;
-    my $file_path  = ( $use_ramdisk == 2 && -e "$idx_path.$self->{db_ext}" ) ? "$idx_path.$self->{db_ext}" : "$table_path.$self->{db_ext}";
+    my $file_path  = ( ( $use_ramdisk == 2 || $use_ramdisk == 4 ) && -e "$idx_path.$self->{db_ext}" ) ? "$idx_path.$self->{db_ext}" : "$table_path.$self->{db_ext}";
     return unless -e $file_path;
 
     my @fld_fetch_ids = $self->get_fieldlist( $fetch, $idx_path, $table_info, $block );
@@ -3770,7 +3770,7 @@ sub field_keys {
     }
     my $table_path = $self->table_path($tableid);
     my $idx_path   = $use_ramdisk ? $self->ramdisk_path($tableid) : $table_path;
-    my $file_path  = ( $use_ramdisk == 2 && -e "$idx_path.$self->{db_ext}" ) ? "$idx_path.$self->{db_ext}" : "$table_path.$self->{db_ext}";
+    my $file_path  = ( ( $use_ramdisk == 2 || $use_ramdisk == 4 ) && -e "$idx_path.$self->{db_ext}" ) ? "$idx_path.$self->{db_ext}" : "$table_path.$self->{db_ext}";
 
     # Plural support: If $field is an ARRAY ref [ $f1, $f2, ... ]
     if ( ref($field) eq 'ARRAY' ) {
@@ -3834,7 +3834,7 @@ sub field_keyvals {
     # set table path.
     my $table_path = $self->table_path($tableid);
     my $idx_path   = $use_ramdisk ? $self->ramdisk_path($tableid) : $table_path;
-    my $file_path  = ( $use_ramdisk == 2 && -e "$idx_path.$self->{db_ext}" ) ? "$idx_path.$self->{db_ext}" : "$table_path.$self->{db_ext}";
+    my $file_path  = ( ( $use_ramdisk == 2 || $use_ramdisk == 4 ) && -e "$idx_path.$self->{db_ext}" ) ? "$idx_path.$self->{db_ext}" : "$table_path.$self->{db_ext}";
     my $field_path = ( -e "${idx_path}.fld" ) ? "${idx_path}.fld" : "${table_path}.fld";
 
     # read from index file and get keys.
@@ -3980,7 +3980,7 @@ sub field_filter {
     }
     my $table_path = $self->table_path($tableid);
     my $idx_path   = $use_ramdisk ? $self->ramdisk_path($tableid) : $table_path;
-    my $file_path  = ( $use_ramdisk == 2 && -e "$idx_path.$self->{db_ext}" ) ? "$idx_path.$self->{db_ext}" : "$table_path.$self->{db_ext}";
+    my $file_path  = ( ( $use_ramdisk == 2 || $use_ramdisk == 4 ) && -e "$idx_path.$self->{db_ext}" ) ? "$idx_path.$self->{db_ext}" : "$table_path.$self->{db_ext}";
 
     my ( @records, %fld_cnt );
     my $all_cnt = scalar keys %filter;
@@ -4223,7 +4223,7 @@ sub search_table {
     my ( $count, @records );
     my $table_path = $self->table_path($tableid);
     my $idx_path   = $use_ramdisk ? $self->ramdisk_path($tableid) : $table_path;
-    my $file_path  = ( $use_ramdisk == 2 && -e "$idx_path.$self->{db_ext}" ) ? "$idx_path.$self->{db_ext}" : "$table_path.$self->{db_ext}";
+    my $file_path  = ( ( $use_ramdisk == 2 || $use_ramdisk == 4 ) && -e "$idx_path.$self->{db_ext}" ) ? "$idx_path.$self->{db_ext}" : "$table_path.$self->{db_ext}";
 
     # ------------------------------------------------
     # A) Search Block Indexed Search (.src)
@@ -4676,7 +4676,7 @@ sub table_lastid {
         $self->ramdisk_ensure($tableid);
     }
     my $idx_path   = $use_ramdisk ? $self->ramdisk_path($tableid) : $table_path;
-    $file_path     = ( $use_ramdisk == 2 && -e "$idx_path.$self->{db_ext}" ) ? "$idx_path.$self->{db_ext}" : "$table_path.$self->{db_ext}";
+    $file_path     = ( ( $use_ramdisk == 2 || $use_ramdisk == 4 ) && -e "$idx_path.$self->{db_ext}" ) ? "$idx_path.$self->{db_ext}" : "$table_path.$self->{db_ext}";
     my $index_path = ( -e "$idx_path.inx" ) ? "$idx_path.inx" : "$table_path.inx";
 
     if ( -e $index_path ) {
@@ -4775,8 +4775,8 @@ sub table_keys {
         }
     }
 
-    # Otherwise scan main table (.db from RAM-disk if use_ramdisk == 2)
-    my $scan_path = ( $use_ramdisk == 2 && -e "$idx_path.$self->{db_ext}" ) ? "$idx_path.$self->{db_ext}" : $file_path;
+    # Otherwise scan main table (.db from RAM-disk if use_ramdisk == 2 or 4)
+    my $scan_path = ( ( $use_ramdisk == 2 || $use_ramdisk == 4 ) && -e "$idx_path.$self->{db_ext}" ) ? "$idx_path.$self->{db_ext}" : $file_path;
     return unless -e $scan_path;
     $self->table_read($scan_path) or do { cluck "[DB_TIE] $scan_path can't open.\n"; return; };
     @keys = $self->recs_keys($scan_path);
@@ -5330,10 +5330,13 @@ sub recs_put {
     if ( !$no_mirror && $tableid && $self->ramdisk_is_mounted() ) {
         my $table_info  = eval { $self->table_info($tableid) };
         my $use_ramdisk = $table_info ? $self->_normalize_ramdisk_tier( $table_info->{use_ramdisk} // $table_info->{use_cache} // 0 ) : 0;
-        if ( $use_ramdisk == 2 || ( $use_ramdisk == 4 && $is_txn ) ) {
+        my ($ext)     = $file_path =~ m{\.([^.]+)$};
+        my $is_idx    = ( $ext && $ext =~ /^(?:inx|src|fld|fac|unq|slg)$/ ) ? 1 : 0;
+        my $should_mirror = ( $use_ramdisk == 2 || ( $use_ramdisk == 4 && $is_txn ) )
+                         || ( $use_ramdisk == 1 && $is_idx );
+        if ($should_mirror) {
             my $ram_dir   = $self->ramdisk_dir();
             my $is_in_ram = ( $ram_dir && index( $file_path, $ram_dir ) == 0 ) ? 1 : 0;
-            my ($ext)     = $file_path =~ m{\.([^.]+)$};
             my $mirror_file;
             if ( $ext && $ext =~ /^(?:\Q$self->{db_ext}\E|inx|src|fld|fac|unq|slg)$/ ) {
                 if ($is_in_ram) {
@@ -5402,10 +5405,13 @@ sub recs_del {
     if ( !$no_mirror && $tableid && $self->ramdisk_is_mounted() ) {
         my $table_info  = eval { $self->table_info($tableid) };
         my $use_ramdisk = $table_info ? $self->_normalize_ramdisk_tier( $table_info->{use_ramdisk} // $table_info->{use_cache} // 0 ) : 0;
-        if ( $use_ramdisk == 2 || ( $use_ramdisk == 4 && $is_txn ) ) {
+        my ($ext)     = $file_path =~ m{\.([^.]+)$};
+        my $is_idx    = ( $ext && $ext =~ /^(?:inx|src|fld|fac|unq|slg)$/ ) ? 1 : 0;
+        my $should_mirror = ( $use_ramdisk == 2 || ( $use_ramdisk == 4 && $is_txn ) )
+                         || ( $use_ramdisk == 1 && $is_idx );
+        if ($should_mirror) {
             my $ram_dir   = $self->ramdisk_dir();
             my $is_in_ram = ( $ram_dir && index( $file_path, $ram_dir ) == 0 ) ? 1 : 0;
-            my ($ext)     = $file_path =~ m{\.([^.]+)$};
             my $mirror_file;
             if ( $ext && $ext =~ /^(?:\Q$self->{db_ext}\E|inx|src|fld|fac|unq|slg)$/ ) {
                 if ($is_in_ram) {
@@ -5687,11 +5693,11 @@ sub index_put {
             }
         }
 
-        # RAM-disk Tier 2 (mirror) or (Tier 4 in active transaction) dual-write
+        # RAM-disk Tier 1 & 2 (mirror) or (Tier 4 in active transaction) dual-write
         if ( !$no_mirror && $tableid && $self->ramdisk_is_mounted() ) {
             my $table_info  = eval { $self->table_info($tableid) };
             my $use_ramdisk = $table_info ? $self->_normalize_ramdisk_tier( $table_info->{use_ramdisk} // $table_info->{use_cache} // 0 ) : 0;
-            if ( $use_ramdisk == 2 || ( $use_ramdisk == 4 && $is_txn ) ) {
+            if ( $use_ramdisk == 1 || $use_ramdisk == 2 || ( $use_ramdisk == 4 && $is_txn ) ) {
                 my $ram_dir   = $self->ramdisk_dir();
                 my $is_in_ram = ( $ram_dir && index( $table_path, $ram_dir ) == 0 ) ? 1 : 0;
                 my ($ext)     = $table_path =~ m{\.([^.]+)$};
@@ -5764,7 +5770,7 @@ sub index_put {
     if ( !$no_mirror && $tableid && $self->ramdisk_is_mounted() ) {
         my $table_info  = eval { $self->table_info($tableid) };
         my $use_ramdisk = $table_info ? $self->_normalize_ramdisk_tier( $table_info->{use_ramdisk} // $table_info->{use_cache} // 0 ) : 0;
-        if ( $use_ramdisk == 2 || ( $use_ramdisk == 4 && $is_txn ) ) {
+        if ( $use_ramdisk == 1 || $use_ramdisk == 2 || ( $use_ramdisk == 4 && $is_txn ) ) {
             my $ram_dir   = $self->ramdisk_dir();
             my $is_in_ram = ( $ram_dir && index( $table_path, $ram_dir ) == 0 ) ? 1 : 0;
             my ($ext)     = $table_path =~ m{\.([^.]+)$};
@@ -5842,11 +5848,11 @@ sub index_del {
 
         my $ret = $db->del($k);
 
-        # RAM-disk Tier 2 (mirror) or (Tier 4 in active transaction) dual-write
+        # RAM-disk Tier 1 & 2 (mirror) or (Tier 4 in active transaction) dual-write
         if ( !$no_mirror && $tableid && $self->ramdisk_is_mounted() ) {
             my $table_info  = eval { $self->table_info($tableid) };
             my $use_ramdisk = $table_info ? $self->_normalize_ramdisk_tier( $table_info->{use_ramdisk} // $table_info->{use_cache} // 0 ) : 0;
-            if ( $use_ramdisk == 2 || ( $use_ramdisk == 4 && $is_txn ) ) {
+            if ( $use_ramdisk == 1 || $use_ramdisk == 2 || ( $use_ramdisk == 4 && $is_txn ) ) {
                 my $ram_dir   = $self->ramdisk_dir();
                 my $is_in_ram = ( $ram_dir && index( $table_path, $ram_dir ) == 0 ) ? 1 : 0;
                 my ($ext)     = $table_path =~ m{\.([^.]+)$};
@@ -5901,7 +5907,7 @@ sub index_del {
     if ( !$no_mirror && $tableid && $self->ramdisk_is_mounted() ) {
         my $table_info  = eval { $self->table_info($tableid) };
         my $use_ramdisk = $table_info ? $self->_normalize_ramdisk_tier( $table_info->{use_ramdisk} // $table_info->{use_cache} // 0 ) : 0;
-        if ( $use_ramdisk == 2 || ( $use_ramdisk == 4 && $is_txn ) ) {
+        if ( $use_ramdisk == 1 || $use_ramdisk == 2 || ( $use_ramdisk == 4 && $is_txn ) ) {
             my $ram_dir   = $self->ramdisk_dir();
             my $is_in_ram = ( $ram_dir && index( $table_path, $ram_dir ) == 0 ) ? 1 : 0;
             my ($ext)     = $table_path =~ m{\.([^.]+)$};
@@ -6364,7 +6370,7 @@ AmberDB features a built-in, transparent physical RAM-disk acceleration engine (
 
 =head2 What is it?
 
-RAM-disk acceleration routes file I/O for database tables to an operating system RAM-disk filesystem mounted under C<dbstore/ramdisk/> or a custom path (e.g. C<R:\amberdb> on Windows or C</Volumes/AmberDB_RAM> on macOS). Unlike key-value network caches (such as Redis or Memcached), it works directly at the filesystem block level using AmberDB's native file architecture without requiring external server processes, network daemons, or custom serialization protocols.
+RAM-disk acceleration routes file I/O for database tables directly to an operating system in-memory RAM-disk filesystem (Windows ImDisk C<R:/amberdb_$dbname>, Linux tmpfs C</dev/shm/amberdb_$dbname>, or macOS APFS C</Volumes/amberdb_$dbname>). Unlike key-value network caches (such as Redis or Memcached), it works directly at the filesystem block level using AmberDB's native file architecture without requiring external server processes, network daemons, or custom serialization protocols.
 
 =head2 How It Works
 
@@ -6376,7 +6382,7 @@ RAM-disk acceleration routes file I/O for database tables to an operating system
 
 =item * B<ACID Transaction Safety:> Transactions (C<transact_start>, C<transact_end>, C<transact_rollback>) protect RAM-disk operations with disk-backed undo journals and strict two-phase locking (Strict 2PL).
 
-=item * B<Automated Mount Detection & Graceful Fallback:> The engine automatically verifies whether the RAM-disk filesystem is actively mounted. If unmounted, AmberDB gracefully falls back to persistent disk storage without throwing errors or interrupting application operations.
+=item * B<Automated Mount Detection & Strict Zero-Fallback:> The engine automatically verifies whether the OS RAM-disk filesystem is actively mounted. If unmounted, AmberDB enforces a strict Zero-Fallback policy: all RAM-disk paths (C<ramdisk_dir>, C<table_rdir>, C<schema_rdir>, C<config_rdir>) evaluate to empty strings (C<"">) and database operations run directly on persistent physical storage without creating fake on-disk cache directories or throwing errors.
 
 =back
 
@@ -6406,23 +6412,25 @@ AmberDB manages the RAM-disk layer entirely in the background. Developers do not
 
 =item * B<Standard CRUD Workflow:> Continue using standard AmberDB methods (C<read_id>, C<search_table>, C<insert_id>, C<modify_id>). The engine automatically reads from memory at microsecond speeds and dual-writes to permanent storage.
 
-=item * B<Unified CLI Administration:> Use C<amberdb_setup.pl> to manage infrastructure, RAM-disk mounts, permissions, migrations, and service automation across all operating systems:
+=item * B<Windows & Linux Administration:> On Windows, use C<bin\setup_windows.bat> to mount or unmount the ImDisk RAM-disk. On Linux, C</dev/shm> is utilized automatically:
 
-  - Mount RAM-disk:   perl bin/amberdb_setup.pl --action=ramdisk --start --size 512M
-  - Status check:     perl bin/amberdb_setup.pl --action=ramdisk --status
-  - Full Provision:   perl bin/amberdb_setup.pl --action=install --user=eticaretim --size 256M --cron --service
+  - Mount RAM-disk (Windows): bin\setup_windows.bat start 512M R:
+  - Status check (Windows):   bin\setup_windows.bat status
+  - Background Sync Daemon:   perl bin/amberdb_daemon.pl start
 
 =back
 
 =head1 COMMAND-LINE TOOLS (CLI)
 
-AmberDB provides two standalone command-line utilities in its C<bin/> directory for infrastructure provisioning, maintenance, and interactive database operations:
+AmberDB provides standalone command-line utilities in its C<bin/> directory for management, queries, and background synchronization:
 
 =over 4
 
-=item * B<amberdb_cli.pl:> Management console and interactive query utility. Supports token-based session lifecycles, database dashboards, CRUD operations, dynamic schema mutations (C<table_attr>), CSV import/export, and index rebuilding. Run C<perl bin/amberdb_cli.pl> without arguments to view the active database dashboard, or see C<perldoc bin/amberdb_cli.pl>.
+=item * B<amberdb_cli.pl:> Management console and interactive query utility. Supports token-based session lifecycles, database dashboards, CRUD operations, dynamic schema mutations (C<table_attr>), CSV import/export, index rebuilding (C<reindex>), and storage migrations (C<update storage>). Run C<perl bin/amberdb_cli.pl> without arguments to view the active database dashboard, or see C<perldoc bin/amberdb_cli.pl>.
 
-=item * B<amberdb_setup.pl:> Consolidated infrastructure provisioning engine. Automates physical RAM-disk mounts (Linux tmpfs, macOS APFS, Windows ImDisk), user/group permissions, storage format migrations, CPAN engine updates, and crontab/systemd watchdog services. See C<perl bin/amberdb_setup.pl --help>.
+=item * B<setup_windows.bat:> Windows ImDisk RAM-disk lifecycle manager (mount, unmount, permission configuration, status monitoring).
+
+=item * B<amberdb_daemon.pl:> Background journal flusher and write-behind synchronization worker for Tier 4 acceleration.
 
 =back
 

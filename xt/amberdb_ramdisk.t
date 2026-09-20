@@ -29,12 +29,15 @@ my $adb = AmberDB->new(
 );
 
 subtest 'Method Existence & Path Symmetry' => sub {
-    plan tests => 7;
+    plan tests => 10;
     can_ok( 'AmberDB', 'ramdisk_path' );
     can_ok( 'AmberDB', 'ramdisk_ensure' );
     can_ok( 'AmberDB', 'ramdisk_preload' );
     can_ok( 'AmberDB', 'ramdisk_delete' );
     can_ok( 'AmberDB', 'ramdisk_setup' );
+    can_ok( 'AmberDB', 'set_shmem' );
+    can_ok( 'AmberDB', 'get_shmem' );
+    can_ok( 'AmberDB', 'del_shmem' );
 
     my $t_path = $adb->table_path('sample_tbl');
     my $r_path = $adb->ramdisk_path('sample_tbl');
@@ -43,7 +46,7 @@ subtest 'Method Existence & Path Symmetry' => sub {
 };
 
 subtest 'use_ramdisk => 1 (Hybrid Index-Only Acceleration)' => sub {
-    plan tests => 21;
+    plan tests => 24;
 
     $adb->table_attr(
         'hybrid_table',
@@ -77,6 +80,11 @@ subtest 'use_ramdisk => 1 (Hybrid Index-Only Acceleration)' => sub {
     ok( -e "$ram_base.fac", 'RAM-disk has .fac' );
     ok( -e "$ram_base.unq", 'RAM-disk has .unq' );
     ok( -e "$ram_base.slg", 'RAM-disk has .slg' );
+
+    # Durability: Indexes must ALSO be dual-written to permanent disk in mode 1
+    ok( -e "$disk_base.inx", 'Permanent disk has .inx (dual-written index)' );
+    ok( -e "$disk_base.fld", 'Permanent disk has .fld (dual-written index)' );
+    ok( -e "$disk_base.slg", 'Permanent disk has .slg (dual-written index)' );
 
     # Reading record
     my @rec1 = $adb->read_id( 'hybrid_table', 1 );
@@ -217,12 +225,10 @@ subtest 'Transaction Rollback with RAM-Disk' => sub {
 };
 
 subtest 'ramdisk_setup helper scripts naming & detection' => sub {
-    plan tests => 10;
+    plan tests => 8;
     my $info = $adb->ramdisk_setup();
-    like( $info->{script_pl}, qr/amberdb_setup\.pl$/, 'script_pl points to amberdb_setup.pl' );
+    like( $info->{script_pl}, qr/amberdb_cli\.pl$/, 'script_pl points to amberdb_cli.pl' );
     like( $info->{script_bat}, qr/setup_windows\.bat$/, 'script_bat points to setup_windows.bat' );
-    like( $info->{script_ps1}, qr/setup_windows\.ps1$/, 'script_ps1 points to setup_windows.ps1' );
-    like( $info->{script_sh}, qr/setup_(macos|linux)\.sh$/, 'script_sh points to setup_(macos|linux).sh' );
 
     # Config registration during AmberDB->new
     is( $adb->config('ramdisk_mounted'), 1, 'config ramdisk_mounted is 1 under test emulation' );
@@ -546,6 +552,69 @@ subtest 'table_dir custom storage directory (Disk & RAM-Disk)' => sub {
     ok( -e $schema_file, 'schema file created by table_infset' );
     my $schema_content = do { local $/; open my $fh, '<', $schema_file; <$fh> };
     like( $schema_content, qr{table_dir\s*=>\s*"siparis"}, 'table_infset persists table_dir => "siparis"' );
+};
+
+subtest 'Shared Memory (shmem) Store & Zero-Fallback Validation' => sub {
+    plan tests => 28;
+
+    # 1. Scalar, Hash, Array storage in active RAM-disk
+    ok( $adb->set_shmem( 'test_scalar', 'hello_world' ), 'set_shmem stored scalar' );
+    is( $adb->get_shmem('test_scalar'), 'hello_world', 'get_shmem retrieved scalar' );
+
+    my $hash_data = { user => 'maruf', roles => [ 'admin', 'dev' ], active => 1 };
+    ok( $adb->set_shmem( 'user_profile', $hash_data ), 'set_shmem stored complex hash ref' );
+    is_deeply( $adb->get_shmem('user_profile'), $hash_data, 'get_shmem retrieved complex hash ref accurately' );
+
+    my $arr_data = [ 100, 200, 300, { nested => 'ok' } ];
+    ok( $adb->set_shmem( 'config_items', $arr_data ), 'set_shmem stored array ref' );
+    is_deeply( $adb->get_shmem('config_items'), $arr_data, 'get_shmem retrieved array ref accurately' );
+
+    # Verify physical file existence in $ramdisk_dir/shmem/
+    my $shm_path = File::Spec->catfile( $adb->path('shmem_dir'), 'test_scalar.shm' );
+    ok( -e $shm_path, 'Physical .shm file exists in ramdisk/shmem/' );
+
+    # 2. Deletion
+    ok( $adb->del_shmem('test_scalar'), 'del_shmem removed test_scalar' );
+    is( $adb->get_shmem('test_scalar'), undef, 'get_shmem returns undef for deleted key' );
+    ok( !-e $shm_path, 'Physical .shm file removed by del_shmem' );
+
+    # 3. TTL Expiration
+    ok( $adb->set_shmem( 'ttl_key', 'short_lived', 1 ), 'set_shmem stored key with 1s TTL' );
+    is( $adb->get_shmem('ttl_key'), 'short_lived', 'get_shmem immediately returns unexpired key' );
+    sleep 2;
+    is( $adb->get_shmem('ttl_key'), undef, 'get_shmem returns undef after TTL expiry' );
+    my $ttl_file = File::Spec->catfile( $adb->path('shmem_dir'), 'ttl_key.shm' );
+    ok( !-e $ttl_file, 'Expired file was unlinked by get_shmem' );
+
+    # 4. Zero-Fallback & Database Name Validation (No RAM-disk active)
+    my $plain_tmp = tempdir( CLEANUP => 1 );
+    {
+        local $ENV{AMBERDB_TEST_RAMDISK} = 0;
+        my $plain_db = AmberDB->new(
+            database => '', # Empty dbname -> must NOT mount RAM-disk
+            path     => { dbase_dir => $plain_tmp }
+        );
+        is( $plain_db->config('ramdisk_mounted'), 0, 'Unmounted AmberDB has ramdisk_mounted => 0' );
+        is( $plain_db->set_shmem( 'forbidden_key', 'should_not_save' ), undef, 'set_shmem returns undef when unmounted' );
+        is( $plain_db->get_shmem('forbidden_key'), undef, 'get_shmem returns undef when unmounted' );
+
+        # Verify zero-fallback: ramdisk_dir and all *_rdir paths are empty string
+        is( $plain_db->ramdisk_dir(), '', 'ramdisk_dir is empty string when unmounted' );
+        is( $plain_db->path('ramdisk_dir'), '', 'path ramdisk_dir is empty string when unmounted' );
+        is( $plain_db->path('table_rdir'), '', 'path table_rdir is empty string when unmounted' );
+        is( $plain_db->path('schema_rdir'), '', 'path schema_rdir is empty string when unmounted' );
+        is( $plain_db->path('config_rdir'), '', 'path config_rdir is empty string when unmounted' );
+        is( $plain_db->ramdisk_tbl_dir(), '', 'ramdisk_tbl_dir() returns empty string when unmounted' );
+        is( $plain_db->ramdisk_schema_dir(), '', 'ramdisk_schema_dir() returns empty string when unmounted' );
+        is( $plain_db->ramdisk_path('sample_tbl'), '', 'ramdisk_path returns empty string when unmounted' );
+        ok( !exists $plain_db->{_path}->{shmem_dir}, 'shmem_dir key deleted from _path when unmounted' );
+
+        # Verify zero disk files or fake ramdisk directory created on disk
+        my $unwanted_shm = File::Spec->catdir( $plain_tmp, 'shmem' );
+        ok( !-d $unwanted_shm, 'Zero-fallback: No shmem directory created on disk when unmounted' );
+        my $fake_ramdisk = File::Spec->catdir( $plain_tmp, 'ramdisk' );
+        ok( !-d $fake_ramdisk, 'Zero-fallback: No fake dbase_dir/ramdisk directory created on disk' );
+    }
 };
 
 done_testing();

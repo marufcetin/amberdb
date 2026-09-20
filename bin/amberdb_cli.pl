@@ -551,7 +551,7 @@ my %known_actions = map { $_ => 1 } qw(
     status tables list info table_info read read_id read_all read_list
     search search_table fetch field_fetch count table_count
     insert insert_id update update_id delete delete_id
-    reindex check vacuum migrate update_table
+    reindex check vacuum migrate update_table update_storage update_version
     export tie2csv import csv2tie dump restore rename drop help
 );
 
@@ -665,6 +665,21 @@ for my $raw (@raw_tokens) {
         elsif ( $k =~ /^(?:force|f)$/ ) {
             $opt_force = $val ? 1 : 0;
         }
+        elsif ( $k =~ /^(?:check|c)$/i ) {
+            $method_args{check} = $val ? 1 : 0;
+        }
+        elsif ( $k =~ /^(?:all|a)$/i ) {
+            $method_args{all} = $val ? 1 : 0;
+        }
+        elsif ( $k =~ /^(?:no-backup|no_backup)$/i ) {
+            $method_args{no_backup} = $val ? 1 : 0;
+        }
+        elsif ( $k eq 'cpanm' ) {
+            $method_args{cpanm} = $v;
+        }
+        elsif ( $k eq 'manifest' ) {
+            $method_args{manifest} = $v;
+        }
         elsif ( $k =~ /^(?:help|h)$/ ) {
             $opt_help = 1;
         }
@@ -726,6 +741,15 @@ for my $raw (@raw_tokens) {
         elsif ( $arg =~ /^(?:force|f)$/i ) {
             $opt_force = 1;
         }
+        elsif ( $arg =~ /^(?:check|c)$/i ) {
+            $method_args{check} = 1;
+        }
+        elsif ( $arg =~ /^(?:all|a)$/i ) {
+            $method_args{all} = 1;
+        }
+        elsif ( $arg =~ /^(?:no-backup|no_backup)$/i ) {
+            $method_args{no_backup} = 1;
+        }
         elsif ( $raw =~ /^--?time$/i ) {
             $opt_time = 1;
         }
@@ -741,22 +765,36 @@ for my $raw (@raw_tokens) {
 # Step 6: Action alias normalization
 if ( defined $opt_action ) {
     my $act = lc($opt_action);
-    $opt_action = 'status'      if $act eq 'tables' || $act eq 'list';
-    $opt_action = 'user'        if $act eq 'users';
-    $opt_action = 'config'      if $act eq 'cfg';
-    $opt_action = 'attr'        if $act eq 'table_attr';
-    $opt_action = 'info'        if $act eq 'table_info';
-    $opt_action = 'search'      if $act eq 'search_table';
-    $opt_action = 'fetch'       if $act eq 'field_fetch';
-    $opt_action = 'count'       if $act eq 'table_count';
-    $opt_action = 'insert'      if $act eq 'insert_id';
-    $opt_action = 'update'      if $act eq 'update_id';
-    $opt_action = 'delete'      if $act eq 'delete_id';
-    $opt_action = 'migrate'     if $act eq 'update_table';
-    $opt_action = 'export'      if $act eq 'tie2csv';
-    $opt_action = 'import'      if $act eq 'csv2tie';
-    $opt_action = 'reindex'     if $act eq 'set_index';
-    $opt_action = 'vacuum'      if $act eq 'vacuum';
+    $opt_action = 'status'         if $act eq 'tables' || $act eq 'list';
+    $opt_action = 'user'           if $act eq 'users';
+    $opt_action = 'config'         if $act eq 'cfg';
+    $opt_action = 'attr'           if $act eq 'table_attr';
+    $opt_action = 'info'           if $act eq 'table_info';
+    $opt_action = 'search'         if $act eq 'search_table';
+    $opt_action = 'fetch'          if $act eq 'field_fetch';
+    $opt_action = 'count'          if $act eq 'table_count';
+    $opt_action = 'insert'         if $act eq 'insert_id';
+    $opt_action = 'update'         if $act eq 'update_id';
+    $opt_action = 'delete'         if $act eq 'delete_id';
+    $opt_action = 'migrate'        if $act eq 'update_table';
+    $opt_action = 'update_storage' if $act eq 'update-storage' || $act eq 'updatedb' || $act eq 'update_storage';
+    $opt_action = 'update_version' if $act eq 'update-amberdb' || $act eq 'update-version' || $act eq 'update_version';
+    $opt_action = 'export'         if $act eq 'tie2csv';
+    $opt_action = 'import'         if $act eq 'csv2tie';
+    $opt_action = 'reindex'        if $act eq 'set_index';
+    $opt_action = 'vacuum'         if $act eq 'vacuum';
+}
+
+# Step 6b: Subcommand resolution for 'update' (e.g. amberdb update storage / amberdb update version)
+if ( defined $opt_action && $opt_action eq 'update' && @pos_args ) {
+    if ( lc($pos_args[0]) eq 'storage' ) {
+        $opt_action = 'update_storage';
+        shift @pos_args;
+    }
+    elsif ( lc($pos_args[0]) eq 'version' || lc($pos_args[0]) eq 'engine' || lc($pos_args[0]) eq 'amberdb' ) {
+        $opt_action = 'update_version';
+        shift @pos_args;
+    }
 }
 
 # Step 7: Natural 'read' command resolution
@@ -827,6 +865,8 @@ Veri Eylemleri (CRUD & Arama):
   amberdb delete users 10
 
 Bakım ve Yönetim Eylemleri:
+  amberdb update storage [--check] [--force]  # Dizin & ABR v5 veri biçimi migrasyonu
+  amberdb update version [--check]            # MetaCPAN çekirdek sürüm kontrolü / güncelleme
   amberdb reindex products                    # İndeksleri sıfırdan oluştur
   amberdb check products                      # Fiziksel dosya bütünlük kontrolü
   amberdb vacuum products                     # BDB disk boşluklarını temizle
@@ -1416,6 +1456,32 @@ if ( $action eq 'insert_id' || $action eq 'insert' ) {
         $res = $adb->insert_id( $table, $id, $data );
     }
     output_result( { status => 'ok', action => 'insert_id', table => $table, id => $res }, $opt_format );
+    exit 0;
+}
+
+# 9b. UPDATE_STORAGE
+if ( $action eq 'update_storage' ) {
+    my %opts;
+    $opts{target_dir} = $adb->path('dbase_dir');
+    $opts{force}      = $opt_force if $opt_force;
+    $opts{check}      = $method_args{check} if exists $method_args{check};
+    $opts{no_backup}  = $method_args{no_backup} if exists $method_args{no_backup};
+    $opts{tables}     = $method_args{tables} // $method_args{table} // ( @pos_args ? join(',', @pos_args) : undef );
+    $opts{manifest}   = $method_args{manifest} if exists $method_args{manifest};
+
+    my $res = $tools->update_storage(%opts);
+    output_result( $res, $opt_format ) if defined $opt_format;
+    exit 0;
+}
+
+# 9c. UPDATE_VERSION
+if ( $action eq 'update_version' ) {
+    my %opts;
+    $opts{check} = $method_args{check} if exists $method_args{check};
+    $opts{cpanm} = $method_args{cpanm} if exists $method_args{cpanm};
+
+    my $res = $tools->update_version(%opts);
+    output_result( $res, $opt_format ) if defined $opt_format;
     exit 0;
 }
 

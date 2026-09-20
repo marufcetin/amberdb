@@ -7,13 +7,9 @@ bin/amberdb
 bin/amberdb.bat
 bin/amberdb_cli.pl
 bin/amberdb_daemon.pl
-bin/amberdb_setup.pl
 bin/commands.md
 bin/push_wiki.pl
-bin/setup_linux.sh
-bin/setup_macos.sh
 bin/setup_windows.bat
-bin/setup_windows.ps1
 Changes
 CONTRIBUTING.md
 cpanfile
@@ -56,6 +52,9 @@ lib/AmberDB/Locale/Lang/ja.pm
 lib/AmberDB/Locale/Lang/ru.pm
 lib/AmberDB/Locale/Lang/tr.pm
 lib/AmberDB/Tools.pm
+lib/AmberDB/Tools/Index.pm
+lib/AmberDB/Tools/Maintain.pm
+lib/AmberDB/Tools/Update.pm
 LICENSE
 Makefile.PL
 MANIFEST			This list of files

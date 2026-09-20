@@ -259,10 +259,9 @@ sub set_datadir {
 
     $dbase_dir or return;
 
-    # declarations
+    # declarations (persistent storage only; ramdisk directories are dynamically provisioned on mount)
     my @dirs = qw(
       dbase_dir table_dir schema_dir backup_dir
-      ramdisk_dir table_rdir schema_rdir config_rdir
       buffer_dir journal_dir lock_dir session_dir config_dir
     );
     foreach my $dir (@dirs) {
