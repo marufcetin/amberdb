@@ -6,8 +6,8 @@ on:
       - master
       - main
     paths:
-      - 'wiki/**'
-      - '.github/workflows/wiki-sync.yml'
+      - "wiki/**"
+      - ".github/workflows/wiki-sync.yml"
   workflow_dispatch:
 
 permissions:
@@ -16,13 +16,37 @@ permissions:
 jobs:
   sync-wiki:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Sync Wiki Files to GitHub Wiki Repo
-        uses: Andrew-Chen-De-France/github-wiki-action@v4
-        with:
-          path: 'wiki'
-          token: ${{ secrets.GITHUB_TOKEN }}
-          ignore: '.*'
+      - name: Sync files to GitHub Wiki
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          git clone \
+            "https://x-access-token:${GH_TOKEN}@github.com/${REPOSITORY}.wiki.git" \
+            wiki-repo
+
+          rsync -av --delete \
+            --exclude='.git' \
+            --exclude='.*' \
+            wiki/ wiki-repo/
+
+          cd wiki-repo
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet; then
+            echo "Wiki is already up to date."
+            exit 0
+          fi
+
+          git add -A
+          git commit -m "Sync wiki from repository"
+          git push origin HEAD
