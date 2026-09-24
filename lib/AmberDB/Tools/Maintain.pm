@@ -51,7 +51,7 @@ sub tie2csv {
 
     my $i = 1;
     if ( -e "$table_path.csv" ) {
-        my $day_id = $adb->day_id || 'backup';
+        my $day_id = $adb->day_id;
         rename( "$table_path.csv", "$table_path-$day_id.csv" );
     }
 
@@ -60,27 +60,25 @@ sub tie2csv {
     return 1 unless -e $tie_path;
     $adb->table_read($tie_path) or return 1;
 
-    my %data;
+    my @records;
     $adb->recs_scan(
         $tie_path,
         sub {
             my ( $k, $v ) = @_;
-            $data{$k} = $v;
+            my @fields = $adb->db_decode( $v );
+            push @records, [ $k, $adb->tsv_encode( @fields ) ];
+            $self->{say} .= "$i. $k ID record converted.\n\n";
+            $i++;
         }
     );
-    $adb->table_close($tie_path);
 
-    my @uids = $adb->db_sortid( $tableid, keys %data );
+    @records = sort { $a->[0] <=> $b->[0] } @records;
     open my $fh, ">", "$table_path.csv" or do {
         cluck "[DB_TOOL] Could not open $table_path.csv: $!\n";
         return;
     };
-    foreach my $uid (@uids) {
-        my @fields = $adb->db_decode( $data{$uid} );
-        my $record = $adb->tsv_encode( $uid, @fields );
-        print $fh "$record\n";
-        $self->{say} .= "$i. $uid ID record converted.\n\n";
-        $i++;
+    foreach my $record ( @records ) {
+        print $fh "$record->[0]\t$record->[1]\n";
     }
     close $fh;
     $adb->table_close($tie_path);

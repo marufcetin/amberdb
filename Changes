@@ -1,6 +1,22 @@
 Revision history for AmberDB
 
-5.26.0  2026-09-20
+5.26.0  2026-09-23
+        - [FAST INDEXED FIELD COUNTING (field_count)]
+          * Implemented field_count($table, $block, $val) for fast O(1) indexed counting across inverted match (.fld) indexes without reading or deserializing full records.
+          * Optimized for high-throughput facet counts, inventory status aggregation, and relational child counts.
+          * Added comprehensive unit test suite in t/amberdb_field_count.t and documentation in wiki/Method-field_count.md and wiki/TR-Method-field_count.md.
+
+        - [COLUMNAR FACETS & BIDIRECTIONAL DICTIONARY LOOKUP]
+          * Enhanced AmberDB::Base::Facet facet counting, facet menu generation, and tiered active/junk rule separation.
+          * Optimized .unq bidirectional string dictionary mapping between text labels and compact numeric dictionary IDs.
+
+        - [RELATIONAL PARENT/CHILD TABLES & MATCH INDEXING]
+          * Enforced transparent child table RAM-disk cache invalidation (_invalidate_child_ramdisk_tables) when parent_table receives writes or deletes.
+          * Validated match_block index construction and field_fetch O(1) lookups for child tables linked by parent_table (e.g., member_google).
+
+        - [ENCODER & BINARY BUFFER OPTIMIZATIONS]
+          * Optimized binary crop routines (t/amberdb_bin_crop.t) and range filtering algorithms in AmberDB::Base::Encoder and AmberDB::Array.
+
         - [TOOLS REFACTOR & SUB-MODULE DECOMPOSITION (AmberDB::Tools)]
           * Decomposed monolithic AmberDB::Tools (~2350 lines) into modular sub-modules under lib/AmberDB/Tools/:
             - AmberDB::Tools::Index: Primary keys, full-text inverted search, columnar facets, match blocks, sort matrices, and URL slug indexing (set_index, set_readall, set_search, set_fields, set_filters, set_rwlnkall, set_sort, index_alltables, check_readall, check_search).
@@ -80,7 +96,7 @@ Revision history for AmberDB
 
         - [DATE ENGINE OPTIMIZATIONS]
           * Added memoization caching to AmberDB::Date with rollover protection.
-          * Added reset_date() / clear_date_cache() methods.
+          * Added reset_date() methods.
           * Replaced direct hash access with fast accessor methods across dump, vacuum, and backup routines.
 
         - [DIRECTORY ARCHITECTURE & LOCK PATH STANDARDIZATION]
@@ -197,7 +213,7 @@ Revision history for AmberDB
 
         - [ENCODER & TOOLS UNIFICATION] Consolidated Multi-Era Text Decoding:
           * Unified legacy and historical text decoding (v1 FlatDB, v2 \T, v3 <TAB>, v4 ARRAY/HASH) into tsv_decode in AmberDB::Base::Encoder.
-          * Streamlined AmberDB::Tools to directly delegate format detection and decoding to inherited $adb methods ($adb->detect_record_format and $adb->tsv_decode), eliminating redundant module requires.
+          * Streamlined AmberDB::Tools to directly delegate format detection and decoding to inherited $adb methods ($adb->detect_tsv_format and $adb->tsv_decode), eliminating redundant module requires.
 
         - [OBJECT-RELATIONAL MAPPING & DATA HYDRATION] Native inflate and deflate Engine:
           * AmberDB::inflate: High-performance transformation of flat storage arrays into schema-mapped hash structures:
@@ -296,7 +312,7 @@ Revision history for AmberDB
           * Batch Foreign Key Pre-Fetching: Integrated batch RDBM ID pre-fetching in search and junk indexing pipelines, reducing disk I/O overhead to zero during keyword tokenization.
 
         - [LEGACY TABLE MIGRATION & RECONSTRUCTION ENGINE] Automated update_table & update_all in AmberDB::Tools:
-          * Multi-Era Format Detection: Implemented _detect_record_format and decode_legacy_record recognizing and decoding all historical formats across AmberDB history: 2003 FlatDB (v1), 2004-2006 \T arrays (v2), 2019-2025 <TAB0>..<TAB3> hierarchical tabs (v3), 2026 HTML entities (v4), and modern ABR v5 (v5).
+          * Multi-Era Format Detection: Implemented _detect_tsv_format and decode_legacy_record recognizing and decoding all historical formats across AmberDB history: 2003 FlatDB (v1), 2004-2006 \T arrays (v2), 2019-2025 <TAB0>..<TAB3> hierarchical tabs (v3), 2026 HTML entities (v4), and modern ABR v5 (v5).
           * Automated Timestamped Backups: Automatically backs up migrating tables as <table_name>-v<detected_ver>-<YYYY-MMDD>.db prior to rewriting.
           * Authoritative Data Preservation:
             - .unq (Unique & Synonym Dictionary): Identified as non-reconstructible authoritative master data; strictly exempted from derived index cleanup, preserved live, and snapshot-copied to <table_name>-v<ver>-<date>.unq.

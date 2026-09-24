@@ -1952,6 +1952,7 @@ sub normalize_sort_opt {
         blk     => $blk,
         reverse => $reverse,
         dir     => $dir,
+        ( ( ref($s_opt) eq 'HASH' && $s_opt->{type} ) ? ( type => $s_opt->{type} ) : () ),
     };
 }
 
@@ -1974,28 +1975,43 @@ sub sort_by_block {
         return $self->array_sort( $id_sort_type, $dir, undef, @$ids_ref );
     }
 
+    my $table_info  = $tableid ? $self->table_info($tableid) : undef;
     my $table_path  = $self->table_path($tableid);
     my $index_path  = "${table_path}.inx";
 
-    if ( -e $index_path ) {
-        my @pairs;
-        foreach my $id (@$ids_ref) {
-            my ($v) = $self->index_get( $index_path, "$blk:$id", "raw" );
-            push @pairs, [ $id, $v // '' ];
+    my $has_sort_block = 0;
+    my $type = $norm->{type} // 'auto';
+    if ( $table_info && exists $table_info->{sort_block} ) {
+        foreach my $cfg ( @{ $table_info->{sort_block} } ) {
+            my $cb = ref($cfg) eq 'HASH' ? ( $cfg->{blk} // $cfg->{block} ) : $cfg;
+            if ( defined $cb && $cb == $blk ) {
+                $has_sort_block = 1;
+                $type = $cfg->{type} if ref($cfg) eq 'HASH' && $cfg->{type};
+                last;
+            }
         }
-        @pairs = $self->array_sort( 'ascii', $dir, 1, @pairs );
-        return map { $_->[0] } @pairs;
+    }
+
+    my $use_junk = $table_info ? $table_info->{use_junk} : undef;
+    my $pfx = ( $use_junk && ref($s_opt) eq 'HASH' && $s_opt->{tier} ) ? uc($s_opt->{tier}) . ':' : '';
+    my $sort_key_name = "$pfx$blk:keys";
+
+    # Fast path: Pre-sorted binary key buffer from .inx ($blk:keys)
+    if ( $has_sort_block && -e $index_path ) {
+        my ( undef, @sorted_master_keys ) = $self->index_get( $index_path, $sort_key_name, "ids", 0, 0, $dir );
+        if (@sorted_master_keys) {
+            my %matched = map { $_ => 1 } @$ids_ref;
+            my @ordered = grep { delete $matched{$_} } @sorted_master_keys;
+            push @ordered, keys %matched if %matched;
+            return @ordered;
+        }
     }
 
     # Fallback when sort index is not built: fetch records and sort via array_sort
-    my $table_info = $self->table_info($tableid);
-    my $type = 'auto';
-    if ( $table_info && exists $table_info->{sort_block} ) {
-        foreach my $cfg ( @{ $table_info->{sort_block} } ) {
-            if ( ref($cfg) eq 'HASH' && $cfg->{blk} == $blk ) {
-                $type = $cfg->{type} // 'auto';
-                last;
-            }
+    if ( ( !defined $type || $type eq 'auto' ) && $table_info && $table_info->{blocks} ) {
+        if ( ref($table_info->{blocks}) eq 'ARRAY' && ref($table_info->{blocks}[$blk]) eq 'HASH' ) {
+            my $bt = $table_info->{blocks}[$blk]{type} // '';
+            $type = 'num' if $bt =~ /^(num|number|int|float|decimal)$/;
         }
     }
 
@@ -2022,13 +2038,20 @@ sub sort_by_block_records {
     my $dir  = $norm->{dir} // 'desc';
 
     my $table_info = $tableid ? $self->table_info($tableid) : undef;
-    my $type;
-    if ( $table_info && exists $table_info->{sort_block} ) {
+    my $type = $norm->{type} // 'auto';
+    if ( ( !defined $type || $type eq 'auto' ) && $table_info && exists $table_info->{sort_block} ) {
         foreach my $cfg ( @{ $table_info->{sort_block} } ) {
-            if ( ref($cfg) eq 'HASH' && $cfg->{blk} == $blk ) {
-                $type = $cfg->{type};
+            my $cb = ref($cfg) eq 'HASH' ? ( $cfg->{blk} // $cfg->{block} ) : $cfg;
+            if ( defined $cb && $cb == $blk ) {
+                $type = $cfg->{type} if ref($cfg) eq 'HASH' && $cfg->{type};
                 last;
             }
+        }
+    }
+    if ( ( !defined $type || $type eq 'auto' ) && $table_info && $table_info->{blocks} ) {
+        if ( ref($table_info->{blocks}) eq 'ARRAY' && ref($table_info->{blocks}[$blk]) eq 'HASH' ) {
+            my $bt = $table_info->{blocks}[$blk]{type} // '';
+            $type = 'num' if $bt =~ /^(num|number|int|float|decimal)$/;
         }
     }
     $type //= ( $blk == 0 ) ? ( ( $self->config('simple') || ( $table_info && $table_info->{use_simple} ) ) ? 'ascii' : 'num' ) : 'auto';

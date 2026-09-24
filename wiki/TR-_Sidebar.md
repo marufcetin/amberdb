@@ -73,6 +73,7 @@
 
 ### Arama, Sorgu ve Facet
 - [field_fetch](TR-Method-field_fetch)
+- [field_count](TR-Method-field_count)
 - [field_filter](TR-Method-field_filter)
 - [search_table](TR-Method-search_table)
 - [facet_menu](TR-Method-facet_menu)

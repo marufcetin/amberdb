@@ -71,8 +71,9 @@
 
 ---
 
-### Query, Search & Facets
+### Search, Query & Facet
 - [field_fetch](Method-field_fetch)
+- [field_count](Method-field_count)
 - [field_filter](Method-field_filter)
 - [search_table](Method-search_table)
 - [facet_menu](Method-facet_menu)

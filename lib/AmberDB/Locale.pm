@@ -261,18 +261,23 @@ sub _compile_patterns {
 sub utf_encode {
     my ( $self, $string ) = @_;
     return unless defined $string;
+    $string =~ s/^\x{FEFF}//;
     utf8::encode($string) if utf8::is_utf8($string);
+    $string =~ s/^\xEF\xBB\xBF//;
     return $string;
 }
 
 # -------------------------------------------------------
 # utf_decode: Decodes raw UTF-8 bytes into a Perl Unicode character string.
+# Strips BOM if present.
 # my $chars = $lang->utf_decode($string);
 # -------------------------------------------------------
 sub utf_decode {
     my ( $self, $string ) = @_;
     return unless defined $string;
+    $string =~ s/^\xEF\xBB\xBF//;
     utf8::decode($string) unless utf8::is_utf8($string);
+    $string =~ s/^\x{FEFF}//;
     return $string;
 }
 

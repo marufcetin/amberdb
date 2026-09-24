@@ -93,7 +93,7 @@ sub update_table {
     $adb->recs_scan( $file_path, sub {
         my ( $k, $v ) = @_;
         $total++;
-        my $fmt = $adb->detect_record_format($v);
+        my $fmt = $adb->detect_tsv_format($v);
         $format_counts{$fmt}++;
 
         my @fields;
@@ -133,7 +133,7 @@ sub update_table {
             my $b_legacy = 0;
             $adb->recs_scan( $cb, sub {
             my ( $k, $v ) = @_;
-                my $fmt = $adb->detect_record_format($v);
+                my $fmt = $adb->detect_tsv_format($v);
                 $b_counts{$fmt}++;
                 my @fields = ( $fmt eq 'v5' ) ? $adb->db_decode($v) : $adb->tsv_decode( $v, $k );
                 $b_legacy++ if $fmt ne 'v5';
@@ -167,7 +167,7 @@ sub update_table {
         $adb->recs_scan( $cfile, sub {
             my ( $ck, $cv ) = @_;
             $c_total++;
-            my $cfmt = $adb->detect_record_format($cv);
+            my $cfmt = $adb->detect_tsv_format($cv);
             if ( $cfmt eq 'v5' ) {
                 $c_current++;
                 push @c_decoded, [ $ck, $adb->db_decode($cv) ];

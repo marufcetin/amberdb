@@ -290,6 +290,25 @@ sub schema_arg {
 # SCHEMA LOADERS, ATTRIBUTES & WRITERS
 # =====================================================================
 
+# Safely evaluates a Perl schema definition file via `do`.
+# Normalizes paths, catches syntax errors and verifies hash structure.
+# ---------------------------------------------------------------------------
+sub do_schema {
+    my ( $self, $path ) = @_;
+    return unless defined $path && length $path && -f $path;
+
+    $path =~ s{\\}{/}g;
+    $path = "./$path" unless $path =~ m{^(?:\./|/|[a-zA-Z]:)};
+
+    my $data = eval { do $path };
+    if ($@) {
+        cluck "[AMBERDB_SCHEMA] Syntax error in schema file '$path': $@\n";
+        return undef;
+    }
+
+    return ( ref($data) eq 'HASH' ) ? $data : undef;
+}
+
 # Retrieves database group schema definition.
 # my $dbase_info = $adb->dbase_info($dbase);
 # ------------------------------------------------
@@ -308,21 +327,12 @@ sub dbase_info {
         $target_path = "$ramdisk_schema/$dbase.dbase";
     }
 
-    if ( -e $target_path ) {
-        $target_path =~ s{\\}{/}g;
-        $target_path = "./$target_path" unless $target_path =~ m{^(?:\./|/|[a-zA-Z]:)};
-        my $do_data = eval { do $target_path };
-        if ($do_data) {
-            $self->{_dbase}->{$dbase} = $do_data;
-            if ( $ramdisk_schema && !-e "$ramdisk_schema/$dbase.dbase" && $self->dir_exist($ramdisk_schema) ) {
-                require File::Copy;
-                eval { File::Copy::copy( $dbase_path, "$ramdisk_schema/$dbase.dbase" ) };
-            }
-        }
-        else {
-            if ($@) {
-                cluck "[AMBERDB_SCHEMA] Syntax error in dbase schema file '$target_path': $@\n";
-            }
+    if ( my $do_data = $self->do_schema($target_path) ) {
+        $do_data->{name} = $self->utf_decode( $do_data->{name} ) if defined $do_data->{name};
+        $self->{_dbase}->{$dbase} = $do_data;
+        if ( $ramdisk_schema && !-e "$ramdisk_schema/$dbase.dbase" && $self->dir_exist($ramdisk_schema) ) {
+            require File::Copy;
+            eval { File::Copy::copy( $dbase_path, "$ramdisk_schema/$dbase.dbase" ) };
         }
     }
 
@@ -379,6 +389,25 @@ sub normalize_blocks {
         $schema->{dbase} = $dbase unless defined $schema->{dbase} && length $schema->{dbase};
     }
 
+    # Normalize UTF-8 characters on schema identity and block definitions
+    $schema->{name} = $self->utf_decode( $schema->{name} ) if defined $schema->{name};
+    if ( ref( $schema->{blocks} ) eq 'ARRAY' ) {
+        for my $b ( @{ $schema->{blocks} } ) {
+            next unless ref($b) eq 'HASH';
+            for my $k (qw(name option valid)) {
+                $b->{$k} = $self->utf_decode( $b->{$k} ) if defined $b->{$k};
+            }
+        }
+    }
+    if ( ref( $schema->{facet_block} ) eq 'ARRAY' ) {
+        for my $fb ( @{ $schema->{facet_block} } ) {
+            next unless ref($fb) eq 'HASH';
+            for my $k (qw(label name title)) {
+                $fb->{$k} = $self->utf_decode( $fb->{$k} ) if defined $fb->{$k};
+            }
+        }
+    }
+
     # ------------------------------------------------------------------------
     # Pipeline Step 0b: Dbase Schema Group Inheritance
     # Inherit whitelisted operational flags from .dbase if not overridden.
@@ -414,7 +443,7 @@ sub normalize_blocks {
         $schema->{use_simple}  = 1;
         $schema->{no_backup}   = 1;
         $schema->{no_transact} = 1;
-        $schema->{ramdisk_ttl} = 300 unless defined $schema->{ramdisk_ttl} && $schema->{ramdisk_ttl} > 0;
+        $schema->{ramdisk_ttl} = 300 unless defined $schema->{ramdisk_ttl};
     }
 
     # ------------------------------------------------------------------------
@@ -545,31 +574,24 @@ sub table_info {
     my $ramdisk_schema = $self->path('schema_rdir');
     my $target_path    = $table_path;
     if ( $ramdisk_schema && -e "$ramdisk_schema/$table.table" ) {
+        if ( -e $table_path && ( ( stat($table_path) )[9] > ( stat("$ramdisk_schema/$table.table") )[9] ) ) {
+            require File::Copy;
+            eval { File::Copy::copy( $table_path, "$ramdisk_schema/$table.table" ) };
+        }
         $target_path = "$ramdisk_schema/$table.table";
     }
 
-    if ( -e $target_path ) {
-        $target_path =~ s{\\}{/}g;
-        $target_path = "./$target_path" unless $target_path =~ m{^(?:\./|/|[a-zA-Z]:)};
-        my $do_data = eval { do $target_path };
-        if ($do_data) {
-            $self->normalize_blocks( $table, $do_data );
-            $self->{_table}->{$table} = $do_data;
+    if ( my $do_data = $self->do_schema($target_path) ) {
+        $self->normalize_blocks( $table, $do_data );
+        $self->{_table}->{$table} = $do_data;
 
-            if ( $ramdisk_schema && !-e "$ramdisk_schema/$table.table" && $self->dir_exist($ramdisk_schema) ) {
-                require File::Copy;
-                eval { File::Copy::copy( $table_path, "$ramdisk_schema/$table.table" ) };
-            }
-            if ( $do_data->{use_ramdisk} ) {
-                $do_data->{_ramdisk_ensured} = 1;
-                $self->ramdisk_ensure($table);
-            }
+        if ( $ramdisk_schema && !-e "$ramdisk_schema/$table.table" && $self->dir_exist($ramdisk_schema) ) {
+            require File::Copy;
+            eval { File::Copy::copy( $table_path, "$ramdisk_schema/$table.table" ) };
         }
-        else {
-            if ($@) {
-                cluck "[AMBERDB_SCHEMA] Syntax error in table schema file '$target_path': $@\n";
-                return {};
-            }
+        if ( $do_data->{use_ramdisk} ) {
+            $do_data->{_ramdisk_ensured} = 1;
+            $self->ramdisk_ensure($table);
         }
     }
     else {
@@ -933,17 +955,9 @@ sub norm_info {
         return { %{ $self->{_norm}->{$table} } };
     }
 
-    if ( -e $norm_path ) {
-        $norm_path =~ s{\\}{/}g;
-        $norm_path = "./$norm_path" unless $norm_path =~ m{^(?:\./|/|[a-zA-Z]:)};
-        my $do_data = eval { do $norm_path };
-        if ( $do_data && ref($do_data) eq 'HASH' ) {
-            $self->{_norm}->{$table} = $do_data;
-            return $do_data;
-        }
-        elsif ($@) {
-            cluck "[AMBERDB_SCHEMA] Syntax error in table norm file '$norm_path': $@\n";
-        }
+    if ( my $do_data = $self->do_schema($norm_path) ) {
+        $self->{_norm}->{$table} = $do_data;
+        return $do_data;
     }
     return {};
 }

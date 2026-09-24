@@ -666,8 +666,6 @@ sub reset_date {
     return $self;
 }
 
-*clear_date_cache = \&reset_date;
-
 1;
 
 __END__
