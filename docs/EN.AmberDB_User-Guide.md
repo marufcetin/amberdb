@@ -7,7 +7,7 @@
 > **Architecture:** AmberDB v5 · **Initial Design:** 2005 · **Last Updated:** 2026  
 > **Namespace:** `AmberDB`  
 > **Modular Engine:** `AmberDB::Base::*` (`Encoder`, `Schema`, `Ramdisk`, `Cache`, `Index`, `Facet`, `Junk`, `Transact`)  
-> **Standalone Components:** `AmberDB::Date`, `AmberDB::Locale`, `AmberDB::Tools`, `AmberDB::Array`
+> **Standalone Components:** `AmberDB::Date`, `AmberDB::Locale`, `AmberDB::Tools`
 
 ---
 
@@ -399,7 +399,7 @@ my ($total, @id_list) = $adb->field_fetch("catalog_product", 1, "5", { offset =>
 my @all_ids           = $adb->field_fetch("catalog_product", 1, "5", { keys_only => 1 });
 ```
 
-> **Deduplication Guarantee:** Even if a record matches multiple query values simultaneously, `array_nodup` guarantees that each record ID appears exactly once in the result set.
+> **Deduplication Guarantee:** Even if a record matches multiple query values simultaneously, automated deduplication guarantees that each record ID appears exactly once in the result set.
 
 ### 4.3 `field_filter` - Multi-Criteria Faceted Filtering
 
@@ -1860,31 +1860,14 @@ my $new_id = $adb->table_autoid("catalog_product");
 $adb->table_create("catalog_product");
 ```
 
-### 15.5 String & Text Processing Utilities (`Misk::Util::String`)
+### 15.5 Whitespace Normalization (`trim_space`)
 
-Since `AmberDB` inherits from `Misk::Util::String`, a suite of fast string sanitization, formatting, and classification helpers are directly accessible on `$String`:
-
-```perl
-# 1. Whitespace Normalization & Flattener (trim_space)
-my $clean = $String->trim_space("  hello \n\t world  ");      # Preserves line breaks
-my $flat  = $String->trim_space("  hello \n\t world  ", 1);   # Flattens all whitespace to single space
-```
+`AmberDB` provides a high-performance whitespace normalization and flattening helper directly on `$adb`:
 
 ```perl
-# 2. HTML Tag Stripping (remove_tags)
-my $text = $String->remove_tags("<p>Description with <br/>line break</p>");
-
-# 3. Text Truncation with Ellipsis Preservation (truncate_text / sub_str / short_title)
-my $summary = $String->truncate_text($long_body, 120);        # Word-boundary safe truncation
-my $short   = $String->short_title($product_title, 32);       # ASCII-normalized short slug/title
-
-# 4. Data Pattern Classifier (what_isthis)
-my $type = $String->what_isthis("user@example.com");          # Returns: 'email'
-# Recognizes: email, barcode, gsm, phone, tcno, number, ascii, letter, domain, other
-
-# 5. HTML Entity Conversion (html_ascode / code_ashtml / text2html / html2text)
-my $encoded_html = $String->html_ascode('<a href="test">');   # Encodes special characters to HTML entities
-my $plain_text   = $String->html2text($html_document);
+# Whitespace Normalization & Flattener (trim_space)
+my $clean = $adb->trim_space("  hello \n\t world  ");      # Preserves line breaks
+my $flat  = $adb->trim_space("  hello \n\t world  ", 1);   # Flattens all whitespace to single space
 ```
 
 ---

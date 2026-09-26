@@ -54,8 +54,6 @@ AmberDB provides a lightweight, dependency-free internal component ecosystem:
 | **`AmberDB::Transact`** | ACID transaction lifecycle, disk-backed undo journaling (`dbstore/journal/txn_*`), Strict 2PL multi-process locks, and automatic orphaned journal crash recovery (`transact_recover`). |
 | **`AmberDB::Ramdisk`** | OS-level RAM-Disk (Linux `tmpfs`, macOS `APFS`, Windows `ImDisk`) shared memory acceleration, TTL expiration, and in-memory table mirroring. |
 | **`AmberDB::Locale`** | Regional language engine supporting 10 locales (`gb` [default Global Base], `en`, `tr`, `de`, `fr`, `es`, `ja`, `ru`, `ar`, `az`) with case folding, phonetic softening, accent expansion, and Unicode Collation (UCA). |
-| **`AmberDB::Array`** | High-speed array manipulation primitives (sorted comparison, deduplication, slicing, crop). |
-| **`Misk::Util::String`** | String sanitization, HTML stripping, ASCII transliteration, and SEO URL slug generation. |
 | **`AmberDB::Date`** | High-precision date/time calculations, epoch conversions, and localized date formatting. |
 | **`AmberDB::Tools`** | Database maintenance, `.amberdb` native backup and restore, reindexing, vacuuming, and integrity verification. |
 

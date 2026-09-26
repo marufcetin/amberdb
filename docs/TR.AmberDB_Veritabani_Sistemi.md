@@ -7,7 +7,7 @@
 > **Mimari:** AmberDB v5 · **İlk Tasarım:** 2005 · **Son Güncelleme:** 2026  
 > **Namespace:** `AmberDB`  
 > **Modüler Çekirdek:** `AmberDB::Base::*` (`Encoder`, `Schema`, `Ramdisk`, `Cache`, `Index`, `Facet`, `Junk`, `Transact`)  
-> **Bağımsız Bileşenler:** `AmberDB::Date`, `AmberDB::Locale`, `AmberDB::Tools`, `AmberDB::Array`
+> **Bağımsız Bileşenler:** `AmberDB::Date`, `AmberDB::Locale`, `AmberDB::Tools`
 
 ---
 
@@ -402,7 +402,7 @@ my ($toplam, @id_listesi) = $adb->field_fetch("catalog_product", 1, "5", { offse
 my @tum_idlar             = $adb->field_fetch("catalog_product", 1, "5", { keys_only => 1 });
 ```
 
-> **Tekilleştirme (Deduplication) Garantisi:** Bir kayıt sorgulanan birden çok değerle aynı anda eşleşse dahi (`array_nodup` sayesinde) sonuç listesinde mükerrer olarak yer almaz, sadece bir kez döndürülür.
+> **Tekilleştirme (Deduplication) Garantisi:** Bir kayıt sorgulanan birden çok değerle aynı anda eşleşse dahi sonuç listesinde mükerrer olarak yer almaz, sadece bir kez döndürülür.
 
 ### 4.3 `field_filter` - Çok Bloklu Birleşik Filtreleme (AND / OR)
 
@@ -1859,29 +1859,14 @@ my $yeni_autoid = $adb->table_autoid("catalog_product");
 $adb->table_create("catalog_product");
 ```
 
-### 15.5 Metin ve Dize İşleme Yardımcıları (`Misk::Util::String`)
+### 15.5 Boşluk Temizleme ve Düzleştirme (`trim_space`)
 
-`AmberDB` doğrudan `Misk::Util::String` modülünden türediği için metin temizleme, HTML dönüştürme ve veri türü tespiti gibi araçlar doğrudan `$String` üzerinden çağrılabilir:
+`AmberDB`, metinlerdeki gereksiz boşlukları temizlemek ve satır yapısını tek satıra indirgemek için `$adb` üzerinden doğrudan çağrılabilen hızlı bir boşluk normalizasyon yardımcısı sunar:
 
 ```perl
-# 1. Boşluk Temizleme ve Düzleştirme (trim_space)
-my $temiz = $String->trim_space("  merhaba \n\t dunya  ");      # Satır yapısını korur
-my $duz   = $String->trim_space("  merhaba \n\t dunya  ", 1);   # Tüm boşlukları tek boşluğa indirger
-
-# 2. HTML Etiketlerini Temizleme (remove_tags)
-my $metin = $String->remove_tags("<p>Açıklama metni <br/>satır sonu</p>");
-
-# 3. Kelime Bütünlüğünü Koruyarak Kısaltma (truncate_text / sub_str / short_title)
-my $ozet  = $String->truncate_text($uzun_yazi, 120);          # Kelimeyi bölmeden '...' ile kısaltır
-my $kisa  = $String->short_title($urun_basligi, 32);          # ASCII uyumlu kısa başlık
-
-# 4. Veri Türü ve Deseni Tanıyıcı (what_isthis)
-my $tur = $String->what_isthis("kullanici@example.com");      # 'email' döner
-# Tanıdığı türler: email, barcode, gsm, phone, tcno, number, ascii, letter, domain, other
-
-# 5. HTML Entity Dönüşümleri (html_ascode / code_ashtml / text2html / html2text)
-my $kod_html  = $String->html_ascode('<a href="test">');      # HTML özel karakterlerini entity'ye çevirir
-my $duz_metin = $String->html2text($html_belgesi);
+# Boşluk Temizleme ve Düzleştirme (trim_space)
+my $temiz = $adb->trim_space("  merhaba \n\t dunya  ");      # Satır yapısını korur
+my $duz   = $adb->trim_space("  merhaba \n\t dunya  ", 1);   # Tüm boşlukları tek boşluğa indirger
 ```
 
 ---
