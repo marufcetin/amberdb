@@ -319,7 +319,7 @@ sub query_director_year {
 
 sub query_multiword_blocks {
     my ($self, @words) = @_;
-    my $query = join(' ', grep { defined && length } @words);
+    my $query = join(' ', grep { defined $_ && length($_) } @words);
     return $self->fulltext_search($query);
 }
 

@@ -4,7 +4,7 @@ use 5.016;
 use warnings;
 use Carp qw(croak cluck);
 
-our $VERSION = '5.26.0';
+our $VERSION = '5.26.1';
 
 my $CREATED = '2021-05-24';
 
@@ -358,7 +358,7 @@ sub repeat_fields {
 
     if ( $rep_start <= $#record ) {
         my @repeat = @record[ $rep_start .. $#record ];
-        $record[$rep_ids] = join ",", grep { defined && length } map { ref($_) eq 'ARRAY' ? $_->[0] : $_ } @repeat;
+        $record[$rep_ids] = join ",", grep { defined $_ && length($_) } map { ref($_) eq 'ARRAY' ? $_->[0] : $_ } @repeat;
     }
     else {
         $record[$rep_ids] = "" if $rep_ids < @record;
@@ -1032,7 +1032,7 @@ sub records_add {
     return unless exists $table_info->{record_index};
     return unless ref($new_rids) eq 'ARRAY' && @$new_rids;
 
-    my @clean_rids = grep { defined && /^\d+$/ && $_ > 0 } @$new_rids;
+    my @clean_rids = grep { defined $_ && $_ > 0 } @$new_rids;
     return unless @clean_rids;
     $new_rids = \@clean_rids;
 
@@ -1055,7 +1055,7 @@ sub records_add {
             my $can_append = 1;
             my $prev = $lastid;
             for my $id (@$new_rids) {
-                unless ( defined $id && $id =~ /^\d+$/ && $id > $prev ) {
+                unless ( defined $id && $id > $prev ) {
                     $can_append = 0;
                     last;
                 }
@@ -1083,7 +1083,7 @@ sub records_add {
                 $count = int( length($raw_keys) / 8 );
                 $self->index_put( $target, "keys",  $raw_keys, "bin" );
                 $self->index_put( $target, "count", $count,    "raw" );
-                my @nums = sort { $b <=> $a } grep { defined && /^\d+$/ } @$new_rids;
+                my @nums = sort { $b <=> $a } grep { defined $_ && $_ > 0 } @$new_rids;
                 if ( @nums && $nums[0] > $lastid ) {
                     $self->index_put( $target, "lastid", $nums[0], "raw" );
                     $lastid = $nums[0];
@@ -1111,7 +1111,7 @@ sub records_add {
     }
 
     if (!$pfx && $tableid) {
-        my @nums = sort { $b <=> $a } grep { /^\d+$/ } @$new_rids;
+        my @nums = sort { $b <=> $a } grep { defined $_ && $_ > 0 } @$new_rids;
         if (@nums) {
             my ($cached_lastid) = $self->get_cache( $tableid, "lastid" );
             $cached_lastid //= 0;
@@ -1130,7 +1130,7 @@ sub records_del {
     return unless exists $table_info->{record_index};
     return unless ref($del_rids) eq 'ARRAY' && @$del_rids;
 
-    my @clean_dels = grep { defined && /^\d+$/ && $_ > 0 } @$del_rids;
+    my @clean_dels = grep { defined $_ && $_ > 0 } @$del_rids;
     return unless @clean_dels;
     $del_rids = \@clean_dels;
 
@@ -1603,11 +1603,10 @@ sub sort_add {
             my @sorted_vals = $is_num ? ( sort { $a <=> $b } keys %uniq_vals ) : ( sort { $a cmp $b } keys %uniq_vals );
             $batch_put{"$pfx$blk:vals"} = join( "\t", @sorted_vals ) if @sorted_vals;
 
-            my @sorted_keys = grep { defined $_ && /^\d+$/ } sort { ( ( $map{$a} // '' ) cmp ( $map{$b} // '' ) ) || ( $a <=> $b ) } keys %map;
+            my @sorted_keys = grep { defined $_ && $_ > 0 } sort { ( ( $map{$a} // '' ) cmp ( $map{$b} // '' ) ) || ( $a <=> $b ) } keys %map;
             $self->index_put( $index_path, $sort_key_name, \@sorted_keys, "ids" );
             $self->index_put( $index_path, \%batch_put, "raw" );
         }
-
     }
 
     $self->table_close($index_path);
@@ -1722,7 +1721,7 @@ sub sort_modify {
                 $self->index_del( $index_path, "$pfx$blk:vals" );
             }
 
-            my @sorted_keys = grep { defined $_ && /^\d+$/ && $_ > 0 } sort { ( ( $map{$a} // '' ) cmp ( $map{$b} // '' ) ) || ( $a <=> $b ) } keys %map;
+            my @sorted_keys = grep { defined $_ && $_ > 0 } sort { ( ( $map{$a} // '' ) cmp ( $map{$b} // '' ) ) || ( $a <=> $b ) } keys %map;
             $self->index_put( $index_path, $sort_key_name, \@sorted_keys, "ids" );
             $self->index_put( $index_path, \%batch_put, "raw" ) if %batch_put;
         }

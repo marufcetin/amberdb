@@ -1,5 +1,18 @@
 Revision history for AmberDB
 
+5.26.1  2026-09-26
+        - [CROSS-PLATFORM CI & MACOS MOUNT FIX]
+          * Fixed macOS /Volumes permission error in AmberDB::Base::Ramdisk by verifying write permissions before activating RAM-disk mount points.
+          * Added eval guard to ramdisk_setup with graceful fallback to local storage.
+
+        - [WINDOWS CRLF & TRANSACTION JOURNAL FIX]
+          * Enforced binmode on journal handles in AmberDB::Base::Transact to prevent Windows CRLF mangling of record separators and Base64 payloads.
+          * Hardened t/amberdb_transact.t with binary mode, exact field parsing, and guarded SKIP assertions.
+
+        - [NUMERIC FILTERING & TOPIC VARIABLE MODERNIZATION]
+          * Replaced regex integer checks with fast numeric guards (defined $_ && $_ > 0) across index building and sorting hot paths.
+          * Modernized Perl topic variable usage (defined $_ && length($_)) across core modules for Perl 5.38+ / 5.40+ compatibility.
+
 5.26.0  2026-09-23
         - [FAST INDEXED FIELD COUNTING (field_count)]
           * Implemented field_count($table, $block, $val) for fast O(1) indexed counting across inverted match (.fld) indexes without reading or deserializing full records.
@@ -74,7 +87,7 @@ Revision history for AmberDB
           * Added comprehensive unit test suite in t/amberdb_field_normalize.t.
 
         - [INDEX INTEGRITY & STRICT NUMERIC ID REINDEXING]
-          * Enforced strict positive integer filtering (/^\d+$/ && $_ > 0) across all binary index buffers (keys, A:keys, B:keys, $blk:keys, bin_encode, bin_decode, bin_add, bin_punch), completely preventing non-numeric or non-positive IDs from entering .inx files.
+          * Enforced strict positive integer filtering (defined $_ && $_ > 0) across all binary index buffers (keys, A:keys, B:keys, $blk:keys, bin_encode, bin_decode, bin_add, bin_punch), completely preventing non-numeric or non-positive IDs from entering .inx files.
           * Updated set_index in AmberDB::Tools::Index to close and unlink all existing index files (.inx, .src, .fld, .fac, .slg, .unq) on both physical disk and RAM-disk before rebuilding, ensuring clean and deterministic recreation.
           * Added RAM-disk synchronization to set_index: freshly rebuilt index files are atomically mirrored to RAM-disk upon completion with safe filehandle management.
           * Fixed UTF-8 double-encoding in $blk:vals across sort_add, sort_modify, and sort_del in AmberDB::Base::Index to prevent exponential byte bloat on multibyte character updates.

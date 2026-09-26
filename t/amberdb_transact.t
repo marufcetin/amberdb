@@ -313,23 +313,39 @@ subtest 'Transaction Journal Base64 Payload Encoding & Complex Binary Rollback' 
     $adb->{_txn}->{fh}->flush;
 
     open my $jfh, '<', $txn_file or die "Cannot open $txn_file: $!";
+    binmode $jfh;
     my @lines = <$jfh>;
     close $jfh;
 
     # Locate the edit line for record 90
-    my ($rec_edit_line) = grep { /\brecs\b[^\n]*\b90\b[^\n]*\bedit\b/ } @lines;
-    ok( $rec_edit_line, 'Found recs edit entry in txn journal' );
+    my ($rec_edit_line) = grep {
+        my @fields = split /\x1e/, $_, 7;
+        @fields == 7
+            && $fields[1] eq 'recs'
+            && $fields[4] eq '90'
+            && $fields[5] eq 'edit'
+    } @lines;
 
-    chomp $rec_edit_line;
-    my ( $ts, $type, $tableid, $file_path, $key, $action, $b64 ) = split /\x1e/, $rec_edit_line, 7;
+    ok( $rec_edit_line, 'Found recs edit entry in txn journal' )
+        or diag explain \@lines;
 
-    # Verify Base64 format: pure base64 characters only
-    like( $b64, qr/^[A-Za-z0-9+\/]+=*$/, 'Journal entry payload is valid Base64' );
+    SKIP: {
+        skip 'No edit journal entry was written', 2
+            unless $rec_edit_line;
 
-    # Decode and check contents
-    use MIME::Base64 qw(decode_base64);
-    my $decoded_raw = decode_base64($b64);
-    like( $decoded_raw, qr/Line1\nLine2/, 'Base64 decoded raw before-image contains embedded newlines' );
+        chomp $rec_edit_line;
+        $rec_edit_line =~ s/\r$//;
+        my ( undef, undef, undef, undef, undef, undef, $b64 ) =
+            split /\x1e/, $rec_edit_line, 7;
+
+        # Verify Base64 format: pure base64 characters only
+        like( $b64, qr/\A[A-Za-z0-9+\/]+=*\z/, 'Journal entry payload is valid Base64' );
+
+        # Decode and check contents
+        use MIME::Base64 qw(decode_base64);
+        my $decoded_raw = decode_base64($b64);
+        like( $decoded_raw, qr/Line1\nLine2/, 'Base64 decoded raw before-image contains embedded newlines' );
+    }
 
     # 4. Rollback transaction and verify exact payload restoration
     my $res = $adb->transact_rollback();

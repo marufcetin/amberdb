@@ -24,7 +24,7 @@ use parent qw(
 our $DB_HASH;
 our $hash_info;
 
-our $VERSION = '5.26.0';
+our $VERSION = '5.26.1';
 my $CREATED = '2005-01-28';
 
 
@@ -376,7 +376,7 @@ sub insert_list {
     # If explicit numeric IDs are passed, ensure ascending order
     my $has_numeric_ids = 0;
     for my $r (@records) {
-        if ( ref($r) eq 'ARRAY' && defined $r->[0] && $r->[0] =~ /^\d+$/ && $r->[0] > 0 ) {
+        if ( ref($r) eq 'ARRAY' && defined $r->[0] && $r->[0] > 0 ) {
             $has_numeric_ids = 1;
             last;
         }
@@ -4021,7 +4021,7 @@ sub field_count {
             @req_keys = ($fetch);
         }
         @req_keys = map { $self->trim_space( "$_", 1 ) } @req_keys;
-        @req_keys = grep { defined && $_ ne '' } @req_keys;
+        @req_keys = grep { defined $_ && $_ ne '' } @req_keys;
     }
     else {
         $is_batch = 1;
@@ -4054,7 +4054,7 @@ sub field_count {
                     }
                     else {
                         my @ids = $raw =~ /[\x1e,;\s]/ ? split( /[\x1e,;\s]+/, $raw ) : ($raw);
-                        @ids = grep { defined && $_ ne '' } @ids;
+                        @ids = grep { defined $_ && $_ > 0 } @ids;
                         $cnt = scalar(@ids);
                     }
                 }
@@ -4074,7 +4074,7 @@ sub field_count {
                     my $len = bytes::length($v);
                     my $cnt = ( $len >= 8 && $len % 8 == 0 )
                         ? int( $len / 8 )
-                        : scalar( grep { defined && $_ ne '' } split( /[\x1e,;\s]+/, $v ) );
+                        : scalar( grep { defined $_ && $_ > 0 } split( /[\x1e,;\s]+/, $v ) );
                     $result{$val_part} = $cnt;
                 }
             );
@@ -4757,7 +4757,7 @@ sub search_table {
                         sub {
                             my ( $key, $value ) = @_;
                             my @dec_fields = $self->db_decode($value);
-                            my $search_text = join( " ", grep { defined && !ref($_) } @dec_fields );
+                            my $search_text = join( " ", grep { defined $_ && !ref($_) } @dec_fields );
                             my %string = $self->get_words( $search_text, "write", $tableid );
                             foreach my $str (@tmp) {
                                 if ( $string{$str} ) {
@@ -4775,7 +4775,7 @@ sub search_table {
                         sub {
                             my ( $key, $value ) = @_;
                             my @dec_fields = $self->db_decode($value);
-                            my $search_text = join( " ", grep { defined && !ref($_) } @dec_fields );
+                            my $search_text = join( " ", grep { defined $_ && !ref($_) } @dec_fields );
                             my %string = $self->get_words( $search_text, "write", $tableid );
                             foreach my $str (@tmp) {
                                 unless ( $string{$str} ) {
@@ -4935,7 +4935,7 @@ sub table_count {
 
         my @record = $self->table_keys($tableid);
         $count = scalar @record;
-        my ($last) = sort { $b <=> $a } grep { /^\d+$/ } @record;
+        my ($last) = sort { $b <=> $a } grep { defined $_ && $_ > 0 } @record;
         $last //= 0;
         if ( $self->table_write("$table_path.inx") ) {
             $self->index_put( "$table_path.inx", "keys",   \@record, "ids" );
@@ -5084,7 +5084,7 @@ sub table_keys {
     # Index check (.inx)
     if ( -e $index_path ) {
         my ( $total, @keys_list ) = $self->index_get( $index_path, "keys", "ids", 0, 0, $dir );
-        @keys_list = grep { defined $_ && /^\d+$/ && $_ > 0 } @keys_list;
+        @keys_list = grep { defined $_ && $_ > 0 } @keys_list;
         if (@keys_list) {
             $self->set_cache( $tableid, $cache_key, \@keys_list );
             $self->set_cache( $tableid, 'keys', \@keys_list ) if $dir eq 'desc';
@@ -5101,7 +5101,7 @@ sub table_keys {
     $self->table_close($scan_path);
 
     my $id_sort_type = ( $self->config('simple') || ( $table_info && $table_info->{use_simple} ) ) ? 'ascii' : 'num';
-    @keys = grep { defined $_ && /^\d+$/ && $_ > 0 } @keys if $id_sort_type eq 'num';
+    @keys = grep { defined $_ && $_ > 0 } @keys if $id_sort_type eq 'num';
     if ( $dir eq 'asc' ) {
         @keys = sort { $id_sort_type eq 'num' ? ( $a <=> $b ) : ( $a cmp $b ) } @keys;
     }
@@ -5923,7 +5923,7 @@ sub index_get {
             }
             else {
                 my @ids = $raw =~ /[\x1e,;\s]/ ? split( /[\x1e,;\s]+/, $raw ) : ($raw);
-                @ids = grep { defined && $_ ne '' } @ids;
+                @ids = grep { defined $_ && $_ > 0 } @ids;
                 $result{$k_orig} = \@ids;
             }
         }
@@ -5997,7 +5997,7 @@ sub index_get {
 
     # 3. Fallback for legacy text index payload (.fld, .src, .inx)
     my @ids = $raw =~ /[\x1e,;\s]/ ? split( /[\x1e,;\s]+/, $raw ) : ($raw);
-    @ids = grep { defined && $_ ne '' } @ids;
+    @ids = grep { defined $_ && $_ > 0 } @ids;
     return ( scalar @ids, @ids );
 }
 
@@ -6067,7 +6067,7 @@ sub index_put {
             if ( ref($v_item) eq 'ARRAY' ) {
                 my @ids = @$v_item;
                 if ( $type ne 'raw' ) {
-                    @ids = grep { defined && /^\d+$/ && $_ > 0 } @ids;
+                    @ids = grep { defined $_ && $_ > 0 } @ids;
                 }
                 next unless @ids;
                 $v_encoded = $self->bin_encode(\@ids);
@@ -6078,7 +6078,7 @@ sub index_put {
             else {
                 if ( $type ne 'raw' ) {
                     # Non-raw scalar must be a positive integer key/ID
-                    next unless defined $v_item && $v_item =~ /^\d+$/ && $v_item > 0;
+                    next unless defined $v_item && $v_item > 0;
                     $v_encoded = $self->bin_encode([ $v_item ]);
                 }
                 else {
@@ -6156,7 +6156,7 @@ sub index_put {
     if ( ref($val) eq 'ARRAY' ) {
         my @ids = @$val;
         if ( $type ne 'raw' ) {
-            @ids = grep { defined && /^\d+$/ && $_ > 0 } @ids;
+            @ids = grep { defined $_ && $_ > 0 } @ids;
         }
         return unless @ids;
         $v_encoded = $self->bin_encode(\@ids);
@@ -6166,7 +6166,7 @@ sub index_put {
     }
     else {
         if ( $type ne 'raw' && ( $type eq 'ids' || $key eq 'keys' || $key =~ /:keys$/ || $key eq 'active' ) ) {
-            return unless defined $val && $val =~ /^\d+$/ && $val > 0;
+            return unless defined $val && $val > 0;
             $v_encoded = $self->bin_encode([ $val ]);
         }
         else {

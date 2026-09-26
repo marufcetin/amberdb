@@ -151,7 +151,7 @@ sub query_director_year {
 sub query_multiword_blocks {
     my ($self, @words) = @_;
     my $adb = $self->{adb};
-    my $query = join(' ', grep { defined && length } @words);
+    my $query = join(' ', grep { defined $_ && length($_) } @words);
     my @matched = $adb->search_table( 'movies', $query );
     return \@matched;
 }

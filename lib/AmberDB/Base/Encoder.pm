@@ -5,7 +5,7 @@ use warnings;
 use Carp qw(croak cluck);
 use MIME::Base64 qw(encode_base64 decode_base64);
 
-our $VERSION = '5.26.0';
+our $VERSION = '5.26.1';
 
 my $CREATED = '2026-09-06';
 
@@ -472,7 +472,7 @@ sub bin_encode {
     return '' unless ref($rids) eq 'ARRAY' && @$rids;
 
     # Fast numeric filter: positive numbers only (no regex overhead)
-    my @valid = grep { defined && $_ > 0 } @$rids;
+    my @valid = grep { defined $_ && $_ > 0 } @$rids;
     return '' unless @valid;
 
     return pack( "(Q>)*", @valid );
@@ -666,7 +666,7 @@ sub bin_add {
           ? unpack( "(Q>)*", $new_rids )
           : ($new_rids) );
 
-    @ids = grep { defined && $_ > 0 } @ids;
+    @ids = grep { defined $_ && $_ > 0 } @ids;
     return $buffer unless @ids;
 
     # Deduplicate input IDs without a hash
@@ -704,7 +704,7 @@ sub bin_punch {
           ? unpack( "(Q>)*", $del_rids )
           : ($del_rids) );
 
-    @del_list = grep { defined && $_ > 0 } @del_list;
+    @del_list = grep { defined $_ && $_ > 0 } @del_list;
     return $buffer unless @del_list;
 
     for my $del_id (@del_list) {
