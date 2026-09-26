@@ -5034,13 +5034,30 @@ sub table_lastid {
 # ------------------------------------------------
 sub table_keys {
 
-    my ( $self, $tableid ) = @_;
+    my ( $self, $tableid, @args ) = @_;
 
     $tableid or return;
 
-    my $cached_keys = $self->get_cache( $tableid, "keys" );
+    my $dir = 'desc';
+    if ( @args && defined $args[0] && !ref($args[0]) && $args[0] =~ /^(asc|desc)$/i ) {
+        $dir = lc($args[0]);
+    }
+    elsif ( @args && ref($args[0]) eq 'HASH' ) {
+        $dir = lc( $args[0]->{dir} // $args[0]->{order} // 'desc' );
+    }
+    $dir = ( $dir eq 'asc' || $dir eq '1' ) ? 'asc' : 'desc';
+
+    my $cache_key   = "keys_$dir";
+    my $cached_keys = $self->get_cache( $tableid, $cache_key ) // ( $dir eq 'desc' ? $self->get_cache( $tableid, 'keys' ) : undef );
     if ( defined $cached_keys && ref($cached_keys) eq 'ARRAY' ) {
         return @$cached_keys;
+    }
+    my $alt_key  = ( $dir eq 'asc' ) ? 'keys_desc' : 'keys_asc';
+    my $alt_keys = $self->get_cache( $tableid, $alt_key ) // ( $dir eq 'asc' ? $self->get_cache( $tableid, 'keys' ) : undef );
+    if ( defined $alt_keys && ref($alt_keys) eq 'ARRAY' ) {
+        my @rev = reverse @$alt_keys;
+        $self->set_cache( $tableid, $cache_key, \@rev );
+        return @rev;
     }
 
     my $table_info  = $self->table_info($tableid);
@@ -5066,10 +5083,11 @@ sub table_keys {
 
     # Index check (.inx)
     if ( -e $index_path ) {
-        my @keys_list = $self->index_get( $index_path, "keys", "ids" );
+        my ( $total, @keys_list ) = $self->index_get( $index_path, "keys", "ids", 0, 0, $dir );
         @keys_list = grep { defined $_ && /^\d+$/ && $_ > 0 } @keys_list;
         if (@keys_list) {
-            $self->set_cache( $tableid, "keys", \@keys_list );
+            $self->set_cache( $tableid, $cache_key, \@keys_list );
+            $self->set_cache( $tableid, 'keys', \@keys_list ) if $dir eq 'desc';
             return @keys_list;
         }
     }
@@ -5082,7 +5100,16 @@ sub table_keys {
     @keys = $self->recs_keys($scan_path);
     $self->table_close($scan_path);
 
-    $self->set_cache( $tableid, 'keys', \@keys );
+    my $id_sort_type = ( $self->config('simple') || ( $table_info && $table_info->{use_simple} ) ) ? 'ascii' : 'num';
+    @keys = grep { defined $_ && /^\d+$/ && $_ > 0 } @keys if $id_sort_type eq 'num';
+    if ( $dir eq 'asc' ) {
+        @keys = sort { $id_sort_type eq 'num' ? ( $a <=> $b ) : ( $a cmp $b ) } @keys;
+    }
+    else {
+        @keys = sort { $id_sort_type eq 'num' ? ( $b <=> $a ) : ( $b cmp $a ) } @keys;
+    }
+    $self->set_cache( $tableid, $cache_key, \@keys );
+    $self->set_cache( $tableid, 'keys', \@keys ) if $dir eq 'desc';
 
     return @keys;
 }
