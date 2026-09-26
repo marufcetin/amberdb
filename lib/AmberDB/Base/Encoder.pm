@@ -10,7 +10,7 @@ our $VERSION = '5.26.0';
 my $CREATED = '2026-09-06';
 
 # =====================================================================
-# RECORD ENCODING / DECODING — ABR v5 (Amber Binary Record)
+# RECORD ENCODING / DECODING — ABR v5 (AmberDB Binary Record)
 # Native Pure Perl Binary Format with Zero CPAN Dependencies
 # Format Specification:
 #   Header:      \x00 A B R \x05  (5 bytes: NUL + Magic "ABR" + Version 5)

@@ -26,7 +26,7 @@ $adb->set_datadir($directory_path);
 
 ```perl
 # Switch database store to a separate mounted data volume
-$adb->set_datadir("/mnt/nvme_storage/amber_dbstore");
+$adb->set_datadir("/mnt/nvme_storage/amberdb_dbstore");
 ```
 
 ---

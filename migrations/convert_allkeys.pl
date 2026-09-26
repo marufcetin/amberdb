@@ -11,8 +11,8 @@ BEGIN {
     use vars qw($root_dir);
     $root_dir = cwd();
 }
-use Amber::Pragma;
-use Amber::Core;
+use Misk::Pragma;
+use Misk::Core;
 use DB_File;
 use Fcntl qw(O_RDWR);
 
@@ -20,7 +20,7 @@ print "=================================================================\n";
 print " AmberDB Table Index Key Converter ('allkeys' -> 'keys')   \n";
 print "=================================================================\n\n";
 
-my $ctx = Amber::Core->boot(root_dir => "$root_dir", role => "cli");
+my $ctx = Misk::Core->boot(root_dir => "$root_dir", role => "cli");
 my $adb = $ctx->{adb};
 
 my $dbstore_dir = $ctx->{path}->{dbase_dir};

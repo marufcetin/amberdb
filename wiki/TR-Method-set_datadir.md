@@ -26,7 +26,7 @@ $adb->set_datadir($dizin_yolu);
 
 ```perl
 # Veritabani ana dizinini harici bir depolama birimine yonlendirme
-$adb->set_datadir("/mnt/nvme_storage/amber_dbstore");
+$adb->set_datadir("/mnt/nvme_storage/amberdb_dbstore");
 ```
 
 ---

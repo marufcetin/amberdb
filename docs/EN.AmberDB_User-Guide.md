@@ -58,9 +58,7 @@ AmberDB is self-contained and does not rely on heavy external dependencies:
 │  AmberDB::Base     → Schema parsing, paths, data serialization          │
 │  AmberDB::Index    → Binary indexes (.inx, .fld, .src, .fac, .slg)      │
 │  AmberDB::Transact → Undo-log transactions, rollback & recovery         │
-│  AmberDB::Ramdisk  → Native RAM-Disk (tmpfs/APFS/ImDisk) Shared Cache      │
-│  AmberDB::Array    → High-speed array utilities (nodup, crop)           │
-│  Amber::Util::String   → String utilities, HTML formatting & cleaning       │
+│  AmberDB::Ramdisk  → Native RAM-Disk (tmpfs/APFS/ImDisk) Shared Cache   │
 │  AmberDB::Date     → Date calculations, timestamps, formatting          │
 │  AmberDB::Locale   → Built-in multilingual collation & word search      │
 ├─────────────────────────────────────────────────────────────────────────┤
@@ -711,7 +709,7 @@ my $db_disk = AmberDB->new(
 # 2. RAM-Disk instance (Zero-latency in-memory cache/session store)
 # (Linux: /dev/shm or tmpfs, Windows: ImDisk, macOS: APFS RAM-Disk /Volumes/AmberDB_RAM)
 my $db_ramdisk = AmberDB->new(
-    path => { dbase_dir => "/dev/shm/amber_cache" },
+    path => { dbase_dir => "/dev/shm/amberdb_cache" },
     cfg  => { simple => 1, no_backup => 1 }, # Disable backup for pure transient cache
 );
 
@@ -1862,9 +1860,9 @@ my $new_id = $adb->table_autoid("catalog_product");
 $adb->table_create("catalog_product");
 ```
 
-### 15.5 String & Text Processing Utilities (`Amber::Util::String`)
+### 15.5 String & Text Processing Utilities (`Misk::Util::String`)
 
-Since `AmberDB` inherits from `Amber::Util::String`, a suite of fast string sanitization, formatting, and classification helpers are directly accessible on `$String`:
+Since `AmberDB` inherits from `Misk::Util::String`, a suite of fast string sanitization, formatting, and classification helpers are directly accessible on `$String`:
 
 ```perl
 # 1. Whitespace Normalization & Flattener (trim_space)

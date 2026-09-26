@@ -103,7 +103,7 @@ Revision history for AmberDB
           * Standardized lock_dir and session_dir as single-key directories in AmberDB::Base::Ramdisk and AmberDB::Base.
           * Removed obsolete fallback keys (lock_rdir) and legacy naming aliases (conf_dir, cfg_dir).
           * In RAM-disk environments, lock_dir and session_dir are dynamically mounted under $ramdisk_dir/lock and $ramdisk_dir/session with 0755 permissions; when unmounted, they reside cleanly under $dbase_dir/lock and $dbase_dir/session.
-          * Aligned database lock directory structures with Amber 4.x state locking specifications.
+          * Aligned database lock directory structures with Misk 4.x state locking specifications.
 
         - [SCHEMA LOADING RESILIENCE]
           * Wrapped 'do $target_path' inside eval { do $target_path } in AmberDB::Base::Schema (table_info() and dbase_info()).
@@ -195,7 +195,7 @@ Revision history for AmberDB
           * Excluded entire lib/AmberDB/Base/ directory and AmberDB::Base namespace from CPAN indexing in Makefile.PL (no_index), keeping MetaCPAN documentation clean and focused on public standalone interfaces.
           * Consolidated public submodule architecture in AmberDB POD to focus exclusively on standalone components (AmberDB::Date, AmberDB::Locale, AmberDB::Tools).
           * Integrated ISO 4217 Currency Dictionary documentation into AmberDB::Locale and removed standalone POD from internal AmberDB::Locale::Currency to prevent separate CPAN indexing.
-          * Deprecated and removed unused legacy Amber::Util::String module; consolidated trim_space utility into AmberDB::Base.
+          * Deprecated and removed unused legacy Misk::Util::String module; consolidated trim_space utility into AmberDB::Base.
 
         - [TRANSPARENT PHYSICAL RAM-DISK ACCELERATION & CROSS-PLATFORM ORCHESTRATION]
           * Cross-Platform Support (Linux, macOS, Windows): Standardized bin/ramdisk_* suite (ramdisk_amberdb.pl, ramdisk_windows.bat/ps1, ramdisk_macos.sh, ramdisk_linux.sh) with native support for Linux tmpfs, macOS APFS RAM-Disk (hdiutil), and Windows ImDisk with project namespace isolation.
@@ -382,7 +382,7 @@ Revision history for AmberDB
           * Cleaned up legacy id_type occurrences across all 41 test files and concurrency stress tests (xt/amberdb_concurrency_stress.t).
         - [DISTRIBUTION & METADATA] Decoupled Internal Module Versions and CPAN no_index:
           * Stripped redundant $VERSION definitions from 15 internal/engine-only modules (Base, Cache, Transact, Index, Index::Facet, Index::Junk, Locale::Currency, Locale::Lang::*) to streamline release maintenance.
-          * Retained explicit $VERSION in public, standalone modules (AmberDB, AmberDB::Array, AmberDB::Date, AmberDB::Locale, Amber::Util::String, AmberDB::Tools).
+          * Retained explicit $VERSION in public, standalone modules (AmberDB, AmberDB::Array, AmberDB::Date, AmberDB::Locale, Misk::Util::String, AmberDB::Tools).
           * Added comprehensive META_MERGE no_index configuration in Makefile.PL covering internal directories, namespaces, and packages.
         - [DATA STRUCTURES & UTILITIES] Non-Destructive hash_diff in AmberDB::Array:
           * Implemented hash_diff($hash1, $hash2) in AmberDB::Array with safe shallow copying, ensuring input hash structures are never mutated.

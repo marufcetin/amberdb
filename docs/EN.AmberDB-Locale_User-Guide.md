@@ -542,7 +542,7 @@ AmberDB::Locale::Currency->active_codes();   # qw(TRY USD EUR GBP RUB AZN SAR JP
 
 ## 7. Language Data Module Writing Guide
 
-To add a new language, create an `Amber/Locale/Lang/<code>.pm` file:
+To add a new language, create an `AmberDB/Locale/Lang/<code>.pm` file:
 
 ```perl
 package AmberDB::Locale::Lang::it;   # Italian example
@@ -626,7 +626,7 @@ sub data {
 | `to_ascii` output has `a` instead of `ae` | In `en` locale, NFD does `ä → a` | Use `de` locale (DIN 5007-2: `ä → ae`) |
 | Number text returns empty | Input contains only separators/punctuation | Check for valid digit input |
 | Eastern Arabic digits not converted | `normalize_num` not called explicitly | `num2text`/`format_number` does it automatically; no manual call needed |
-| Unknown language error | Lang module file doesn't exist | Create `Amber/Locale/Lang/<code>.pm` or accept `en` fallback |
+| Unknown language error | Lang module file doesn't exist | Create `AmberDB/Locale/Lang/<code>.pm` or accept `en` fallback |
 
 ---
 

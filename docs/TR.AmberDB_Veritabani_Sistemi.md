@@ -59,8 +59,6 @@ AmberDB, harici üçüncü parti kütüphanelere bağımlı olmaksızın kendi i
 │  AmberDB::Index    → Binary indeksler (.inx, .fld, .src, .fac, .slg)       │
 │  AmberDB::Transact → Undo-log transaction, rollback & crash recovery       │
 │  AmberDB::Ramdisk  → RAM-Disk (tmpfs/APFS/ImDisk) Paylaşımlı Bellek        │
-│  AmberDB::Array    → Yüksek hızlı dizi yardımcıları (nodup, crop)          │
-│  Amber::Util::String → Metin işleme, HTML temizleme ve dönüştürme          │
 │  AmberDB::Date     → Tarih hesaplamaları ve format dönüşümleri             │
 │  AmberDB::Locale   → Dahili çok dilli sıralama ve arama motoru             │
 ├────────────────────────────────────────────────────────────────────────────┤
@@ -716,7 +714,7 @@ my $db_kalici = AmberDB->new(
 # 2. RAM-Disk nesnesi (Sıfır gecikmeli hızlı oturum/önbellek tabloları için)
 # (Linux: /dev/shm veya tmpfs, Windows: ImDisk, macOS: APFS RAM-Disk /Volumes/AmberDB_RAM)
 my $db_ramdisk = AmberDB->new(
-    path => { dbase_dir => "/dev/shm/amber_cache" },
+    path => { dbase_dir => "/dev/shm/amberdb_cache" },
     cfg  => { simple => 1, no_backup => 1 }, # Önbellek için yedekleme kapatılabilir
 );
 
@@ -1861,9 +1859,9 @@ my $yeni_autoid = $adb->table_autoid("catalog_product");
 $adb->table_create("catalog_product");
 ```
 
-### 15.5 Metin ve Dize İşleme Yardımcıları (`Amber::Util::String`)
+### 15.5 Metin ve Dize İşleme Yardımcıları (`Misk::Util::String`)
 
-`AmberDB` doğrudan `Amber::Util::String` modülünden türediği için metin temizleme, HTML dönüştürme ve veri türü tespiti gibi araçlar doğrudan `$String` üzerinden çağrılabilir:
+`AmberDB` doğrudan `Misk::Util::String` modülünden türediği için metin temizleme, HTML dönüştürme ve veri türü tespiti gibi araçlar doğrudan `$String` üzerinden çağrılabilir:
 
 ```perl
 # 1. Boşluk Temizleme ve Düzleştirme (trim_space)

@@ -6746,7 +6746,7 @@ In addition to its schema-driven enterprise mode, AmberDB provides a lightweight
 
   # 5. Volatile in-memory simple store
   my $ram_db = AmberDB->new(
-      path => { dbase_dir => "/dev/shm/amber_tokens" },
+      path => { dbase_dir => "/dev/shm/amberdb_tokens" },
       cfg  => { simple    => 1, no_backup => 1 },
   );
   $ram_db->insert_id('tokens', $token_id, $user_id, time());

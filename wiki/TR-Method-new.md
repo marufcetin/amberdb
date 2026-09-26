@@ -53,7 +53,7 @@ my $adb = AmberDB->new(
 # 2. RAM-Disk / Gecici Prototip Baslatma
 my $ram_adb = AmberDB->new(
     cfg  => { simple => 1, no_backup => 1 },
-    path => { dbase_dir => "/dev/shm/amber_cache" }
+    path => { dbase_dir => "/dev/shm/amberdb_cache" }
 );
 ```
 
