@@ -1753,7 +1753,11 @@ if ( $action eq 'insert_id' || $action eq 'insert' ) {
     }
 
     my $table = delete $method_args{table} // shift @pos_args;
-    my $id    = delete $method_args{id}    // 0;
+    my $id    = delete $method_args{id};
+    if ( !defined $id && @pos_args && $pos_args[0] =~ /^\d+$/ && $pos_args[0] > 0 ) {
+        $id = shift @pos_args;
+    }
+    $id //= 0;
     my $data  = delete $method_args{data};
 
     # Ensure database directory and skeleton exist on write
@@ -1772,7 +1776,7 @@ if ( $action eq 'insert_id' || $action eq 'insert' ) {
     }
 
     if ( !defined $data ) {
-        $data = scalar keys %method_args ? \%method_args : \@pos_args;
+        $data = scalar keys %method_args ? \%method_args : [ map { parse_value($_) } @pos_args ];
     }
     elsif ( !ref $data ) {
         my $parsed = parse_value($data);
@@ -1834,7 +1838,7 @@ if ( $action eq 'update_id' || $action eq 'update' ) {
     my $data  = delete $method_args{data};
 
     if ( !defined $data ) {
-        $data = scalar keys %method_args ? \%method_args : \@pos_args;
+        $data = scalar keys %method_args ? \%method_args : [ map { parse_value($_) } @pos_args ];
     }
     elsif ( !ref $data ) {
         my $parsed = parse_value($data);
