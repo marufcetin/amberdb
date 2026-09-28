@@ -658,13 +658,9 @@ sub has_schema {
     my ( $self, $tableid ) = @_;
     return 0 unless defined $tableid && length $tableid;
 
-    my $tbl_cache = $self->{_table}->{$tableid};
-    if ( $tbl_cache && exists $tbl_cache->{_has_schema} ) {
-        return $tbl_cache->{_has_schema};
-    }
-
     $self->table_info($tableid);
-    $tbl_cache = $self->{_table}->{$tableid};
+    my $tbl_cache = $self->{_table}->{$tableid};
+
     return ( $tbl_cache && $tbl_cache->{_has_schema} ) ? 1 : 0;
 }
 
