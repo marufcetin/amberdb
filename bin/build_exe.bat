@@ -17,7 +17,7 @@ if %ERRORLEVEL% neq 0 (
 if not exist "dist" mkdir dist
 
 echo [2/4] Packing bin\amberdb_cli.pl into dist\amberdb.exe...
-pp -o dist\amberdb.exe -Ilib -a "lib;lib" -M DB_File -M JSON::PP -M Archive::Tar -M Digest::SHA -M Unicode::Collate -M AmberDB -M AmberDB::Tools bin\amberdb_cli.pl
+pp -o dist\amberdb.exe -I lib -M DB_File -M JSON::PP -M Archive::Tar -M Digest::SHA -M Unicode::Collate -M AmberDB -M AmberDB::Tools bin\amberdb_cli.pl
 
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] Compilation failed!
