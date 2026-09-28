@@ -15,6 +15,12 @@ Revision history for AmberDB
           * Fixed AmberDB::recs_put to ensure single reference record payloads (HASH/ARRAY, e.g. 'data={...}') are passed through db_encode rather than stringified to 'HASH(0x...)'.
           * Verified complete recursive serialization and round-trip fidelity for deeply nested hashes and arrays inside array records (tested in t/amberdb_escape_encode.t).
 
+        - [CLI DEFAULT TABLE OUTPUT RENDERING & POSITIONAL ARGUMENTS]
+          * Configured clean, formatted ASCII box tables ('+----+----+') as default CLI output for single records ('read <table_name> <id>') and multi-record lists ('read all', 'search', 'fetch'), replacing legacy Data::Dumper fallback.
+          * Enhanced CLI positional argument parsing for multi-block records, enabling seamless scalar, JSON array, and JSON hash parameters directly via command line (e.g. 'amberdb insert items 0 "Mouse" \'["wireless","bt"]\' \'{"brand":"Razer"}\'').
+          * Preserved full backwards compatibility with explicit format switches: 'format=dumper' / 'dumper', 'format=json' / 'json', 'format=pretty' / 'pretty', and 'format=tsv' / 'tsv'.
+          * Added subtest 13 in t/amberdb_cli.t to verify default table output, column headers, and explicit dumper formatting.
+
 5.26.1  2026-09-28
         - [32-BIT PERL / CPAN TESTERS QUAD PACKING COMPATIBILITY]
           * Implemented transparent cross-platform 64-bit integer packing in AmberDB::Base::Encoder (_pack_ids, _unpack_ids, _pack_single_id).

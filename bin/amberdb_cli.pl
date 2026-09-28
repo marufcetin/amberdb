@@ -398,9 +398,151 @@ sub format_bytes {
 # OUTPUT FORMATTING
 # ============================================================================
 
+sub format_cell {
+    my ($val) = @_;
+    return '' unless defined $val;
+    if ( ref $val ) {
+        my $json = eval { JSON::PP->new->utf8(0)->canonical(1)->encode($val) };
+        if ( defined $json ) {
+            $json =~ s/\r?\n/ /g;
+            return $json;
+        }
+    }
+    return "$val";
+}
+
+sub render_table_box {
+    my ( $headers, $rows ) = @_;
+    return unless @$headers;
+
+    # 1. Calculate max widths
+    my @widths = map { length($_) } @$headers;
+    for my $row (@$rows) {
+        for my $i ( 0 .. $#$headers ) {
+            my $cell = format_cell( $row->[$i] );
+            $widths[$i] = length($cell) if length($cell) > $widths[$i];
+        }
+    }
+
+    # 2. Border lines
+    my $sep_line = "+" . join( "+", map { "-" x ( $_ + 2 ) } @widths ) . "+";
+
+    # 3. Print header
+    print $sep_line, "\n";
+    print "|";
+    for my $i ( 0 .. $#$headers ) {
+        printf( " %-${widths[$i]}s |", $headers->[$i] );
+    }
+    print "\n";
+    print $sep_line, "\n";
+
+    # 4. Print rows
+    for my $row (@$rows) {
+        print "|";
+        for my $i ( 0 .. $#$headers ) {
+            my $cell = format_cell( $row->[$i] );
+            printf( " %-${widths[$i]}s |", $cell );
+        }
+        print "\n";
+    }
+    print $sep_line, "\n";
+}
+
+our $current_table;
+
+sub render_records_table {
+    my ( $recs, $table ) = @_;
+    return unless $recs && ref $recs eq 'ARRAY' && @$recs;
+
+    # Check if records are [ $id, \%hash ] (document store records)
+    my $all_id_hash = 1;
+    for my $r (@$recs) {
+        if ( ref $r ne 'ARRAY' || @$r != 2 || ref $r->[1] ne 'HASH' ) {
+            $all_id_hash = 0;
+            last;
+        }
+    }
+
+    if ($all_id_hash) {
+        my %seen_keys;
+        for my $r (@$recs) {
+            for my $k ( keys %{ $r->[1] } ) {
+                $seen_keys{$k} = 1 unless $k eq 'id';
+            }
+        }
+        my @headers = ( 'id', sort keys %seen_keys );
+        my @rows;
+        for my $r (@$recs) {
+            my $row_data = { %{ $r->[1] }, id => $r->[0] };
+            push @rows, [ map { $row_data->{$_} } @headers ];
+        }
+        render_table_box( \@headers, \@rows );
+        return;
+    }
+
+    # Check if records are pure hashes: [ { ... }, { ... } ]
+    if ( ref $recs->[0] eq 'HASH' ) {
+        my %seen_keys;
+        for my $r (@$recs) {
+            next unless ref $r eq 'HASH';
+            for my $k ( keys %$r ) {
+                $seen_keys{$k} = 1 unless $k eq 'id';
+            }
+        }
+        my @headers = ( ( grep { ref $_ eq 'HASH' && exists $_->{id} } @$recs ) ? ('id') : (), sort keys %seen_keys );
+        my @rows;
+        for my $r (@$recs) {
+            push @rows, [ map { ref $r eq 'HASH' ? $r->{$_} : undef } @headers ];
+        }
+        render_table_box( \@headers, \@rows );
+        return;
+    }
+
+    # Positional fields: [ [ id, f1, f2 ], ... ]
+    my $max_cols = 0;
+    for my $r (@$recs) {
+        my $cnt = ref $r eq 'ARRAY' ? scalar(@$r) : 1;
+        $max_cols = $cnt if $cnt > $max_cols;
+    }
+
+    my @col_names;
+    if ( defined $table && length $table && defined $adb ) {
+        my $info = eval { $adb->table_info($table) };
+        if ( $info && ref $info eq 'HASH' && ref $info->{blocks} eq 'ARRAY' ) {
+            for my $b ( @{ $info->{blocks} } ) {
+                my $bname = ref $b eq 'HASH' ? ( $b->{name} // $b->{id} ) : $b;
+                push @col_names, $bname if defined $bname && length $bname;
+            }
+        }
+    }
+
+    my @headers = ('id');
+    for my $c ( 1 .. ( $max_cols - 1 ) ) {
+        my $name = $col_names[ $c - 1 ] // "col_$c";
+        push @headers, $name;
+    }
+
+    my @rows;
+    for my $r (@$recs) {
+        my @row;
+        if ( ref $r eq 'ARRAY' ) {
+            @row = @$r;
+            while ( @row < $max_cols ) {
+                push @row, undef;
+            }
+        }
+        else {
+            @row = ($r);
+        }
+        push @rows, \@row;
+    }
+    render_table_box( \@headers, \@rows );
+}
+
 sub output_result {
-    my ( $data, $format ) = @_;
+    my ( $data, $format, $table ) = @_;
     $format = lc( $format // '' );
+    $table //= $current_table;
 
     if ( $format eq 'json' ) {
         print encode_json($data), "\n";
@@ -452,20 +594,14 @@ sub output_result {
             print "[Found " . $data->{count} . " record(s)]\n";
             my $recs = $data->{records};
             if ( @$recs ) {
-                if ( ref $recs->[0] eq 'HASH' ) {
-                    my @keys = sort keys %{ $recs->[0] };
-                    print join( " | ", map { sprintf( "%-15s", $_ ) } @keys ), "\n";
-                    print "-" x ( 18 * scalar(@keys) ), "\n";
-                    for my $r (@$recs) {
-                        print join( " | ", map { sprintf( "%-15s", substr( ref $r->{$_} ? encode_json( $r->{$_} ) : ( $r->{$_} // "" ), 0, 15 ) ) } @keys ), "\n";
-                    }
-                }
-                else {
-                    for my $r (@$recs) {
-                        print Dumper($r);
-                    }
-                }
+                render_records_table( $recs, $table );
             }
+            return;
+        }
+
+        # Single record hash (e.g. from read_id with inflate=1)
+        if ( exists $data->{id} && !exists $data->{status} && !exists $data->{action} ) {
+            render_records_table( [ $data ], $table );
             return;
         }
 
@@ -485,16 +621,17 @@ sub output_result {
     }
 
     if ( ref $data eq 'ARRAY' ) {
-        if ( @$data && ref $data->[0] eq 'HASH' ) {
-            my @keys = sort keys %{ $data->[0] };
-            print join( " | ", map { sprintf( "%-15s", $_ ) } @keys ), "\n";
-            print "-" x ( 18 * scalar(@keys) ), "\n";
-            for my $r (@$data) {
-                print join( " | ", map { sprintf( "%-15s", substr( ref $r->{$_} ? encode_json( $r->{$_} ) : ( $r->{$_} // "" ), 0, 15 ) ) } @keys ), "\n";
-            }
+        if ( !@$data ) {
+            print "[0 records]\n";
+            return;
+        }
+        if ( ref $data->[0] ) {
+            # List of records: [ [ ... ], [ ... ] ] or [ { ... }, { ... } ]
+            render_records_table( $data, $table );
         }
         else {
-            print Dumper($data);
+            # Single record: [ $id, ... ] or [ $id, \%hash ]
+            render_records_table( [ $data ], $table );
         }
         return;
     }
@@ -1552,7 +1689,7 @@ if ( $action eq 'read_id' ) {
     else {
         $res = undef;
     }
-    output_result( $res, $opt_format );
+    output_result( $res, $opt_format, $table );
     exit 0;
 }
 
@@ -1566,13 +1703,13 @@ if ( $action eq 'read_all' ) {
 
     if ( !is_db_ready() || !table_file_exists($table) ) {
         my $res = normalize_list_result( $limit, $is_inflate );
-        output_result( $res, $opt_format );
+        output_result( $res, $opt_format, $table );
         exit 0;
     }
 
     my @results = $adb->read_all( $table, $offset, $limit, %method_args );
     my $res = normalize_list_result( $limit, $is_inflate, @results );
-    output_result( $res, $opt_format );
+    output_result( $res, $opt_format, $table );
     exit 0;
 }
 
@@ -1587,12 +1724,12 @@ if ( $action eq 'read_list' ) {
     die "[AMBERDB_ERROR] 'ids' parameter required for read_list\n" unless ref $ids eq 'ARRAY' && @$ids;
 
     if ( !is_db_ready() || !table_file_exists($table) ) {
-        output_result( [], $opt_format );
+        output_result( [], $opt_format, $table );
         exit 0;
     }
 
     my @recs = $adb->read_list( $table, $ids, \%method_args );
-    output_result( \@recs, $opt_format );
+    output_result( \@recs, $opt_format, $table );
     exit 0;
 }
 
@@ -1619,13 +1756,13 @@ if ( $action eq 'field_fetch' || $action eq 'fetch' ) {
 
     if ( !is_db_ready() || !table_file_exists($table) ) {
         my $res = normalize_list_result( $limit, $is_inflate );
-        output_result( $res, $opt_format );
+        output_result( $res, $opt_format, $table );
         exit 0;
     }
 
     my @results = $adb->field_fetch( $table, $block, $fetch, $offset, $limit, %method_args );
     my $res = normalize_list_result( $limit, $is_inflate, @results );
-    output_result( $res, $opt_format );
+    output_result( $res, $opt_format, $table );
     exit 0;
 }
 
@@ -1654,13 +1791,13 @@ if ( $action eq 'search_table' || $action eq 'search' ) {
 
     if ( !is_db_ready() || !table_file_exists($table) ) {
         my $res = normalize_list_result( $limit, $is_inflate );
-        output_result( $res, $opt_format );
+        output_result( $res, $opt_format, $table );
         exit 0;
     }
 
     my @results = $adb->search_table( $table, $query, %method_args );
     my $res = normalize_list_result( $limit, $is_inflate, @results );
-    output_result( $res, $opt_format );
+    output_result( $res, $opt_format, $table );
     exit 0;
 }
 

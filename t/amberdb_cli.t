@@ -396,5 +396,32 @@ subtest '12. Auto-provisioning ~/.amberdb workspace on first run' => sub {
     if ( defined $prev_h )  { $ENV{HOME} = $prev_h; }        else { delete $ENV{HOME}; }
 };
 
+# ---------------------------------------------------------------------------
+subtest '13. Default table view rendering vs explicit format' => sub {
+    plan tests => 5;
+
+    my $out_conn = `"$perl_bin" -Ilib "$cli_path" connect path-dbase_dir="$test_dbdir" format=json`;
+    my $token = decode_json($out_conn)->{token};
+
+    # Insert a document-store record
+    `"$perl_bin" -Ilib "$cli_path" $token insert tbl_table_view 1 data='{"name":"Ahmet","role":"admin"}'`;
+
+    # Read without format: should render box table by default
+    my $out_tbl = `"$perl_bin" -Ilib "$cli_path" $token read tbl_table_view 1`;
+    like( $out_tbl, qr/\+----+/, "Default output has box table border" );
+    like( $out_tbl, qr/\|\s*id\s*\|\s*name\s*\|\s*role\s*\|/, "Default output contains column headers" );
+    like( $out_tbl, qr/\|\s*1\s*\|\s*Ahmet\s*\|\s*admin\s*\|/, "Default output contains data row" );
+
+    # Read with explicit dumper format: should render Data::Dumper
+    my $out_dump = `"$perl_bin" -Ilib "$cli_path" $token read tbl_table_view 1 dumper`;
+    like( $out_dump, qr/\$VAR1\s*=/, "Explicit dumper format produces Data::Dumper output" );
+
+    # Read all with default table view
+    my $out_all = `"$perl_bin" -Ilib "$cli_path" $token read tbl_table_view all`;
+    like( $out_all, qr/\[Found 1 record\(s\)\]/, "read all outputs record count header" );
+
+    `"$perl_bin" -Ilib "$cli_path" $token disconnect`;
+};
+
 done_testing();
 
