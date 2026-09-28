@@ -1,5 +1,16 @@
 Revision history for AmberDB
 
+5.26.2  2026-09-28
+        - [STANDALONE EXECUTABLE BUILDER & CI RELEASE AUTOMATION]
+          * Resolved Strawberry Perl PAR::Packer ('pp') compilation failure on Windows by decoupling attached module search switch into separated '-I lib' arguments.
+          * Configured GitHub Actions build-exe workflow to automatically compile and smoke-test amberdb.exe on pushes to main and master branches.
+          * Enforced dynamic release tag formatting ('v<VERSION>_exe', e.g. 'v5.26.2_exe') to prevent refspec collisions with Git branch 'main' and keep binary releases isolated from source tags.
+          * Updated bin/build_exe.bat with fixed compiler flags and registered script in MANIFEST.
+
+        - [CLI ENGINE VERSION INTROSPECTION]
+          * Added '--version', '-v', and 'version' commands to bin/amberdb_cli.pl.
+          * Emits standard release banner 'AmberDB v<VERSION> (CLI)' or structured JSON schema when combined with 'format=json'.
+
 5.26.1  2026-09-28
         - [32-BIT PERL / CPAN TESTERS QUAD PACKING COMPATIBILITY]
           * Implemented transparent cross-platform 64-bit integer packing in AmberDB::Base::Encoder (_pack_ids, _unpack_ids, _pack_single_id).
