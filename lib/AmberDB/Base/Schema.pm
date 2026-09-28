@@ -896,7 +896,7 @@ sub table_infset {
         $table_str .= "\tblocks => [\n";
         my %seen;
         foreach my $blok ( @{ $tbl->{blocks} } ) {
-            next unless $blok->{id} && $blok->{name};
+            next unless ( defined $blok->{id} && length $blok->{id} ) && ( defined $blok->{name} && length $blok->{name} );
             next if $seen{ $blok->{id} }++;
             $table_str .= "\t\t{ id => \"$blok->{id}\",";
             $table_str .= " name => \"$blok->{name}\",";

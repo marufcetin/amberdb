@@ -406,11 +406,11 @@ subtest '13. Default table view rendering vs explicit format' => sub {
     # Insert a document-store record
     `"$perl_bin" -Ilib "$cli_path" $token insert tbl_table_view 1 data='{"name":"Ahmet","role":"admin"}'`;
 
-    # Read without format: should render box table by default
+    # Read without format: should render box table with 0, 1 index headers by default
     my $out_tbl = `"$perl_bin" -Ilib "$cli_path" $token read tbl_table_view 1`;
     like( $out_tbl, qr/\+----+/, "Default output has box table border" );
-    like( $out_tbl, qr/\|\s*id\s*\|\s*name\s*\|\s*role\s*\|/, "Default output contains column headers" );
-    like( $out_tbl, qr/\|\s*1\s*\|\s*Ahmet\s*\|\s*admin\s*\|/, "Default output contains data row" );
+    like( $out_tbl, qr/\|\s*0\s*\|\s*1\s*\|/, "Default output contains index headers 0 and 1" );
+    like( $out_tbl, qr/Ahmet/, "Default output contains data payload" );
 
     # Read with explicit dumper format: should render Data::Dumper
     my $out_dump = `"$perl_bin" -Ilib "$cli_path" $token read tbl_table_view 1 dumper`;

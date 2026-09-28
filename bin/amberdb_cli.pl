@@ -454,33 +454,7 @@ sub render_records_table {
     my ( $recs, $table ) = @_;
     return unless $recs && ref $recs eq 'ARRAY' && @$recs;
 
-    # Check if records are [ $id, \%hash ] (document store records)
-    my $all_id_hash = 1;
-    for my $r (@$recs) {
-        if ( ref $r ne 'ARRAY' || @$r != 2 || ref $r->[1] ne 'HASH' ) {
-            $all_id_hash = 0;
-            last;
-        }
-    }
-
-    if ($all_id_hash) {
-        my %seen_keys;
-        for my $r (@$recs) {
-            for my $k ( keys %{ $r->[1] } ) {
-                $seen_keys{$k} = 1 unless $k eq 'id';
-            }
-        }
-        my @headers = ( 'id', sort keys %seen_keys );
-        my @rows;
-        for my $r (@$recs) {
-            my $row_data = { %{ $r->[1] }, id => $r->[0] };
-            push @rows, [ map { $row_data->{$_} } @headers ];
-        }
-        render_table_box( \@headers, \@rows );
-        return;
-    }
-
-    # Check if records are pure hashes: [ { ... }, { ... } ]
+    # Case 1: Pure hashes (e.g. inflated records from inflate=1: [ { id => 1, ... } ])
     if ( ref $recs->[0] eq 'HASH' ) {
         my %seen_keys;
         for my $r (@$recs) {
@@ -498,28 +472,60 @@ sub render_records_table {
         return;
     }
 
-    # Positional fields: [ [ id, f1, f2 ], ... ]
+    # Case 2: Block-aligned records: [ [ id, block_1, block_2, ... ], ... ]
+    my @schema_blocks;
+    if ( defined $table && length $table && defined $adb ) {
+        my $info = eval { $adb->table_info($table) };
+        if ( $info && ref $info eq 'HASH' && $info->{blocks} ) {
+            if ( ref $info->{blocks} eq 'ARRAY' ) {
+                for my $i ( 0 .. $#{ $info->{blocks} } ) {
+                    my $b = $info->{blocks}->[$i];
+                    my $bname = ref $b eq 'HASH' ? ( $b->{name} // $b->{id} ) : $b;
+                    push @schema_blocks, $bname if defined $bname && length $bname;
+                }
+            }
+            elsif ( ref $info->{blocks} eq 'HASH' ) {
+                for my $k ( sort { $a <=> $b } keys %{ $info->{blocks} } ) {
+                    my $b = $info->{blocks}->{$k};
+                    my $bname = ref $b eq 'HASH' ? ( $b->{name} // $b->{id} ) : $b;
+                    push @schema_blocks, $bname if defined $bname && length $bname;
+                }
+            }
+        }
+    }
+
     my $max_cols = 0;
     for my $r (@$recs) {
         my $cnt = ref $r eq 'ARRAY' ? scalar(@$r) : 1;
         $max_cols = $cnt if $cnt > $max_cols;
     }
 
-    my @col_names;
-    if ( defined $table && length $table && defined $adb ) {
-        my $info = eval { $adb->table_info($table) };
-        if ( $info && ref $info eq 'HASH' && ref $info->{blocks} eq 'ARRAY' ) {
-            for my $b ( @{ $info->{blocks} } ) {
-                my $bname = ref $b eq 'HASH' ? ( $b->{name} // $b->{id} ) : $b;
-                push @col_names, $bname if defined $bname && length $bname;
-            }
-        }
+    my @headers;
+    my $has_schema = @schema_blocks ? 1 : 0;
+    my $schema_has_id_at_0 = 0;
+    if ( $has_schema && defined $schema_blocks[0] && $schema_blocks[0] =~ /^(?:id|ID)$/i ) {
+        $schema_has_id_at_0 = 1;
     }
 
-    my @headers = ('id');
-    for my $c ( 1 .. ( $max_cols - 1 ) ) {
-        my $name = $col_names[ $c - 1 ] // "col_$c";
-        push @headers, $name;
+    for my $c ( 0 .. ( $max_cols - 1 ) ) {
+        if ( $c == 0 ) {
+            if ($has_schema) {
+                push @headers, $schema_has_id_at_0 ? $schema_blocks[0] : 'id';
+            }
+            else {
+                push @headers, '0';
+            }
+        }
+        else {
+            if ($has_schema) {
+                my $s_idx = $schema_has_id_at_0 ? $c : ( $c - 1 );
+                my $name = $schema_blocks[$s_idx] // "$c";
+                push @headers, $name;
+            }
+            else {
+                push @headers, "$c";
+            }
+        }
     }
 
     my @rows;
