@@ -401,7 +401,7 @@ subtest '12. Auto-provisioning ~/.amberdb workspace on first run' => sub {
 
 # ---------------------------------------------------------------------------
 subtest '13. Default table view rendering vs explicit format' => sub {
-    plan tests => 6;
+    plan tests => 11;
 
     my $out_conn = `"$perl_bin" -Ilib "$cli_path" connect path-dbase_dir="$test_dbdir" format=json`;
     my $token = decode_json($out_conn)->{token};
@@ -424,9 +424,24 @@ subtest '13. Default table view rendering vs explicit format' => sub {
     chomp $out_tsv;
     like( $out_tsv, qr/^1\t\{.*"?name"?\s*:\s*"?Ahmet"?.*\}$/, "Explicit tsv format produces tab-separated line without newline splitting" );
 
+    # Insert second record with nested data hash and auto-id 0: data='{"data":{"name":"Maruf","age":"50"}}'
+    `"$perl_bin" -Ilib "$cli_path" $token insert tbl_table_view 0 data='{"data":{"name":"Maruf","age":"50"}}'`;
+
     # Read all with default table view
     my $out_all = `"$perl_bin" -Ilib "$cli_path" $token read tbl_table_view all`;
-    like( $out_all, qr/\[Found 1 record\(s\)\]/, "read all outputs record count header" );
+    like( $out_all, qr/\[Found 2 record\(s\)\]/, "read all outputs record count header" );
+    like( $out_all, qr/Maruf/, "nested hash payload preserved in table view" );
+
+    # Delete record 2
+    my $del_out = `"$perl_bin" -Ilib "$cli_path" $token delete tbl_table_view 2 json`;
+    my $del_json = eval { decode_json($del_out) };
+    is( $del_json->{status}, 'ok', "delete single record returns status ok" );
+    is( $del_json->{result}, 1, "delete single record returns result 1" );
+
+    # Read all after delete
+    my $out_after = `"$perl_bin" -Ilib "$cli_path" $token read tbl_table_view all`;
+    like( $out_after, qr/\[Found 1 record\(s\)\]/, "read all reflects deleted record" );
+    unlike( $out_after, qr/Maruf/, "deleted record no longer present" );
 
     `"$perl_bin" -Ilib "$cli_path" $token disconnect`;
 };

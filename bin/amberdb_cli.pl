@@ -2062,7 +2062,7 @@ if ( $action eq 'insert_id' || $action eq 'insert' ) {
 
     my $table = delete $method_args{table} // shift @pos_args;
     my $id    = delete $method_args{id};
-    if ( !defined $id && @pos_args && $pos_args[0] =~ /^\d+$/ && $pos_args[0] > 0 ) {
+    if ( !defined $id && @pos_args && $pos_args[0] =~ /^\d+$/ ) {
         $id = shift @pos_args;
     }
     $id //= 0;
@@ -2172,7 +2172,7 @@ if ( $action eq 'update_id' || $action eq 'update' ) {
     else {
         $res = $adb->update_id( $table, $id, $data );
     }
-    output_result( { status => 'ok', action => 'update_id', table => $table, id => $id, result => $res }, $opt_format );
+    output_result( { status => ( $res ? 'ok' : 'error' ), action => 'update_id', table => $table, id => $id, result => ( $res ? 1 : 0 ) }, $opt_format );
     exit 0;
 }
 
@@ -2199,7 +2199,7 @@ if ( $action eq 'delete_id' || $action eq 'delete' ) {
     }
 
     my $res = $adb->delete_id( $table, $id );
-    output_result( { status => 'ok', action => 'delete_id', table => $table, id => $id, result => $res }, $opt_format );
+    output_result( { status => ( $res ? 'ok' : 'not_found' ), action => 'delete_id', table => $table, id => $id, result => ( $res ? 1 : 0 ) }, $opt_format );
     exit 0;
 }
 

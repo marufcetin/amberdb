@@ -1503,7 +1503,7 @@ sub delete_id {
         $record   = $rec_h ? $rec_h->{$rid} : undef;
     }
 
-    if ( !$record ) {
+    if ( !defined $record ) {
         $self->table_close($file_path) unless ( $is_async_write || $use_ramdisk == 3 );
         $self->table_close($ram_file) if ( $use_ramdisk == 3 && $ram_file );
         unless ($is_txn) { $self->flock_close( $tableid, $rid ); }
@@ -2065,6 +2065,16 @@ sub deflate {
     my $table_info = $self->table_info($tableid);
     my $blocks = ( $table_info && ref( $table_info->{blocks} ) eq 'ARRAY' ) ? $table_info->{blocks} : undef;
 
+    # If no schema blocks defined, pass through without altering data
+    if ( !$blocks || !@$blocks ) {
+        return wantarray ? @records : ( @records == 1 ? $records[0] : \@records );
+    }
+
+    my %block_names;
+    for my $b (@$blocks) {
+        $block_names{ $b->{name} } = 1 if ref($b) eq 'HASH' && defined $b->{name};
+    }
+
     # Normalize incoming data container
     my @raw_inputs;
     my $single_input = 0;
@@ -2075,7 +2085,8 @@ sub deflate {
         elsif ( ref( $records[0] ) eq 'HASH' ) {
             # Check if this hash is a Hash of Hashes: { 101 => { ... }, 102 => { ... } }
             my @vals = values %{ $records[0] };
-            if ( @vals && !grep { ref($_) ne 'HASH' } @vals ) {
+            my $has_block_key = grep { $block_names{$_} } keys %{ $records[0] };
+            if ( !$has_block_key && @vals && !grep { ref($_) ne 'HASH' } @vals ) {
                 for my $rid ( sort { ( $a =~ /^\d+$/ && $b =~ /^\d+$/ ) ? $a <=> $b : $a cmp $b } keys %{ $records[0] } ) {
                     my $sub_h = { %{ $records[0]->{$rid} } };
                     $sub_h->{id} //= $rid;
@@ -2093,11 +2104,6 @@ sub deflate {
     }
     else {
         @raw_inputs = @records;
-    }
-
-    # If no schema blocks defined, pass through
-    if ( !$blocks || !@$blocks ) {
-        return wantarray ? @raw_inputs : ( $single_input ? $raw_inputs[0] : \@raw_inputs );
     }
 
     # Determine repeating block index (repeat_start) if defined in table_info or blocks

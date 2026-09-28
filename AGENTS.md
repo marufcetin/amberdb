@@ -17,3 +17,7 @@
 - **Git (MSYS2)**: `C:\msys64\usr\bin\git.exe`
   - Because `C:\msys64` is outside the sandboxed workspace, run commands with `BypassSandbox: true`.
 
+## Kodlama standartları
+
+- Kodlama için şu linkteki kurallara dikkat edilmesi gerekir: 
+C:/Apache24/htdocs/eticaretim/docs/General_Rules.md
