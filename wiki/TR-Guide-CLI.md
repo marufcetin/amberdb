@@ -47,50 +47,93 @@
 
 ---
 
-## 2. Hizli Baslangic & Durum Panosu (Dashboard)
+## 2. Windows Kurulumu & PATH'e Ekleme (amberdb.exe)
 
-Hicbir arguman verilmeden calistirildiginda veya `tables` / `status` komutuyla veritabanindaki tablolar ASCII tablo olarak listelenir:
+Windows ortamında bilgisayarınızda Perl kurulu olmasına gerek kalmadan, doğrudan tek bir dosya (`amberdb.exe`) ile AmberDB'yi kullanabilirsiniz:
 
-```bash
-amberdb
-# veya:
-amberdb tables
-# veya JSON ciktisi:
-amberdb tables json
-```
-
-Cikti:
-```text
-AmberDB v5.25.0 | Data Dir: /var/data/amberdb
-================================================================================
-Table Name                   Records    Size         Schema     Indexes        
---------------------------------------------------------------------------------
-catalog_product              14520      4.2 MB       OK         inx, src, fld  
-member_users                 2310       720.0 KB     OK         inx, fld       
-orders_cart                  184        92.0 KB      Simple     inx            
---------------------------------------------------------------------------------
-Total Tables: 3 | Total Records: 17014 | Total Size: 5.0 MB
-```
+1. [GitHub Releases](https://github.com/marufcetin/amberdb/releases) sayfasından en güncel `amberdb-win64.zip` paketini indirin.
+2. Arşivi istediğiniz bir klasöre açın (örneğin: `C:\amberdb`).
+3. Klasörü `PATH` ortam değişkenine ekleyin:
+   - **Tek Satırda PowerShell ile (Önerilen):**
+     ```powershell
+     [Environment]::SetEnvironmentVariable("Path", $env:Path + ";C:\amberdb", "User")
+     ```
+   - **Windows Grafik Arayüzü (GUI) ile:**
+     `Başlat` menüsüne `Ortam Değişkenleri` (Environment Variables) yazın -> `Kullanıcı değişkenleri` altındaki `Path` seçeneğini düzenleyin -> `Yeni` diyerek `C:\amberdb` yolunu ekleyin ve `Tamam`'a basın.
+4. Yeni bir komut satırı (CMD veya PowerShell) açarak her yerden doğrudan çağırın:
+   ```cmd
+   amberdb tables
+   amberdb read products 10
+   ```
 
 ---
 
-## 3. Oturum Yonetimi (Session Commands)
+## 3. Çalışma Modları & Hızlı Başlangıç
 
-AmberDB sunucusuz (embedded) calistigi icin oturumlar komutlar arasinda durum (state) tasimanin en temiz yoludur.
+AmberDB CLI üç temel çalışma biçimine sahiptir:
 
-### 3.1 Oturum Baslatma (`connect`)
-```bash
-amberdb connect path-dbase_dir=/var/data/amberdb cfg-language=tr
-```
-Cikti:
+### 3.1 Altyapı ve Çalışma Alanı Kurulumu (`setup`)
+- **Global Çalışma Alanı:**
+  ```bash
+  amberdb setup
+  ```
+  Kullanıcının ev dizininde `~/.amberdb/` alanını oluşturur (`session/`, `config/`). Merkezi veritabanları bu alan altında tutulur.
+- **Özel Klasör Kurulumu:**
+  ```bash
+  amberdb setup ./dbstore
+  # veya:
+  amberdb setup /var/data/amberdb
+  ```
+  Hedef dizinde tam fiziksel AmberDB klasör mimarisini (`table/`, `schema/`, `journal/`, `lock/`, `session/`, `config/`, `backup/`, `ramdisk/`) ve varsayılan `core.conf` yapılandırmasını kurar.
+
+### 3.2 İsimlendirilmiş Oturum Yönetimi (`connect` & `disconnect`)
+AmberDB sunucusuz (embedded) çalıştığı için oturumlar komutlar arasında durum (state) taşımanın en temiz yoludur:
+- **Merkezi Havuzda Oturum Açma:**
+  ```bash
+  amberdb connect eticaretim
+  ```
+  `~/.amberdb/eticaretim` altında veritabanını hazırlar ve 4 haneli bir oturum anahtarı (token) üretir.
+- **Özel Bir Dizinde Oturum Açma (`ad:dizin`):**
+  ```bash
+  amberdb connect eticaretim:./dbstore
+  # veya:
+  amberdb connect eticaretim:C:/projem/dbstore
+  ```
+  Hedef dizinde veritabanı iskeletini otomatik oluşturur. Oturum dosyasına (`sess_<token>`) **mutlak kanonik dosya yolu** kaydedildiği için, oturum token'ı bilgisayarın herhangi bir yerinden çağrıldığında hedef veritabanını kaybetmez!
+
 ```text
 [AMBERDB] Connected successfully.
 Session Token : 1245
-Data Dir      : /var/data/amberdb
-Config        : {"language":"tr"}
+Database      : eticaretim
+Data Dir      : C:/projem/dbstore
+Session File  : C:/Users/kullanici/.amberdb/session/sess_1245
 ```
 
-### 3.2 Tablo Niteliklerini Dinamik Degistirme (`attr`)
+Oturum anahtarıyla çalıştırma:
+```bash
+amberdb 1245 tables
+amberdb 1245 read products 10
+amberdb 1245 disconnect
+```
+
+### 3.3 Doğrudan / Yalın Kullanım (Stateless CRUD)
+Herhangi bir oturum anahtarı (`token`) belirtilmeden doğrudan çalıştırıldığında:
+- **Dizin Tespiti:** Yalnızca bulunulan dizindeki `./dbstore` klasörüne bakar. (Fallback yoktur, doğrudan yerel `./dbstore` kullanılır.)
+- **Okuma Güvenliği:** Okuma işlemlerinde (`tables`, `read`, `search`, `count`, `info`, `delete`) `./dbstore` dizini veya tablo yoksa boş döner (`null` / `0` / boş tablo); kesinlikle arka planda çöp klasör oluşturmaz.
+- **Yazmada Otomatik İskelet:** Sadece yazma işleminde (`insert`), `./dbstore` henüz yoksa gerekli klasör iskeletini (`table/`, `schema/`, `journal/`, `lock/`, `session/`, `config/`, vb.) ve `core.conf` dosyasını anında oluşturup kaydı yazar.
+
+```bash
+# Bulunulan projedeki tabloları listele (./dbstore yoksa boş döner)
+amberdb tables
+
+# Tekil kayıt oku (tablo veya ./dbstore yoksa null / boş döner)
+amberdb read products 10 json
+
+# Kayıt ekle (bulunulan dizinde ./dbstore yoksa otomatik kurar ve yazar)
+amberdb insert users 0 data='{"name":"Ahmet"}'
+```
+
+### 3.4 Tablo Niteliklerini Dinamik Degistirme (`attr`)
 Oturum boyunca gecerli olacak dinamik arama bloklari veya iliskileri ayarlar:
 ```bash
 # Sadece 1. blokta arama yapilmasini sagla:

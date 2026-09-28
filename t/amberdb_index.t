@@ -19,9 +19,9 @@ use_ok('AmberDB::Tools')              or BAIL_OUT('Cannot load AmberDB::Tools');
 
 subtest 'Index Methods Existence' => sub {
     plan tests => 17;
-    can_ok( 'AmberDB::Base::Index', 'get_fieldlist' );
-    can_ok( 'AmberDB::Base::Index', 'set_fieldlist' );
     can_ok( 'AmberDB::Base::Index', 'field_to_list' );
+    can_ok( 'AmberDB::Base::Index', 'unique_check' );
+    can_ok( 'AmberDB::Base::Index', 'unique_add' );
     can_ok( 'AmberDB::Base::Index', 'rdbm_target' );
     can_ok( 'AmberDB::Base::Index', 'repeat_fields' );
     can_ok( 'AmberDB::Base::Facet', 'facet_rules' );
@@ -40,9 +40,9 @@ subtest 'Index Methods Existence' => sub {
 
 subtest 'AmberDB Inheritance of Index Methods' => sub {
     plan tests => 17;
-    can_ok( 'AmberDB', 'get_fieldlist' );
-    can_ok( 'AmberDB', 'set_fieldlist' );
     can_ok( 'AmberDB', 'field_to_list' );
+    can_ok( 'AmberDB', 'unique_check' );
+    can_ok( 'AmberDB', 'unique_add' );
     can_ok( 'AmberDB', 'rdbm_target' );
     can_ok( 'AmberDB', 'repeat_fields' );
     can_ok( 'AmberDB', 'facet_rules' );

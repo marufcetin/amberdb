@@ -514,7 +514,7 @@ sub set_fields {
                 @num_ids = grep { /^\d+$/ } split /[,;]/, $clean;
             }
             else {
-                @num_ids = $adb->set_fieldlist( $val, $table_path, $table_info, $line );
+                @num_ids = $adb->field_to_list( $val, $table_path, $table_info, $line );
             }
 
             my %seen_nid;
@@ -616,6 +616,24 @@ sub set_filters {
         @records = $adb->read_all($tableid, 0, 0, no_index => 1, dir => 'asc');
     }
     scalar @records or return;
+
+    # Columnar facet architecture with dictionary (.unq) support
+    if ( exists $table_info->{facet_block} && ref($table_info->{facet_block}) eq 'ARRAY' && @{ $table_info->{facet_block} } ) {
+        $self->{say} .= "    - Columnar facet index (.fac, .unq) olusturuluyor: \n";
+        unlink $fac_path if -e $fac_path;
+        unlink "$table_path.unq" if -e "$table_path.unq";
+
+        my $batch_size = 5000;
+        for ( my $i = 0; $i < @records; $i += $batch_size ) {
+            my $end = $i + $batch_size - 1;
+            $end = $#records if $end > $#records;
+            my @batch = @records[ $i .. $end ];
+            $adb->facet_add( $table_path, $table_info, \@batch );
+        }
+        $self->{say} .= "          * $fac_path \n";
+        $self->{say} .= "          * $table_path.unq \n" if -e "$table_path.unq";
+        return 1;
+    }
 
     unlink($tmp_path);
 

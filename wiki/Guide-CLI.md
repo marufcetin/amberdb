@@ -47,50 +47,93 @@
 
 ---
 
-## 2. Quick Start & Dashboard
+## 2. Windows Setup & Adding to PATH (amberdb.exe)
 
-Run without arguments or use `tables` / `status` to render the ASCII database overview:
+On Windows, you can run AmberDB with zero external dependencies (no Perl installation required) using the standalone `amberdb.exe`:
 
-```bash
-amberdb
-# or:
-amberdb tables
-# or JSON output:
-amberdb tables json
-```
-
-Output:
-```text
-AmberDB v5.25.0 | Data Dir: /var/data/amberdb
-================================================================================
-Table Name                   Records    Size         Schema     Indexes        
---------------------------------------------------------------------------------
-catalog_product              14520      4.2 MB       OK         inx, src, fld  
-member_users                 2310       720.0 KB     OK         inx, fld       
-orders_cart                  184        92.0 KB      Simple     inx            
---------------------------------------------------------------------------------
-Total Tables: 3 | Total Records: 17014 | Total Size: 5.0 MB
-```
+1. Download the latest `amberdb-win64.zip` from [GitHub Releases](https://github.com/marufcetin/amberdb/releases).
+2. Extract the archive to your preferred directory (e.g. `C:\amberdb`).
+3. Add the directory to your user `PATH`:
+   - **One-line PowerShell command (Recommended):**
+     ```powershell
+     [Environment]::SetEnvironmentVariable("Path", $env:Path + ";C:\amberdb", "User")
+     ```
+   - **Windows GUI:**
+     Open `Start` -> Search `Environment Variables` -> Under `User variables`, edit `Path` -> Click `New` -> Add `C:\amberdb` -> Save.
+4. Open a new terminal (CMD or PowerShell) and run `amberdb` from anywhere:
+   ```cmd
+   amberdb tables
+   amberdb read products 10
+   ```
 
 ---
 
-## 3. Session Management
+## 3. Execution Modes & Quick Start
 
-Because AmberDB is an embedded engine, sessions are the idiomatic mechanism to persist runtime schema attributes, language, and security flags across successive CLI calls.
+AmberDB CLI operates in three distinct, deterministic execution modes:
 
-### 3.1 Starting a Session (`connect`)
-```bash
-amberdb connect path-dbase_dir=/var/data/amberdb cfg-language=en
-```
-Output:
+### 3.1 Infrastructure & Workspace Provisioning (`setup`)
+- **Global Environment Setup:**
+  ```bash
+  amberdb setup
+  ```
+  Initializes the `~/.amberdb/` workspace under the user's home directory (`session/`, `config/`). Central databases reside under this root.
+- **Custom Directory Setup:**
+  ```bash
+  amberdb setup ./dbstore
+  # or:
+  amberdb setup /var/data/amberdb
+  ```
+  Provisions the physical AmberDB directory architecture (`table/`, `schema/`, `journal/`, `lock/`, `session/`, `config/`, `backup/`, `ramdisk/`) and baseline `core.conf` in a single command.
+
+### 3.2 Named Session Management (`connect` & `disconnect`)
+Because AmberDB is an embedded engine, sessions persist runtime schema attributes, language, and paths across calls:
+- **Connecting to Central Pool:**
+  ```bash
+  amberdb connect myproject
+  ```
+  Prepares `~/.amberdb/myproject` and issues a 4-digit token.
+- **Connecting to Custom Directory (`name:path`):**
+  ```bash
+  amberdb connect myproject:./dbstore
+  # or:
+  amberdb connect myproject:C:/data/dbstore
+  ```
+  Provisions directory skeleton if not present and binds it. Crucially, the **canonical absolute path** is saved in the session registry (`sess_<token>`), ensuring commands executed with the token work from any directory across the entire filesystem without losing context!
+
 ```text
 [AMBERDB] Connected successfully.
 Session Token : 1245
-Data Dir      : /var/data/amberdb
-Config        : {"language":"en"}
+Database      : myproject
+Data Dir      : C:/data/dbstore
+Session File  : C:/Users/user/.amberdb/session/sess_1245
 ```
 
-### 3.2 Dynamic Table Attributes (`attr`)
+Running with session token:
+```bash
+amberdb 1245 tables
+amberdb 1245 read products 10
+amberdb 1245 disconnect
+```
+
+### 3.3 Direct / Stateless Execution (Stateless CRUD)
+When invoked bare without a session token:
+- **Directory Detection:** Strictly targets `./dbstore` in the current working directory. (No fallback; directly accesses local `./dbstore`.)
+- **Read Safety:** Read commands (`tables`, `read`, `search`, `count`, `info`, `delete`) return empty/null/0 without creating `./dbstore` if the folder or table does not exist.
+- **On-Demand Write Provisioning:** Only write commands (`insert`) auto-provision the directory skeleton (`table/`, `schema/`, `journal/`, `lock/`, `session/`, `config/`, etc.) and `core.conf` on-the-fly in `./dbstore` if missing before inserting.
+
+```bash
+# Overview of current project database (returns empty if ./dbstore does not exist)
+amberdb tables
+
+# Read record (returns null/empty if table or ./dbstore doesn't exist)
+amberdb read products 10 json
+
+# Insert record (auto-provisions ./dbstore skeleton if missing)
+amberdb insert users 0 data='{"name":"John"}'
+```
+
+### 3.4 Dynamic Table Attributes (`attr`)
 Configure runtime schema adjustments valid for the lifetime of the session:
 ```bash
 # Narrow search scope to block 1 (e.g., title only):

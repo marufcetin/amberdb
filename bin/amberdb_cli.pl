@@ -31,16 +31,35 @@ use AmberDB::Tools;
 
 $| = 1;
 
-our $adb = AmberDB->new( path => { dbase_dir => 'dbstore' }, connect => { username => 'cli' } );
+our $adb = AmberDB->new( path => { dbase_dir => 'dbstore' }, connect => { username => 'cli' }, config => { no_mkdir => 1 } );
 our $tools = AmberDB::Tools->new($adb);
 
 # ============================================================================
-# SESSION REGISTRY (.amberdb/session/)
-# Stores session files per active session under .amberdb/session/sess_$token
-# in the current working directory where CLI is executed.
+# ============================================================================
+# SESSION REGISTRY (~/.amberdb/session/)
+# Stores session files per active session under ~/.amberdb/session/sess_$token
 # ============================================================================
 
-our $CLI_SESS_DIR = ".amberdb/session";
+my $user_home = $ENV{USERPROFILE} // $ENV{HOME} // '.';
+$user_home =~ s{\\}{/}g;
+our $AMBERDB_HOME = "$user_home/.amberdb";
+our $CLI_SESS_DIR = "$AMBERDB_HOME/session";
+
+sub resolve_abs_path {
+    my ($path) = @_;
+    return '' unless defined $path && length $path;
+    $path =~ s{\\}{/}g;
+    my $abs = eval { abs_path($path) };
+    if ( defined $abs && length $abs ) {
+        $abs =~ s{\\}{/}g;
+        return $abs;
+    }
+    my $cwd = eval { getcwd() } // '.';
+    $cwd =~ s{\\}{/}g;
+    my $rel = File::Spec->rel2abs( $path, $cwd );
+    $rel =~ s{\\}{/}g;
+    return $rel;
+}
 
 sub cli_session_file {
     my ($token) = @_;
@@ -52,7 +71,7 @@ sub get_session_path {
     my ($token) = @_;
     $token //= '';
 
-    # 1. If token is provided, check .amberdb/session/sess_$token
+    # 1. If token is provided, check ~/.amberdb/session/sess_$token
     if ( $token ) {
         my $file = cli_session_file($token);
         if ( -f $file && open my $fh, '<', $file ) {
@@ -78,15 +97,18 @@ sub set_session_path {
     return unless defined $token && length $token;
     make_path($CLI_SESS_DIR) unless -d $CLI_SESS_DIR;
 
+    my $abs_path = resolve_abs_path($db_path);
+
     my $file = cli_session_file($token);
     if ( open my $fh, '>', $file ) {
         if ($sess_data) {
+            $sess_data->{path}->{dbase_dir} = $abs_path if $sess_data->{path};
             print $fh encode_json($sess_data);
         }
         else {
             print $fh encode_json( {
                 token => $token,
-                path  => { dbase_dir => $db_path },
+                path  => { dbase_dir => $abs_path },
             } );
         }
         close $fh;
@@ -97,7 +119,7 @@ sub del_session_path {
     my ($token) = @_;
     return unless defined $token && length $token;
 
-    # Delete .amberdb/session/sess_$token
+    # Delete ~/.amberdb/session/sess_$token
     my $file = cli_session_file($token);
     unlink $file if defined $file && -f $file;
 }
@@ -117,12 +139,12 @@ my $from_cli_args = 0;
 for (my $i = 0; $i < @ARGV; $i++) {
     my $arg = $ARGV[$i];
     if ( $arg =~ /^--(?:db|dbase_dir)=(.*)$/i || $arg =~ /^(?:path-dbase_dir|db)=(.*)$/i ) {
-        $target_db = $1 if defined $1 && length $1;
+        $target_db = resolve_abs_path($1) if defined $1 && length $1;
         $from_cli_args = 1;
         last;
     }
     elsif ( ( $arg =~ /^--(?:db|dbase_dir)$/i || $arg =~ /^-d$/i ) && $i + 1 < @ARGV && $ARGV[$i + 1] !~ /^-/ ) {
-        $target_db = $ARGV[$i + 1];
+        $target_db = resolve_abs_path($ARGV[$i + 1]);
         $from_cli_args = 1;
         last;
     }
@@ -153,17 +175,13 @@ if ( !defined $target_db ) {
     }
 }
 
-# 4. Argümandan gelmiyorsa: bulunduğu dizinde dbstore oluşturur
+# 4. Argümandan veya oturumdan gelmiyorsa: doğrudan yerel ./dbstore kullanılır (fallback yok)
 if ( !defined $target_db || !length $target_db ) {
     $target_db = "dbstore";
-    make_path($target_db) unless -d $target_db;
 }
-else {
-    make_path($target_db) unless -d $target_db;
-}
-$target_db = eval { abs_path($target_db) } // $target_db;
+$target_db = resolve_abs_path($target_db);
 
-# şimdi datadiri atama yap
+# Datadir ataması (DİKKAT: Henüz diskte dizin oluşturulmaz! Sadece insert veya setup anında oluşturulur)
 $adb->set_datadir($target_db);
 
 # Auto-detect database name for CLI context (connect.pl -> core.conf -> path pattern)
@@ -293,11 +311,6 @@ sub resolve_active_token {
     my ( $cli_token, $allow_last_token ) = @_;
     return $cli_token if defined $cli_token && length $cli_token;
     return $ENV{AMBERDB_TOKEN} if defined $ENV{AMBERDB_TOKEN} && length $ENV{AMBERDB_TOKEN};
-    if ($allow_last_token) {
-        # Check active session in .amberdb/session/sess_* by mtime
-        my ($latest_tok) = get_session_path();
-        return $latest_tok if defined $latest_tok && length $latest_tok;
-    }
     return undef;
 }
 
@@ -555,6 +568,7 @@ while ( $arg_idx < @ARGV ) {
 
 # Step 2: Known action definitions
 my %known_actions = map { $_ => 1 } qw(
+    setup install ramdisk
     connect disconnect path config cfg attr table_attr user users
     status tables list info table_info read read_id read_all read_list
     search search_table fetch field_fetch count table_count
@@ -777,6 +791,7 @@ for my $raw (@raw_tokens) {
 # Step 6: Action alias normalization
 if ( defined $opt_action ) {
     my $act = lc($opt_action);
+    $opt_action = 'setup'          if $act eq 'setup' || $act eq 'install';
     $opt_action = 'status'         if $act eq 'tables' || $act eq 'list';
     $opt_action = 'user'           if $act eq 'users';
     $opt_action = 'config'         if $act eq 'cfg';
@@ -852,30 +867,30 @@ sub show_usage {
 AmberDB CLI v$AmberDB::VERSION - Embedded Database Console & Management Tool
 
 Kullanım:
-  amberdb [token] <komut> [parametreler...] [anahtar=değer...]
+  amberdb [eylem|token] [tablo] [parametreler...]
 
-Doğrudan (Oturumsuz) Kullanım:
+Kullanım Biçimleri:
+
+1. Doğrudan Yerel Kullanım (Varsayılan - Yerel ./dbstore):
+  amberdb tables                              # Bulunulan dizindeki ./dbstore tablolarını listeler
   amberdb read products 10                    # ID ile tekil kayıt okuma
   amberdb read products 10 inflate=1 json     # Şema genişletmeli JSON okuma
-  amberdb read products all 0 20 keys_only=1  # Sayfalamalı ve sıralı okuma
   amberdb search products "kulaklık" limit=10 # Tam metin ve fonetik arama
-  amberdb fetch orders 2 completed            # Blok alan değeri filtreleme
-  amberdb info products                       # Tablo şema yapısını listeleme
-  amberdb count products                      # Toplam kayıt sayısı
-  amberdb tables                              # Tüm tabloların durum panosu
-
-Oturum Komutları (Session Management):
-  amberdb connect <database>                  # Oturum açar (örn: amberdb connect eticaretim)
-  amberdb connect <database> [user] [pass]    # Kimlik bilgileri ile oturum açar
-  amberdb 1245 attr products search_block=[1] # Oturumda tablo şema niteliklerini belirleme
-  amberdb 1245 config no_write=1              # Oturumda salt-okunur mod
-  amberdb 1245 path dbase_dir=/var/data       # Oturum veri dizinini değiştirme
-  amberdb 1245 disconnect                     # Oturumu sonlandırır
-
-Veri Eylemleri (CRUD & Arama):
-  amberdb insert users 0 data='{"name":"Ali"}'
+  amberdb insert users 0 data='{"name":"Ali"}'# Kayıt ekler (yoksa ./dbstore oluşturur)
   amberdb update users 10 data='{"role":"admin"}'
   amberdb delete users 10
+
+2. İsimlendirilmiş Oturum (Session Management):
+  amberdb connect <database>                  # ~/.amberdb/<database> havuzuna bağlanır
+  amberdb connect <database>:<path>           # Özel bir klasöre bağlanır (örn: mydb:./dbstore)
+  amberdb 1245 tables                         # 1245 nolu oturumun tablolarını listeler
+  amberdb 1245 read products 10               # 1245 nolu oturumda okuma yapar
+  amberdb 1245 disconnect                     # Oturumu sonlandırır
+
+3. Altyapı ve Kurulum:
+  amberdb setup                               # ~/.amberdb global çalışma alanını kurar
+  amberdb setup [dir]                         # Özel bir dizinde veritabanı iskeleti kurar
+  amberdb setup ramdisk [start|stop|status]   # RAM-disk sürücü yönetimi
 
 Bakım ve Yönetim Eylemleri:
   amberdb update storage [--check] [--force]  # Dizin & ABR v5 veri biçimi migrasyonu
@@ -912,30 +927,68 @@ if ( $opt_help || ( defined $opt_action && $opt_action eq 'help' ) ) {
 # ============================================================================
 
 if ( defined $opt_action && $opt_action eq 'connect' ) {
-    my $conn_db = $opt_database // shift @pos_args;
+    my $conn_arg = $opt_database // shift @pos_args;
+    my ( $conn_db, $custom_path );
 
-    if ( defined $conn_db && ( $conn_db eq 'dbstore' || $conn_db =~ m{[/\\\\]} ) ) {
-        die "[AMBERDB_ERROR] '$conn_db' is a directory path/name, not a valid database name. Database name is expected after 'connect'. Specify data directory with --db=<dir> if needed. Usage: amberdb connect <database_name> [user] [pass]\n";
+    if ( defined $conn_arg ) {
+        if ( $conn_arg =~ /^([a-zA-Z0-9_\-]+):(.*)$/ ) {
+            $conn_db     = $1;
+            $custom_path = $2;
+        }
+        else {
+            $conn_db = $conn_arg;
+        }
+    }
+
+    if ( defined $conn_db && ( $conn_db eq 'dbstore' || ( $conn_db =~ m{[/\\\\]} && !defined $custom_path ) ) ) {
+        die "[AMBERDB_ERROR] '$conn_db' is a directory path/name, not a valid database name. Database name is expected after 'connect'. For custom directory use format: <dbname>:<path> (e.g. amberdb connect mydb:./dbstore) or specify --db=<dir>.\n";
     }
 
     $conn_db //= $detected_dbname;
+    unless ( defined $conn_db && length $conn_db ) {
+        die "[AMBERDB_ERROR] Database name required. Usage: amberdb connect <database_name> (or <database_name>:<path>)\n";
+    }
 
-    # Even if username is entered differently, CLI always operates and authenticates as 'cli'
+    my $target_data_dir;
+    if ( defined $custom_path && length $custom_path ) {
+        $target_data_dir = resolve_abs_path($custom_path);
+    }
+    elsif ( $explicit_db ) {
+        $target_data_dir = $adb->path('dbase_dir');
+    }
+    else {
+        # Central store under ~/.amberdb/<dbname>
+        $target_data_dir = "$AMBERDB_HOME/$conn_db";
+    }
+    $target_data_dir = resolve_abs_path($target_data_dir);
+
+    # Ensure target data directory and skeleton exist
+    make_path(
+        "$target_data_dir/table", "$target_data_dir/schema", "$target_data_dir/journal",
+        "$target_data_dir/lock",  "$target_data_dir/session", "$target_data_dir/config",
+        "$target_data_dir/backup", "$target_data_dir/ramdisk"
+    );
+    my $conf_file = "$target_data_dir/config/core.conf";
+    if ( !-f $conf_file && open my $cfh, '>', $conf_file ) {
+        print $cfh "site_id        $conn_db\nlanguage       tr\n";
+        close $cfh;
+    }
+
+    $adb->set_datadir($target_data_dir);
+    $adb->{_connect}->{database} = $conn_db;
+    $adb->clear_cache('ramdisk');
+    $adb->ramdisk_setup();
+
+    # Authenticate and generate token
     my $conn_user = 'cli';
     my $entered_user = shift @pos_args if @pos_args;
     my $conn_pass = $opt_pass // shift @pos_args // '';
 
-    if ( defined $conn_db && length $conn_db ) {
-        $adb->{_connect}->{database} = $conn_db;
-        $adb->clear_cache('ramdisk');
-        $adb->ramdisk_setup();
-    }
-
     my $token = eval {
         $adb->connect(
-            ( defined $conn_db && length $conn_db ? ( database => $conn_db ) : () ),
+            database => $conn_db,
             username => $conn_user,
-            ( defined $conn_pass                  ? ( password => $conn_pass ) : () ),
+            ( defined $conn_pass && length $conn_pass ? ( password => $conn_pass ) : () ),
         );
     };
     if ( $@ || !$token ) {
@@ -944,29 +997,40 @@ if ( defined $opt_action && $opt_action eq 'connect' ) {
         die "[AMBERDB_ERROR] $err\n";
     }
 
-    my $actual_file = session_file($token);
+    # Save session with canonical absolute path in ~/.amberdb/session/sess_$token
+    my $sess_data = {
+        token    => $token,
+        database => $conn_db,
+        username => $conn_user,
+        path     => { dbase_dir => $target_data_dir },
+        cfg      => $adb->config(),
+    };
+    set_session_path( $token, $target_data_dir, $sess_data );
+
+    my $actual_file = cli_session_file($token);
 
     if ( defined $opt_format && $opt_format eq 'json' ) {
         print encode_json( {
             status       => 'connected',
             token        => $token,
             session_file => $actual_file,
-            database     => $adb->connect('database'),
-            username     => $adb->connect('username'),
-            path         => $adb->path(),
+            database     => $conn_db,
+            username     => $conn_user,
+            path         => { dbase_dir => $target_data_dir },
             cfg          => $adb->config(),
         } ), "\n";
     }
     else {
         print "[AMBERDB] Connected successfully.\n";
         print "Session Token : $token\n";
+        print "Database      : $conn_db\n";
+        print "Data Dir      : $target_data_dir\n";
         print "Session File  : $actual_file\n";
-        print "Database      : " . ($adb->connect('database') || '') . "\n";
-        print "User          : " . ($adb->connect('username') || '') . "\n";
-        print "Data Dir      : " . $adb->path('dbase_dir') . "\n";
-        print "Config        : " . encode_json( $adb->config() ) . "\n" if %{ $adb->config() };
-        print "To use in shell:\n";
-        print "  export AMBERDB_TOKEN=$token\n";
+        print "\nUsage with Token:\n";
+        print "  amberdb $token tables\n";
+        print "  amberdb $token read <table_name> <id>\n";
+        print "Or set environment variable in current shell:\n";
+        print "  export AMBERDB_TOKEN=$token  (Windows CMD: set AMBERDB_TOKEN=$token)\n";
     }
     exit 0;
 }
@@ -1113,16 +1177,183 @@ if ( defined $opt_action && $opt_action eq 'user' ) {
 }
 
 # ============================================================================
+# INFRASTRUCTURE SETUP & PROVISIONING (amberdb setup [dir])
+# ============================================================================
+
+if ( defined $opt_action && ( $opt_action eq 'setup' || $opt_action eq 'ramdisk' ) ) {
+    my $first_arg = shift @pos_args;
+
+    # Check if ramdisk subcommand: amberdb setup ramdisk ... or amberdb ramdisk ...
+    if ( ( $opt_action eq 'ramdisk' ) || ( defined $first_arg && lc($first_arg) eq 'ramdisk' ) ) {
+        my $subcmd = ( $opt_action eq 'ramdisk' ) ? ( $first_arg // 'status' ) : ( shift @pos_args // 'status' );
+        $subcmd = lc($subcmd);
+        $subcmd = 'start'  if $subcmd eq 'mount' || $subcmd eq '--start';
+        $subcmd = 'stop'   if $subcmd eq 'unmount' || $subcmd eq '--stop';
+        $subcmd = 'status' if $subcmd eq '--status';
+
+        my $size  = delete $method_args{size}  // shift @pos_args // '512M';
+        my $drive = delete $method_args{drive} // shift @pos_args // 'R:';
+
+        my $is_win = ( $^O eq 'MSWin32' || $^O eq 'msys' || $^O eq 'cygwin' );
+
+        if ($is_win) {
+            my $script_bin = eval { abs_path(dirname(__FILE__)) } // dirname(__FILE__) // '.';
+            my $bat_path = File::Spec->catfile( $script_bin, "setup_windows.bat" );
+            if ( -f $bat_path ) {
+                system( "cmd.exe", "/c", $bat_path, $subcmd, $size, $drive );
+                exit $? >> 8;
+            }
+            else {
+                if ( $subcmd eq 'start' ) {
+                    system( "imdisk", "-a", "-s", $size, "-m", $drive, "-p", "/fs:ntfs /q /y /v:AmberDB" );
+                }
+                elsif ( $subcmd eq 'stop' ) {
+                    system( "imdisk", "-D", "-m", $drive );
+                }
+                else {
+                    system( "imdisk", "-l", "-m", $drive );
+                }
+                exit $? >> 8;
+            }
+        }
+        else {
+            if ( $subcmd eq 'status' ) {
+                my $shm = -d "/dev/shm" ? "/dev/shm (Linux tmpfs available)" : "Not mounted";
+                print "RAM-Disk Status: $shm\n";
+                exit 0;
+            }
+            elsif ( $subcmd eq 'start' ) {
+                eval { $adb->ramdisk_setup() };
+                print "[RAM-DISK] Linux /dev/shm initialized.\n";
+                exit 0;
+            }
+            elsif ( $subcmd eq 'stop' ) {
+                print "[RAM-DISK] Stopped.\n";
+                exit 0;
+            }
+        }
+    }
+
+    # If no argument is passed: setup global environment (~/.amberdb)
+    if ( !defined $first_arg || !length $first_arg ) {
+        make_path($AMBERDB_HOME) unless -d $AMBERDB_HOME;
+        make_path($CLI_SESS_DIR) unless -d $CLI_SESS_DIR;
+        my $cfg_dir = "$AMBERDB_HOME/config";
+        make_path($cfg_dir) unless -d $cfg_dir;
+
+        if ( defined $opt_format && $opt_format eq 'json' ) {
+            output_result( {
+                status       => 'ok',
+                action       => 'setup',
+                mode         => 'global',
+                amberdb_home => $AMBERDB_HOME,
+                session_dir  => $CLI_SESS_DIR,
+            }, $opt_format );
+            exit 0;
+        }
+
+        print "=================================================================\n";
+        print " AmberDB Global Environment Setup & Initialization               \n";
+        print "=================================================================\n";
+        print "AmberDB Home     : $AMBERDB_HOME (~/.amberdb)\n";
+        print "Session Registry : $CLI_SESS_DIR/\n";
+        print "Platform         : $^O\n";
+        print "-----------------------------------------------------------------\n";
+        print "[SUCCESS] AmberDB global workspace initialized successfully!\n\n";
+        print "Kullanım Biçimleri:\n";
+        print "  1. Yerel Proje   : Proje klasörünüzde doğrudan çalıştırın (./dbstore kullanılır)\n";
+        print "     amberdb insert users 0 data='{\"name\":\"Ahmet\"}'\n";
+        print "     amberdb tables\n\n";
+        print "  2. Merkezi Havuz : Belirtilen ada oturum açarak ~/.amberdb/<ad> kullanılır\n";
+        print "     amberdb connect eticaretim\n";
+        print "     amberdb 1245 tables\n\n";
+        print "  3. Özel Klasör   : 'ad:yol' formatı ile oturum açılır\n";
+        print "     amberdb connect eticaretim:./dbstore\n";
+        print "=================================================================\n";
+        exit 0;
+    }
+
+    # If custom directory passed (e.g. amberdb setup /var/data or amberdb setup my_dir)
+    my $target_dir = resolve_abs_path($first_arg);
+    my @subdirs = qw(table schema journal lock session config backup ramdisk);
+    my @created;
+    my @existing;
+    make_path($target_dir) unless -d $target_dir;
+    for my $sub (@subdirs) {
+        my $dir_path = "$target_dir/$sub";
+        if ( -d $dir_path ) {
+            push @existing, $sub;
+        }
+        else {
+            make_path($dir_path);
+            push @created, $sub;
+        }
+    }
+    my $core_conf = "$target_dir/config/core.conf";
+    my $conf_created = 0;
+    if ( !-f $core_conf && open my $fh, '>', $core_conf ) {
+        print $fh "# AmberDB Core Configuration\n";
+        print $fh "site_id        amberdb\n";
+        print $fh "language       tr\n";
+        close $fh;
+        $conf_created = 1;
+    }
+    if ( defined $opt_format && $opt_format eq 'json' ) {
+        output_result( {
+            status        => 'ok',
+            action        => 'setup',
+            dbase_dir     => $target_dir,
+            dirs_created  => \@created,
+            dirs_existing => \@existing,
+            config_init   => $conf_created ? 1 : 0,
+        }, $opt_format );
+        exit 0;
+    }
+
+    print "=================================================================\n";
+    print " AmberDB Infrastructure Setup: $target_dir                       \n";
+    print "=================================================================\n";
+    for my $c (@created)  { print "  [+] Created  $c/\n"; }
+    for my $e (@existing) { print "  [.] Exists   $e/\n"; }
+    print "-----------------------------------------------------------------\n";
+    print "[SUCCESS] Initialized successfully in $target_dir\n";
+    print "=================================================================\n";
+    exit 0;
+}
+
+# ============================================================================
 # DEFAULT ACTION: DASHBOARD OVERVIEW (ALL TABLES)
 # ============================================================================
 
 if ( !defined $opt_action || $opt_action eq '' || $opt_action eq 'list' || $opt_action eq 'status' || $opt_action eq 'tables' ) {
+    my $db_dir = $adb->path('dbase_dir') || ".";
+
+    if ( !-d $db_dir || ( !-d "$db_dir/table" && !-d "$db_dir/schema" ) ) {
+        if ( defined $opt_format && ( $opt_format eq 'json' || $opt_format eq 'pretty' ) ) {
+            output_result( {
+                database      => $adb->connect('database') || $detected_dbname || '-',
+                user          => $adb->connect('username') || 'cli',
+                data_dir      => $db_dir,
+                total_tables  => 0,
+                total_records => 0,
+                total_bytes   => 0,
+                tables        => [],
+            }, $opt_format );
+            exit 0;
+        }
+        print "AmberDB | Data Dir: $db_dir\n";
+        print "=" x 80, "\n";
+        print "[AMBERDB] '$db_dir' dizini bulunamadı veya henüz bir tablo oluşturulmamış.\n";
+        print "İlk tabloyu oluşturmak için kayıt ekleyebilirsiniz:\n";
+        print "  amberdb insert <tablo_adı> 0 data='{\"name\":\"sample\"}'\n";
+        print "=" x 80, "\n";
+        exit 0;
+    }
+
     my @tables = $tools->all_tables();
     my @rows;
     my $total_records = 0;
     my $total_bytes   = 0;
-
-    my $db_dir = $adb->path('dbase_dir') || ".";
 
     for my $tbl ( sort @tables ) {
         next unless defined $tbl && length $tbl;
@@ -1190,6 +1421,26 @@ if ( !defined $opt_action || $opt_action eq '' || $opt_action eq 'list' || $opt_
 # ============================================================================
 
 my $action = $opt_action;
+
+sub is_db_ready {
+    my $dir = $adb->path('dbase_dir');
+    return 0 unless defined $dir && length $dir && -d $dir;
+    return 1 if -d "$dir/table" || -d "$dir/schema";
+    return 0;
+}
+
+sub table_file_exists {
+    my ($tbl) = @_;
+    return 0 unless defined $tbl && length $tbl;
+    my $dir = $adb->path('dbase_dir');
+    return 0 unless defined $dir && length $dir && -d $dir;
+    my $tbl_dir = $adb->path('table_dir') || "$dir/table";
+    return 1 if -f "$tbl_dir/$tbl.db";
+    return 1 if -f "$dir/$tbl.db";
+    my $tpath = eval { $adb->table_path($tbl) };
+    return 1 if defined $tpath && length $tpath && ( -f "$tpath.db" || -f $tpath );
+    return 0;
+}
 
 sub normalize_list_result {
     my ( $limit, $is_inflate, @results ) = @_;
@@ -1259,6 +1510,11 @@ if ( $action eq 'read_id' ) {
     die "[AMBERDB_ERROR] 'table' parameter required for read_id\n" unless defined $table && length $table;
     die "[AMBERDB_ERROR] 'id' parameter required for read_id\n" unless defined $id && length $id;
 
+    if ( !is_db_ready() || !table_file_exists($table) ) {
+        output_result( undef, $opt_format );
+        exit 0;
+    }
+
     my @fields = $adb->read_id( $table, $id, \%method_args );
     my $res;
     if ( @fields == 1 && ref $fields[0] eq 'HASH' ) {
@@ -1282,6 +1538,12 @@ if ( $action eq 'read_all' ) {
     my $is_inflate = $method_args{inflate} ? 1 : 0;
     die "[AMBERDB_ERROR] 'table' parameter required for read_all\n" unless defined $table && length $table;
 
+    if ( !is_db_ready() || !table_file_exists($table) ) {
+        my $res = normalize_list_result( $limit, $is_inflate );
+        output_result( $res, $opt_format );
+        exit 0;
+    }
+
     my @results = $adb->read_all( $table, $offset, $limit, %method_args );
     my $res = normalize_list_result( $limit, $is_inflate, @results );
     output_result( $res, $opt_format );
@@ -1297,6 +1559,11 @@ if ( $action eq 'read_list' ) {
 
     die "[AMBERDB_ERROR] 'table' parameter required for read_list\n" unless defined $table && length $table;
     die "[AMBERDB_ERROR] 'ids' parameter required for read_list\n" unless ref $ids eq 'ARRAY' && @$ids;
+
+    if ( !is_db_ready() || !table_file_exists($table) ) {
+        output_result( [], $opt_format );
+        exit 0;
+    }
 
     my @recs = $adb->read_list( $table, $ids, \%method_args );
     output_result( \@recs, $opt_format );
@@ -1323,6 +1590,12 @@ if ( $action eq 'field_fetch' || $action eq 'fetch' ) {
 
     die "[AMBERDB_ERROR] 'table', 'block', and 'fetch' parameters required for field_fetch\n"
       unless defined $table && defined $block && defined $fetch;
+
+    if ( !is_db_ready() || !table_file_exists($table) ) {
+        my $res = normalize_list_result( $limit, $is_inflate );
+        output_result( $res, $opt_format );
+        exit 0;
+    }
 
     my @results = $adb->field_fetch( $table, $block, $fetch, $offset, $limit, %method_args );
     my $res = normalize_list_result( $limit, $is_inflate, @results );
@@ -1353,6 +1626,12 @@ if ( $action eq 'search_table' || $action eq 'search' ) {
     die "[AMBERDB_ERROR] 'table' and 'query' parameters required for search_table\n"
       unless defined $table && defined $query;
 
+    if ( !is_db_ready() || !table_file_exists($table) ) {
+        my $res = normalize_list_result( $limit, $is_inflate );
+        output_result( $res, $opt_format );
+        exit 0;
+    }
+
     my @results = $adb->search_table( $table, $query, %method_args );
     my $res = normalize_list_result( $limit, $is_inflate, @results );
     output_result( $res, $opt_format );
@@ -1364,6 +1643,11 @@ if ( $action eq 'table_count' || $action eq 'count' ) {
     my $table = delete $method_args{table} // shift @pos_args;
     die "[AMBERDB_ERROR] 'table' parameter required for table_count\n" unless defined $table && length $table;
 
+    if ( !is_db_ready() || !table_file_exists($table) ) {
+        output_result( { table => $table, count => 0 }, $opt_format );
+        exit 0;
+    }
+
     my $cnt = $adb->table_count($table);
     output_result( { table => $table, count => $cnt }, $opt_format );
     exit 0;
@@ -1373,6 +1657,16 @@ if ( $action eq 'table_count' || $action eq 'count' ) {
 if ( $action eq 'table_info' || $action eq 'info' ) {
     my $table = delete $method_args{table} // shift @pos_args;
     die "[AMBERDB_ERROR] 'table' parameter required for table_info\n" unless defined $table && length $table;
+
+    if ( !is_db_ready() || !table_file_exists($table) ) {
+        if ( defined $opt_format && ( $opt_format eq 'json' || $opt_format eq 'pretty' ) ) {
+            output_result( {}, $opt_format );
+        }
+        else {
+            print "[AMBERDB] Table '$table' does not exist.\n";
+        }
+        exit 0;
+    }
 
     my $info = $adb->table_info($table);
     if ( defined $opt_format && ( $opt_format eq 'json' || $opt_format eq 'pretty' || $opt_format eq 'raw' || $opt_format eq 'dumper' || $opt_format eq 'perl' ) ) {
@@ -1435,6 +1729,21 @@ if ( $action eq 'insert_id' || $action eq 'insert' ) {
     my $table = delete $method_args{table} // shift @pos_args;
     my $id    = delete $method_args{id}    // 0;
     my $data  = delete $method_args{data};
+
+    # Ensure database directory and skeleton exist on write
+    my $db_dir = $adb->path('dbase_dir') || "dbstore";
+    if ( !-d $db_dir || !-d "$db_dir/table" ) {
+        make_path(
+            "$db_dir/table", "$db_dir/schema", "$db_dir/journal",
+            "$db_dir/lock",  "$db_dir/session", "$db_dir/config",
+            "$db_dir/backup", "$db_dir/ramdisk"
+        );
+        my $conf_file = "$db_dir/config/core.conf";
+        if ( !-f $conf_file && open my $cfh, '>', $conf_file ) {
+            print $cfh "site_id        amberdb\nlanguage       tr\n";
+            close $cfh;
+        }
+    }
 
     if ( !defined $data ) {
         $data = scalar keys %method_args ? \%method_args : \@pos_args;
@@ -1509,6 +1818,10 @@ if ( $action eq 'update_id' || $action eq 'update' ) {
     die "[AMBERDB_ERROR] 'table' and 'id' parameters required for update\n"
       unless defined $table && defined $id && length $id;
 
+    if ( !is_db_ready() || !table_file_exists($table) ) {
+        die "[AMBERDB_ERROR] Table '$table' does not exist.\n";
+    }
+
     if ($opt_dry_run) {
         output_result( { dry_run => 1, action => 'update_id', table => $table, id => $id, data => $data }, $opt_format );
         exit 0;
@@ -1536,6 +1849,11 @@ if ( $action eq 'delete_id' || $action eq 'delete' ) {
 
     die "[AMBERDB_ERROR] 'table' and 'id' parameters required for delete_id\n"
       unless defined $table && defined $id && length $id;
+
+    if ( !is_db_ready() || !table_file_exists($table) ) {
+        output_result( { status => 'not_found', table => $table, id => $id, result => 0 }, $opt_format );
+        exit 0;
+    }
 
     if ($opt_dry_run) {
         output_result( { dry_run => 1, action => 'delete_id', table => $table, id => $id }, $opt_format );

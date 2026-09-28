@@ -41,7 +41,7 @@ sub new {
     }
 
     # Map public input keys to internal private keys
-    $self->{_cfg}     = delete $self->{cfg}     // $self->{_cfg}     // {};
+    $self->{_cfg}     = delete $self->{cfg}     // delete $self->{config} // $self->{_cfg}     // {};
     $self->{_path}    = delete $self->{path}    // $self->{_path}    // {};
     $self->{_connect} = delete $self->{connect} // $self->{_connect} // {};
 
@@ -373,16 +373,18 @@ sub insert_list {
     my $table_path = $self->table_path($tableid);
     my $file_path  = "$table_path.$self->{db_ext}";
 
-    # If explicit numeric IDs are passed, ensure ascending order
-    my $has_numeric_ids = 0;
-    for my $r (@records) {
-        if ( ref($r) eq 'ARRAY' && defined $r->[0] && $r->[0] > 0 ) {
-            $has_numeric_ids = 1;
-            last;
+    # If explicit numeric IDs are passed on standard tables, ensure ascending order
+    unless ($is_simple) {
+        my $has_numeric_ids = 0;
+        for my $r (@records) {
+            if ( ref($r) eq 'ARRAY' && defined $r->[0] && $r->[0] > 0 ) {
+                $has_numeric_ids = 1;
+                last;
+            }
         }
-    }
-    if ($has_numeric_ids) {
-        @records = sort { ( $a->[0] // 0 ) <=> ( $b->[0] // 0 ) } @records;
+        if ($has_numeric_ids) {
+            @records = sort { ( $a->[0] // 0 ) <=> ( $b->[0] // 0 ) } @records;
+        }
     }
 
     my $use_ramdisk = $table_info ? ( $table_info->{use_ramdisk} // $table_info->{use_cache} // 0 ) : 0;
@@ -1981,7 +1983,7 @@ sub inflate {
 
             if ( exists $rdbm_lookup{$i} && defined $val && $val ne '' ) {
                 my $cfg = $rdbm_lookup{$i};
-                my @foreign_ids = $self->get_fieldlist($val);
+                my @foreign_ids = $self->field_to_list($val);
 
                 if (@foreign_ids) {
                     my %resolved;
@@ -2844,7 +2846,7 @@ sub filter_ids_by_range {
                 my @filtered;
                 for my $item (@survivors) {
                     my $id = ref($item) eq 'ARRAY' ? $item->[0] : $item;
-                    my $target = pack( "Q>", $id );
+                    my $target = $self->bin_encode([$id]);
                     my $pos = index( $slice_raw, $target );
                     while ( $pos != -1 && ( $pos % 8 != 0 ) ) {
                         $pos = index( $slice_raw, $target, $pos + 1 );
@@ -3435,7 +3437,7 @@ sub read_field {
     return unless -e $field_path;
 
     if ($values) {
-        my @values = $self->get_fieldlist( $values, $table_path, $table_info, $field );
+        my @values = $self->field_to_list( $values, $table_path, $table_info, $field );
 
         if ( @values == 1 ) {
             my $val = $values[0];
@@ -3627,7 +3629,7 @@ sub field_fetch {
     my $file_path  = ( ( $use_ramdisk == 2 || $use_ramdisk == 4 ) && -e "$idx_path.$self->{db_ext}" ) ? "$idx_path.$self->{db_ext}" : "$table_path.$self->{db_ext}";
     return unless -e $file_path;
 
-    my @fld_fetch_ids = $self->get_fieldlist( $fetch, $idx_path, $table_info, $block );
+    my @fld_fetch_ids = $self->field_to_list( $fetch, $idx_path, $table_info, $block );
 
     my $field_path = ( -e "${idx_path}.fld" ) ? "${idx_path}.fld" : "${table_path}.fld";
 
@@ -3747,7 +3749,7 @@ sub field_fetch {
 
     # If index file does not exist (unindexed fallback)...
     else {
-        my @raw_fetch = $self->get_fieldlist($fetch);
+        my @raw_fetch = $self->field_to_list($fetch);
         my %fetch = map { $_ => 1 } ( @raw_fetch, @fld_fetch_ids );
 
         $self->table_read($file_path) or return;
@@ -3758,7 +3760,7 @@ sub field_fetch {
                 my @fields = ( $key, $self->db_decode($val) );
                 $block <= $#fields or return;
                 defined $fields[$block] or return;
-                my @fld_val = $self->get_fieldlist( $fields[$block] );
+                my @fld_val = $self->field_to_list( $fields[$block] );
                 foreach my $fld_one (@fld_val) {
                     if ( $fld_one && exists( $fetch{$fld_one} ) ) {
                         push( @records, [@fields] );
@@ -3888,7 +3890,7 @@ sub field_keyvals {
         if ( defined $keyid && $keyid ne '' ) {
             my @req_keys = ref($keyid) eq 'ARRAY' ? @$keyid : ($keyid);
             for my $k_item (@req_keys) {
-                my @req_ids = $self->get_fieldlist( $k_item, $idx_path, $table_info, $field );
+                my @req_ids = $self->field_to_list( $k_item, $idx_path, $table_info, $field );
                 next unless @req_ids;
 
                 # Single key fast path
@@ -4038,7 +4040,7 @@ sub field_count {
                 $result{$k_item} = 0;
 
                 # Resolve ID via .unq / RDBM if textual
-                my ($req_id) = $self->get_fieldlist( $k_item, $idx_path, $table_info, $block );
+                my ($req_id) = $self->field_to_list( $k_item, $idx_path, $table_info, $block );
                 $req_id = $k_item unless defined $req_id && $req_id ne '';
 
                 my $key   = "$tier_pfx$block:$req_id";
@@ -4220,7 +4222,7 @@ sub field_filter {
 
             for my $blk ( keys %filter ) {
                 next if ref($filter{$blk}) eq 'HASH';
-                my @values = $self->get_fieldlist( $filter{$blk}, $idx_path, $table_info, $blk );
+                my @values = $self->field_to_list( $filter{$blk}, $idx_path, $table_info, $blk );
                 $blk_vals_map{$blk} = \@values;
                 push @all_req_keys, map { "$pfx$blk:$_" } @values;
             }
@@ -4294,7 +4296,7 @@ sub field_filter {
         my %allowed_map;
         foreach my $blk ( keys %filter ) {
             next if ref($filter{$blk}) eq 'HASH';
-            my @vals = $self->get_fieldlist( $filter{$blk} );
+            my @vals = $self->field_to_list( $filter{$blk} );
             $allowed_map{$blk} = { map { $_ => 1 } @vals };
         }
 
@@ -4313,7 +4315,7 @@ sub field_filter {
                             $all_match = 0;
                             last;
                         }
-                        my @fld_vals = $self->get_fieldlist( $rec->[$blk] );
+                        my @fld_vals = $self->field_to_list( $rec->[$blk] );
                         my $matched = 0;
                         foreach my $one (@fld_vals) {
                             if ( exists $allowed_map{$blk}{$one} ) {
@@ -4332,7 +4334,7 @@ sub field_filter {
                     my $any_match = 0;
                     foreach my $blk ( keys %allowed_map ) {
                         next if $blk > $#$rec || !defined $rec->[$blk];
-                        my @fld_vals = $self->get_fieldlist( $rec->[$blk] );
+                        my @fld_vals = $self->field_to_list( $rec->[$blk] );
                         foreach my $one (@fld_vals) {
                             if ( exists $allowed_map{$blk}{$one} ) {
                                 $any_match = 1;
@@ -4356,7 +4358,7 @@ sub field_filter {
                         my @fields = ( $uid, $self->db_decode($val) );
                         foreach my $blk ( keys %allowed_map ) {
                             return unless $blk <= $#fields && defined $fields[$blk];
-                            my @fld_vals = $self->get_fieldlist( $fields[$blk] );
+                            my @fld_vals = $self->field_to_list( $fields[$blk] );
                             my $matched = 0;
                             foreach my $one (@fld_vals) {
                                 if ( exists $allowed_map{$blk}{$one} ) {
@@ -4378,7 +4380,7 @@ sub field_filter {
                         my @fields = ( $uid, $self->db_decode($val) );
                         foreach my $blk ( keys %allowed_map ) {
                             next unless $blk <= $#fields && defined $fields[$blk];
-                            my @fld_vals = $self->get_fieldlist( $fields[$blk] );
+                            my @fld_vals = $self->field_to_list( $fields[$blk] );
                             foreach my $one (@fld_vals) {
                                 if ( exists $allowed_map{$blk}{$one} ) {
                                     push @records, $uid;
@@ -4609,7 +4611,7 @@ sub search_table {
                     my $fld_idx = $self->resolve_block_idx( $tableid, $fld );
                     my $blk_for_fld = defined $fld_idx ? $fld_idx : $fld;
                     if ( -e $unified_fld ) {
-                        my @mapped_vals = $self->get_fieldlist( $filter_map{$fld}, $idx_path, $table_info, $blk_for_fld );
+                        my @mapped_vals = $self->field_to_list( $filter_map{$fld}, $idx_path, $table_info, $blk_for_fld );
                         my @raw_fld_bufs;
                         if ( @mapped_vals == 1 ) {
                             my $k = "$pfx$blk_for_fld:$mapped_vals[0]";
@@ -4653,7 +4655,7 @@ sub search_table {
                         my @filtered;
                         for my $rec (@recs) {
                             next unless @$rec > $blk_for_fld;
-                            my @fld_vals = $self->get_fieldlist( $rec->[$blk_for_fld] );
+                            my @fld_vals = $self->field_to_list( $rec->[$blk_for_fld] );
                             if ( grep { exists $allowed{$_} } @fld_vals ) {
                                 push @filtered, $rec->[0];
                             }
@@ -4800,7 +4802,7 @@ sub search_table {
                 for my $rec (@records) {
                     # $rec is [$key, fld1, fld2, ...]
                     next unless @$rec > $blk_for_fld;
-                    my @fld_vals = $self->get_fieldlist( $rec->[$blk_for_fld] );
+                    my @fld_vals = $self->field_to_list( $rec->[$blk_for_fld] );
                     if ( grep { exists $allowed{$_} } @fld_vals ) {
                         push @filtered, $rec;
                     }

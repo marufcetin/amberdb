@@ -315,6 +315,9 @@ subtest 'Transaction Journal Base64 Payload Encoding & Complex Binary Rollback' 
     open my $jfh, '<', $txn_file or die "Cannot open $txn_file: $!";
     binmode $jfh;
     my @lines = <$jfh>;
+    seek( $jfh, 0, 0 );  # Reset to beginning
+    my $journal_content = do { local $/; <$jfh> };
+    diag "Journal content:\n$journal_content";
     close $jfh;
 
     # Locate the edit line for record 90

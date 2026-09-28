@@ -1,0 +1,82 @@
+name: Build AmberDB Executable (Windows)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'Publish as GitHub Release?'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-win64:
+    name: Build standalone amberdb.exe (Win64)
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Strawberry Perl
+        uses: shogo82148/actions-setup-perl@v1
+        with:
+          perl-version: '5.38'
+          distribution: strawberry
+
+      - name: Check Perl Environment
+        run: |
+          perl -v
+          gcc --version
+
+      - name: Install Build Dependencies
+        run: |
+          cpanm --notest PAR::Packer DB_File JSON::PP Archive::Tar Digest::SHA Unicode::Collate
+
+      - name: Compile Standalone Executable (pp)
+        run: |
+          mkdir dist
+          pp -o dist\amberdb.exe -Ilib -a "lib;lib" -M DB_File -M JSON::PP -M Archive::Tar -M Digest::SHA -M Unicode::Collate -M AmberDB -M AmberDB::Tools bin\amberdb_cli.pl
+
+      - name: Test Compiled Executable (Smoke Test)
+        run: |
+          dist\amberdb.exe
+
+      - name: Bundle Distribution Package
+        shell: cmd
+        run: |
+          copy /Y wiki\TR-Guide-CLI.md dist\KULLANIM_KILAVUZU_TR.md
+          copy /Y wiki\Guide-CLI.md dist\CLI_GUIDE_EN.md
+          copy /Y LICENSE dist\LICENSE.txt
+          cd dist
+          tar -a -c -f ..\amberdb-win64.zip *
+          cd ..
+          dir amberdb-win64.zip
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: amberdb-win64
+          path: amberdb-win64.zip
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/') || inputs.release == true
+        uses: softprops/action-gh-release@v2
+        with:
+          name: AmberDB CLI ${{ github.ref_name }} (Windows Standalone)
+          tag_name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            amberdb-win64.zip
+            dist/amberdb.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,17 +1,33 @@
 Revision history for AmberDB
 
-5.26.1  2026-09-26
+5.26.1  2026-09-28
+        - [32-BIT PERL / CPAN TESTERS QUAD PACKING COMPATIBILITY]
+          * Implemented transparent cross-platform 64-bit integer packing in AmberDB::Base::Encoder (_pack_ids, _unpack_ids, _pack_single_id).
+          * Utilizes native 64-bit pack("(Q>)*") / unpack("(Q>)*") on 64-bit Perls with zero performance overhead.
+          * Automatically falls back to dual 32-bit unsigned network integer pack("(NN)*") / unpack("(NN)*") on 32-bit Perls without quad support (use64bitint=undef, e.g. Raspberry Pi armv6l).
+          * Guaranteed 100% byte-exact binary compatibility on physical .inx, .fld, .src index files across 32-bit and 64-bit architectures.
+          * Completely resolved CPAN Testers "Invalid type 'Q' in pack" exceptions across 36 test suites.
+
+        - [CLI THREE-MODE ARCHITECTURE & ZERO-FALLBACK ENFORCEMENT]
+          * Re-architected amberdb CLI (bin/amberdb_cli.pl) into three distinct, predictable operational modes:
+            1. 'amberdb setup': Provisions global workspace (~/.amberdb) with session/ and config/ directories. Fully eliminated dummy default/ database.
+            2. 'amberdb connect <name>[:<path>]': Named session management with canonical absolute path resolution; rejects raw directory names without database alias.
+            3. Direct CRUD ('amberdb CRUD'): Strictly targets local ./dbstore in current working directory without fallback to ~/.amberdb/default.
+          * Read operations (tables, read, search, count, info) return empty/null cleanly without creating directory skeletons.
+          * Write operations (insert) automatically provision ./dbstore and core.conf on-the-fly.
+          * Updated user guides and documentation in README.md, wiki/TR-Guide-CLI.md, and wiki/Guide-CLI.md.
+
+        - [SCHEMA USE_SIMPLE SANITIZATION & STRING KEY PRESERVATION]
+          * Updated AmberDB::Base::Schema to strip unused 'blocks' definition for use_simple => 1 tables.
+          * Wrapped explicit ID sorting in AmberDB::insert_list with unless ($is_simple) guard, eliminating numeric comparison warnings on string keys without regex overhead.
+
         - [CROSS-PLATFORM CI & MACOS MOUNT FIX]
           * Fixed macOS /Volumes permission error in AmberDB::Base::Ramdisk by verifying write permissions before activating RAM-disk mount points.
           * Added eval guard to ramdisk_setup with graceful fallback to local storage.
 
-        - [WINDOWS CRLF & TRANSACTION JOURNAL FIX]
+        - [WINDOWS CRLF & TRANSACTION JOURNAL HARDENING]
           * Enforced binmode on journal handles in AmberDB::Base::Transact to prevent Windows CRLF mangling of record separators and Base64 payloads.
-          * Hardened t/amberdb_transact.t with binary mode, exact field parsing, and guarded SKIP assertions.
-
-        - [NUMERIC FILTERING & TOPIC VARIABLE MODERNIZATION]
-          * Replaced regex integer checks with fast numeric guards (defined $_ && $_ > 0) across index building and sorting hot paths.
-          * Modernized Perl topic variable usage (defined $_ && length($_)) across core modules for Perl 5.38+ / 5.40+ compatibility.
+          * Added journal content diagnostic dumps and exact field assertions in t/amberdb_transact.t.
 
 5.26.0  2026-09-23
         - [FAST INDEXED FIELD COUNTING (field_count)]
