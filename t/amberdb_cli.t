@@ -327,7 +327,7 @@ subtest '10. Execution elapsed time parameter (time, time=1, --time)' => sub {
 
 # ---------------------------------------------------------------------------
 subtest '11. Positional connect database name and rejection of dbstore/paths' => sub {
-    plan tests => 6;
+    plan tests => 13;
 
     # 1. Positional connect with database name
     my $c_data = -f "$test_dbdir/config/connect.pl" ? do "$test_dbdir/config/connect.pl" : {};
@@ -350,6 +350,50 @@ subtest '11. Positional connect database name and rejection of dbstore/paths' =>
     # 3. Rejection of directory path as database argument
     my $out_path = `"$perl_bin" -Ilib "$cli_path" connect "$test_dbdir" 2>&1`;
     like($out_path, qr/\[AMBERDB_ERROR\].*not a valid database name/i, "Connect with directory path rejected");
+
+    # 4. Explicit Windows drive path rejection
+    my $out_win_path = `"$perl_bin" -Ilib "$cli_path" connect "C:\\fake\\dbstore" 2>&1`;
+    like($out_win_path, qr/\[AMBERDB_ERROR\].*not a valid database name/i, "Connect with Windows drive path rejected");
+
+    my $out_win_fwd = `"$perl_bin" -Ilib "$cli_path" connect "C:/fake/dbstore" 2>&1`;
+    like($out_win_fwd, qr/\[AMBERDB_ERROR\].*not a valid database name/i, "Connect with Windows forward-slash drive path rejected");
+
+    # 5. Connect with <dbname>@<path> syntax
+    my $out_at = `"$perl_bin" -Ilib "$cli_path" connect "$expected_db\@$test_dbdir" format=json`;
+    my $conn_at = eval { decode_json($out_at) };
+    is($conn_at->{status}, 'connected', "Connect with <dbname>\@<path> succeeded");
+    my $tok_at = $conn_at->{token};
+    ok(defined $tok_at && $tok_at =~ /^\d{4}$/, "Connect \@ token generated: $tok_at");
+    is($conn_at->{database}, $expected_db, "Connect \@ database matches '$expected_db'");
+
+    my $disc_at = `"$perl_bin" -Ilib "$cli_path" token=$tok_at disconnect format=json`;
+    my $dd_at = eval { decode_json($disc_at) };
+    is($dd_at->{status}, 'disconnected', "Connect \@ disconnected cleanly");
+
+    # 6. Rejection of legacy colon format (no backward compatibility)
+    my $out_colon = `"$perl_bin" -Ilib "$cli_path" connect "$expected_db:$test_dbdir" 2>&1`;
+    like($out_colon, qr/\[AMBERDB_ERROR\].*not a valid database name/i, "Connect with legacy colon syntax rejected");
+};
+
+# ---------------------------------------------------------------------------
+subtest '12. Auto-provisioning ~/.amberdb workspace on first run' => sub {
+    plan tests => 2;
+
+    my $fresh_home = tempdir(CLEANUP => 1);
+    $fresh_home =~ s{\\}{/}g;
+    ok( !-d "$fresh_home/.amberdb", "Before run: fresh ~/.amberdb does not exist" );
+
+    my $prev_up = $ENV{USERPROFILE};
+    my $prev_h  = $ENV{HOME};
+    $ENV{USERPROFILE} = $fresh_home;
+    $ENV{HOME}        = $fresh_home;
+
+    my $out = `"$perl_bin" -Ilib "$cli_path" help`;
+
+    ok( -d "$fresh_home/.amberdb/session" && -d "$fresh_home/.amberdb/config", "After run: ~/.amberdb and subdirs auto-created in background" );
+
+    if ( defined $prev_up ) { $ENV{USERPROFILE} = $prev_up; } else { delete $ENV{USERPROFILE}; }
+    if ( defined $prev_h )  { $ENV{HOME} = $prev_h; }        else { delete $ENV{HOME}; }
 };
 
 done_testing();

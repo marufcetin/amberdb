@@ -11,7 +11,7 @@ Revision history for AmberDB
         - [CLI THREE-MODE ARCHITECTURE & ZERO-FALLBACK ENFORCEMENT]
           * Re-architected amberdb CLI (bin/amberdb_cli.pl) into three distinct, predictable operational modes:
             1. 'amberdb setup': Provisions global workspace (~/.amberdb) with session/ and config/ directories. Fully eliminated dummy default/ database.
-            2. 'amberdb connect <name>[:<path>]': Named session management with canonical absolute path resolution; rejects raw directory names without database alias.
+            2. 'amberdb connect <name>[@<path>]': Named session management with canonical absolute path resolution; rejects raw directory names without database alias.
             3. Direct CRUD ('amberdb CRUD'): Strictly targets local ./dbstore in current working directory without fallback to ~/.amberdb/default.
           * Read operations (tables, read, search, count, info) return empty/null cleanly without creating directory skeletons.
           * Write operations (insert) automatically provision ./dbstore and core.conf on-the-fly.
@@ -28,6 +28,13 @@ Revision history for AmberDB
         - [WINDOWS CRLF & TRANSACTION JOURNAL HARDENING]
           * Enforced binmode on journal handles in AmberDB::Base::Transact to prevent Windows CRLF mangling of record separators and Base64 payloads.
           * Added journal content diagnostic dumps and exact field assertions in t/amberdb_transact.t.
+
+        - [WINDOWS CI & FLOCK / CLI AT-SYNTAX COMPATIBILITY]
+          * Replaced colon separator with '@' for custom directory connect syntax ('amberdb connect <dbname>@<path>'), completely eliminating ambiguity with Windows drive letters (C:\path).
+          * Enforced strict directory path and legacy colon syntax rejection in bin/amberdb_cli.pl.
+          * Added automatic background workspace provisioning in bin/amberdb_cli.pl: automatically runs global setup on first invocation if ~/.amberdb does not exist.
+          * Fixed t/amberdb_transact.t journal reader to read directly via active transaction handle ($adb->{_txn}->{fh}), eliminating Windows mandatory flock(LOCK_EX) read collisions that resulted in uninitialized $journal_content on native Windows (Strawberry Perl).
+          * Added comprehensive cross-platform connect '@' syntax, auto-setup, and Windows drive path rejection tests in t/amberdb_cli.t.
 
 5.26.0  2026-09-23
         - [FAST INDEXED FIELD COUNTING (field_count)]

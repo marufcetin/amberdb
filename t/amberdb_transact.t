@@ -309,16 +309,26 @@ subtest 'Transaction Journal Base64 Payload Encoding & Complex Binary Rollback' 
     # 3. Modify record within transaction to trigger 'edit' before-image logging
     $adb->modify_id( 'test_table', 90, 'Modified In Txn', 'ComplexCat', 1000 );
 
-    # Flush filehandle so we can read from disk directly
-    $adb->{_txn}->{fh}->flush;
-
-    open my $jfh, '<', $txn_file or die "Cannot open $txn_file: $!";
-    binmode $jfh;
-    my @lines = <$jfh>;
-    seek( $jfh, 0, 0 );  # Reset to beginning
-    my $journal_content = do { local $/; <$jfh> };
+    # Read journal content using the active transaction handle.
+    # On native Windows (Strawberry Perl), flock(LOCK_EX) enforces mandatory locking which prevents
+    # secondary filehandles from reading while locked; reading through the existing handle
+    # avoids lock collision while ensuring 100% accurate journal contents.
+    my @lines;
+    if ( my $tfh = $adb->{_txn}->{fh} ) {
+        $tfh->flush;
+        seek( $tfh, 0, 0 );
+        binmode $tfh;
+        @lines = <$tfh>;
+        seek( $tfh, 0, 2 );  # Reset to EOF so subsequent transaction operations append cleanly
+    }
+    else {
+        open my $jfh, '<', $txn_file or die "Cannot open $txn_file: $!";
+        binmode $jfh;
+        @lines = <$jfh>;
+        close $jfh;
+    }
+    my $journal_content = join( '', @lines );
     diag "Journal content:\n$journal_content";
-    close $jfh;
 
     # Locate the edit line for record 90
     my ($rec_edit_line) = grep {

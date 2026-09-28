@@ -93,11 +93,11 @@ Because AmberDB is an embedded engine, sessions persist runtime schema attribute
   amberdb connect myproject
   ```
   Prepares `~/.amberdb/myproject` and issues a 4-digit token.
-- **Connecting to Custom Directory (`name:path`):**
+- **Connecting to Custom Directory (`name@path`):**
   ```bash
-  amberdb connect myproject:./dbstore
+  amberdb connect myproject@./dbstore
   # or:
-  amberdb connect myproject:C:/data/dbstore
+  amberdb connect myproject@C:/data/dbstore
   ```
   Provisions directory skeleton if not present and binds it. Crucially, the **canonical absolute path** is saved in the session registry (`sess_<token>`), ensuring commands executed with the token work from any directory across the entire filesystem without losing context!
 

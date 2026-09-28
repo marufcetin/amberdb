@@ -45,6 +45,20 @@ $user_home =~ s{\\}{/}g;
 our $AMBERDB_HOME = "$user_home/.amberdb";
 our $CLI_SESS_DIR = "$AMBERDB_HOME/session";
 
+sub setup_global_workspace {
+    eval {
+        make_path($AMBERDB_HOME) unless -d $AMBERDB_HOME;
+        make_path($CLI_SESS_DIR) unless -d $CLI_SESS_DIR;
+        my $cfg_dir = "$AMBERDB_HOME/config";
+        make_path($cfg_dir) unless -d $cfg_dir;
+    };
+}
+
+# Auto-provision global workspace in background on first run if missing
+if ( !-d $AMBERDB_HOME ) {
+    setup_global_workspace();
+}
+
 sub resolve_abs_path {
     my ($path) = @_;
     return '' unless defined $path && length $path;
@@ -882,7 +896,7 @@ Kullanım Biçimleri:
 
 2. İsimlendirilmiş Oturum (Session Management):
   amberdb connect <database>                  # ~/.amberdb/<database> havuzuna bağlanır
-  amberdb connect <database>:<path>           # Özel bir klasöre bağlanır (örn: mydb:./dbstore)
+  amberdb connect <database>@<path>           # Özel bir klasöre bağlanır (örn: mydb@./dbstore)
   amberdb 1245 tables                         # 1245 nolu oturumun tablolarını listeler
   amberdb 1245 read products 10               # 1245 nolu oturumda okuma yapar
   amberdb 1245 disconnect                     # Oturumu sonlandırır
@@ -931,7 +945,8 @@ if ( defined $opt_action && $opt_action eq 'connect' ) {
     my ( $conn_db, $custom_path );
 
     if ( defined $conn_arg ) {
-        if ( $conn_arg =~ /^([a-zA-Z0-9_\-]+):(.*)$/ ) {
+        # Custom directory format: <dbname>@<path> (e.g. mydb@./dbstore or mydb@C:/data)
+        if ( $conn_arg =~ /^([a-zA-Z0-9_\-]+)@(.+)$/ ) {
             $conn_db     = $1;
             $custom_path = $2;
         }
@@ -940,13 +955,13 @@ if ( defined $opt_action && $opt_action eq 'connect' ) {
         }
     }
 
-    if ( defined $conn_db && ( $conn_db eq 'dbstore' || ( $conn_db =~ m{[/\\\\]} && !defined $custom_path ) ) ) {
-        die "[AMBERDB_ERROR] '$conn_db' is a directory path/name, not a valid database name. Database name is expected after 'connect'. For custom directory use format: <dbname>:<path> (e.g. amberdb connect mydb:./dbstore) or specify --db=<dir>.\n";
+    if ( defined $conn_db && ( $conn_db eq 'dbstore' || $conn_db =~ m{[/\\\\]} || $conn_db =~ /^[a-zA-Z]:/ ) ) {
+        die "[AMBERDB_ERROR] '$conn_db' is a directory path/name, not a valid database name. Database name is expected after 'connect'. For custom directory use format: <dbname>\@<path> (e.g. amberdb connect mydb\@./dbstore) or specify --db=<dir>.\n";
     }
 
     $conn_db //= $detected_dbname;
     unless ( defined $conn_db && length $conn_db ) {
-        die "[AMBERDB_ERROR] Database name required. Usage: amberdb connect <database_name> (or <database_name>:<path>)\n";
+        die "[AMBERDB_ERROR] Database name required. Usage: amberdb connect <database_name> (or <database_name>\@<path>)\n";
     }
 
     my $target_data_dir;
@@ -1236,10 +1251,7 @@ if ( defined $opt_action && ( $opt_action eq 'setup' || $opt_action eq 'ramdisk'
 
     # If no argument is passed: setup global environment (~/.amberdb)
     if ( !defined $first_arg || !length $first_arg ) {
-        make_path($AMBERDB_HOME) unless -d $AMBERDB_HOME;
-        make_path($CLI_SESS_DIR) unless -d $CLI_SESS_DIR;
-        my $cfg_dir = "$AMBERDB_HOME/config";
-        make_path($cfg_dir) unless -d $cfg_dir;
+        setup_global_workspace();
 
         if ( defined $opt_format && $opt_format eq 'json' ) {
             output_result( {
@@ -1267,8 +1279,8 @@ if ( defined $opt_action && ( $opt_action eq 'setup' || $opt_action eq 'ramdisk'
         print "  2. Merkezi Havuz : Belirtilen ada oturum açarak ~/.amberdb/<ad> kullanılır\n";
         print "     amberdb connect eticaretim\n";
         print "     amberdb 1245 tables\n\n";
-        print "  3. Özel Klasör   : 'ad:yol' formatı ile oturum açılır\n";
-        print "     amberdb connect eticaretim:./dbstore\n";
+        print "  3. Özel Klasör   : 'ad\@yol' formatı ile oturum açılır\n";
+        print "     amberdb connect eticaretim\@./dbstore\n";
         print "=================================================================\n";
         exit 0;
     }

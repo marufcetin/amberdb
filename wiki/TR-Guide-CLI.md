@@ -93,11 +93,11 @@ AmberDB sunucusuz (embedded) çalıştığı için oturumlar komutlar arasında 
   amberdb connect eticaretim
   ```
   `~/.amberdb/eticaretim` altında veritabanını hazırlar ve 4 haneli bir oturum anahtarı (token) üretir.
-- **Özel Bir Dizinde Oturum Açma (`ad:dizin`):**
+- **Özel Bir Dizinde Oturum Açma (`ad@dizin`):**
   ```bash
-  amberdb connect eticaretim:./dbstore
+  amberdb connect eticaretim@./dbstore
   # veya:
-  amberdb connect eticaretim:C:/projem/dbstore
+  amberdb connect eticaretim@C:/projem/dbstore
   ```
   Hedef dizinde veritabanı iskeletini otomatik oluşturur. Oturum dosyasına (`sess_<token>`) **mutlak kanonik dosya yolu** kaydedildiği için, oturum token'ı bilgisayarın herhangi bir yerinden çağrıldığında hedef veritabanını kaybetmez!
 
