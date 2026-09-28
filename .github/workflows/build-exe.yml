@@ -42,6 +42,11 @@ jobs:
         run: |
           cpanm --notest PAR::Packer DB_File JSON::PP Archive::Tar Digest::SHA Unicode::Collate
 
+      - name: Verify Perl Modules
+        run: |
+          perl -MDB_File -e "print qq{DB_File OK\n}"
+          perl -Ilib -MAmberDB -e "print qq{AmberDB OK\n}"
+
       - name: Compile Standalone Executable (pp)
         run: |
           mkdir dist
@@ -72,12 +77,18 @@ jobs:
 
       - name: Determine Version and Release Tag
         id: meta
-        shell: bash
         run: |
-          TAG=$(perl -Ilib -MAmberDB -e 'my $v = AmberDB->VERSION; my $ref = $ENV{GITHUB_REF_NAME} || ""; my $type = $ENV{GITHUB_REF_TYPE} || ""; my $t = ($type eq "tag") ? ($ref =~ /_exe$/ ? $ref : "${ref}_exe") : "v${v}_exe"; print $t;')
-          echo "Determined release tag: $TAG"
-          echo "tag_name=$TAG" >> "$GITHUB_OUTPUT"
-          echo "release_name=AmberDB CLI $TAG (Windows Standalone)" >> "$GITHUB_OUTPUT"
+          $ver = (Get-Content lib/AmberDB.pm | Select-String 'our \$VERSION\s*=\s*[''"]([^''"]+)[''"]').Matches.Groups[1].Value
+          $ref = $env:GITHUB_REF_NAME
+          $type = $env:GITHUB_REF_TYPE
+          if ($type -eq 'tag') {
+              $tag = if ($ref -match '_exe$') { $ref } else { "${ref}_exe" }
+          } else {
+              $tag = "v${ver}_exe"
+          }
+          Write-Host "Determined release tag: $tag"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "tag_name=$tag"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "release_name=AmberDB CLI $tag (Windows Standalone)"
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/') || inputs.release == true
