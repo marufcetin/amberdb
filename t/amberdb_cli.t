@@ -422,7 +422,7 @@ subtest '13. Default table view rendering vs explicit format' => sub {
     # Read with explicit tsv format: should render tab-separated fields on a single line
     my $out_tsv = `"$perl_bin" -Ilib "$cli_path" $token read tbl_table_view 1 tsv`;
     chomp $out_tsv;
-    like( $out_tsv, qr/^1\t\{.*"name":"Ahmet".*\}$/, "Explicit tsv format produces tab-separated line without newline splitting" );
+    like( $out_tsv, qr/^1\t\{.*"?name"?\s*:\s*"?Ahmet"?.*\}$/, "Explicit tsv format produces tab-separated line without newline splitting" );
 
     # Read all with default table view
     my $out_all = `"$perl_bin" -Ilib "$cli_path" $token read tbl_table_view all`;

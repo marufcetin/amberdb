@@ -359,6 +359,24 @@ sub parse_value {
             }
             return \@items if @items;
         }
+
+        # Fallback if inner quotes were removed by shell: {name:Ahmet,role:admin}
+        if ( $v =~ /^\{(.*)\}$/s ) {
+            my $inner = $1;
+            my %hash;
+            while ( $inner =~ /([^,:]+)\s*:\s*([^,]+)/g ) {
+                my ( $k, $item ) = ( $1, $2 );
+                $k    =~ s/^\s+|\s+$//g;
+                $k    =~ s/^['"]//;
+                $k    =~ s/['"]$//;
+                $item =~ s/^\s+|\s+$//g;
+                $item =~ s/^['"]//;
+                $item =~ s/['"]$//;
+                $item = 0 + $item if $item =~ /^-?\d+$/;
+                $hash{$k} = $item;
+            }
+            return \%hash if keys %hash;
+        }
     }
     return 1 if $v =~ /^(?:true|yes)$/i;
     return 0 if $v =~ /^(?:false|no)$/i;
@@ -406,6 +424,28 @@ sub format_cell {
         if ( defined $json ) {
             $json =~ s/\r?\n/ /g;
             return $json;
+        }
+    }
+    elsif ( $val =~ /^\{([^{}]*)\}$/s && $val !~ /"/ ) {
+        # Unquoted hash string from shell: {name:Ahmet,role:admin}
+        my $inner = $1;
+        my %hash;
+        while ( $inner =~ /([^,:]+)\s*:\s*([^,]+)/g ) {
+            my ( $k, $item ) = ( $1, $2 );
+            $k    =~ s/^\s+|\s+$//g;
+            $k    =~ s/^['"]//;
+            $k    =~ s/['"]$//;
+            $item =~ s/^\s+|\s+$//g;
+            $item =~ s/^['"]//;
+            $item =~ s/['"]$//;
+            $hash{$k} = ( $item =~ /^-?\d+$/ ? 0 + $item : $item );
+        }
+        if ( keys %hash ) {
+            my $json = eval { JSON::PP->new->utf8(0)->canonical(1)->encode(\%hash) };
+            if ( defined $json ) {
+                $json =~ s/\r?\n/ /g;
+                return $json;
+            }
         }
     }
     return "$val";
