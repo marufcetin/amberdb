@@ -616,6 +616,61 @@ sub table_info {
     return {};
 }
 
+# Checks if a table has defined schema blocks (.table file with blocks).
+# ------------------------------------------------
+sub has_schema {
+    my ( $self, $tableid ) = @_;
+    return 0 unless defined $tableid && length $tableid;
+    my $table_info = $self->table_info($tableid);
+    return ( $table_info && ref( $table_info->{blocks} ) eq 'ARRAY' && @{ $table_info->{blocks} } ) ? 1 : 0;
+}
+
+# Checks if a given hash structure matches the schema defined in table_info.
+# Returns 1 if table has a schema AND hash contains keys matching schema blocks.
+# Returns 0 if table has no schema OR hash keys do not match schema.
+# ------------------------------------------------
+sub schema_matches_hash {
+    my ( $self, $tableid, $hash ) = @_;
+
+    return 0 unless defined $tableid && length $tableid;
+    return 0 unless ref($hash) eq 'HASH' && %$hash;
+
+    my $table_info = $self->table_info($tableid);
+    my $blocks = ( $table_info && ref( $table_info->{blocks} ) eq 'ARRAY' && @{ $table_info->{blocks} } )
+      ? $table_info->{blocks}
+      : undef;
+    return 0 unless $blocks && @$blocks;
+
+    my %known_keys;
+    for my $idx ( 0 .. $#$blocks ) {
+        my $b = $blocks->[$idx];
+        $known_keys{$idx} = 1;
+        if ( ref($b) eq 'HASH' ) {
+            $known_keys{ lc( $b->{name} ) } = 1 if defined $b->{name};
+            $known_keys{ lc( $b->{id} ) }   = 1 if defined $b->{id};
+        }
+    }
+
+    my $has_non_id_key = 0;
+    my $matches_schema = 0;
+    for my $k ( keys %$hash ) {
+        my $lc_k = lc($k);
+        if ( $lc_k ne 'id' && $lc_k ne '0' ) {
+            $has_non_id_key = 1;
+            if ( $known_keys{$lc_k} ) {
+                $matches_schema = 1;
+                last;
+            }
+        }
+    }
+
+    if ($has_non_id_key) {
+        return $matches_schema;
+    }
+
+    return ( exists $known_keys{id} || exists $known_keys{0} ) ? 1 : 0;
+}
+
 # my $table_path = $adb->table_path($table);
 # ------------------------------------------------
 sub table_path {

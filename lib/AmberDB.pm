@@ -187,22 +187,31 @@ sub insert_id {
     $tableid or return;
     $rid //= 0;
 
-    # Deflate if hashref is provided as single payload or as record payload
+    # Deflate ONLY if table has a schema AND hash matches schema
     if ( ref($rid) eq 'HASH' && !@record ) {
-        my $h   = $rid;
-        my $def = $self->deflate( $tableid, $h );
-        if ( ref($def) eq 'ARRAY' ) {
-            $rid    = $def->[0];
-            @record = ( scalar(@$def) > 1 ) ? @{$def}[ 1 .. $#$def ] : (0);
+        if ( $self->schema_matches_hash( $tableid, $rid ) ) {
+            my $h   = $rid;
+            my $def = $self->deflate( $tableid, $h );
+            if ( ref($def) eq 'ARRAY' ) {
+                $rid    = $def->[0];
+                @record = ( scalar(@$def) > 1 ) ? @{$def}[ 1 .. $#$def ] : (0);
+            }
+        }
+        else {
+            my $h = { %$rid };
+            $rid = delete $h->{id} // delete $h->{ID} // 0;
+            @record = ($h);
         }
     }
     elsif ( @record && ref($record[0]) eq 'HASH' ) {
-        my $h = $record[0];
-        $h->{id} //= $rid if $rid;
-        my $def = $self->deflate( $tableid, $h );
-        if ( ref($def) eq 'ARRAY' ) {
-            $rid //= $def->[0];
-            @record = ( scalar(@$def) > 1 ) ? @{$def}[ 1 .. $#$def ] : (0);
+        if ( $self->schema_matches_hash( $tableid, $record[0] ) ) {
+            my $h = $record[0];
+            $h->{id} //= $rid if $rid;
+            my $def = $self->deflate( $tableid, $h );
+            if ( ref($def) eq 'ARRAY' ) {
+                $rid //= $def->[0];
+                @record = ( scalar(@$def) > 1 ) ? @{$def}[ 1 .. $#$def ] : (0);
+            }
         }
     }
 
@@ -352,15 +361,27 @@ sub insert_list {
     $tableid        or return {};
     scalar @records or return {};
 
-    # Deflate if records contain hashrefs or if single arrayref of hashes or HoH
-    if ( @records == 1 && ref($records[0]) eq 'ARRAY' && @{$records[0]} && ref($records[0]->[0]) eq 'HASH' ) {
-        @records = $self->deflate( $tableid, @{ $records[0] } );
+    # Deflate ONLY if table has a schema and records match schema
+    my $should_deflate = 0;
+    if ( $self->has_schema($tableid) ) {
+        my $first_rec = ( @records == 1 && ref($records[0]) eq 'ARRAY' && @{$records[0]} && ref($records[0]->[0]) eq 'HASH' )
+          ? $records[0]->[0]
+          : ( ref($records[0]) eq 'HASH' ? $records[0] : ( ( @records > 1 && ref($records[1]) eq 'HASH' ) ? $records[1] : undef ) );
+        if ( $first_rec && $self->schema_matches_hash( $tableid, $first_rec ) ) {
+            $should_deflate = 1;
+        }
     }
-    elsif ( @records == 1 && ref($records[0]) eq 'HASH' ) {
-        @records = $self->deflate( $tableid, $records[0] );
-    }
-    elsif ( grep { ref($_) eq 'HASH' } @records ) {
-        @records = $self->deflate( $tableid, @records );
+
+    if ($should_deflate) {
+        if ( @records == 1 && ref($records[0]) eq 'ARRAY' && @{$records[0]} && ref($records[0]->[0]) eq 'HASH' ) {
+            @records = $self->deflate( $tableid, @{ $records[0] } );
+        }
+        elsif ( @records == 1 && ref($records[0]) eq 'HASH' ) {
+            @records = $self->deflate( $tableid, $records[0] );
+        }
+        elsif ( grep { ref($_) eq 'HASH' } @records ) {
+            @records = $self->deflate( $tableid, @records );
+        }
     }
 
     # Write authority cancelled.
@@ -561,21 +582,30 @@ sub update_id {
     $tableid or return;
 
     if ( ref($rid) eq 'HASH' && !@record ) {
-        my $h = { %$rid };
-        $rid = $h->{id} // $h->{ID};
-        @record = ($h);
+        if ( $self->schema_matches_hash( $tableid, $rid ) ) {
+            my $h = { %$rid };
+            $rid = $h->{id} // $h->{ID};
+            @record = ($h);
+        }
+        else {
+            my $h = { %$rid };
+            $rid = delete $h->{id} // delete $h->{ID};
+            @record = ($h);
+        }
     }
 
     $rid = $self->id_check( $tableid, $rid );
     $rid or return;
 
-    # Deflate if hashref is provided
+    # Deflate ONLY if table has a schema AND hash matches schema
     if ( @record && ref($record[0]) eq 'HASH' ) {
-        my $h = { %{ $record[0] } };
-        $h->{id} //= $rid;
-        my $def = $self->deflate( $tableid, $h );
-        if ( ref($def) eq 'ARRAY' ) {
-            @record = ( scalar(@$def) > 1 ) ? @{$def}[ 1 .. $#$def ] : ();
+        if ( $self->schema_matches_hash( $tableid, $record[0] ) ) {
+            my $h = { %{ $record[0] } };
+            $h->{id} //= $rid;
+            my $def = $self->deflate( $tableid, $h );
+            if ( ref($def) eq 'ARRAY' ) {
+                @record = ( scalar(@$def) > 1 ) ? @{$def}[ 1 .. $#$def ] : ();
+            }
         }
     }
 
@@ -731,15 +761,27 @@ sub update_list {
     $tableid        or return {};
     scalar @records or return {};
 
-    # Deflate if records contain hashrefs or if single arrayref of hashes or HoH
-    if ( @records == 1 && ref($records[0]) eq 'ARRAY' && @{$records[0]} && ref($records[0]->[0]) eq 'HASH' ) {
-        @records = $self->deflate( $tableid, @{ $records[0] } );
+    # Deflate ONLY if table has a schema and records match schema
+    my $should_deflate = 0;
+    if ( $self->has_schema($tableid) ) {
+        my $first_rec = ( @records == 1 && ref($records[0]) eq 'ARRAY' && @{$records[0]} && ref($records[0]->[0]) eq 'HASH' )
+          ? $records[0]->[0]
+          : ( ref($records[0]) eq 'HASH' ? $records[0] : ( ( @records > 1 && ref($records[1]) eq 'HASH' ) ? $records[1] : undef ) );
+        if ( $first_rec && $self->schema_matches_hash( $tableid, $first_rec ) ) {
+            $should_deflate = 1;
+        }
     }
-    elsif ( @records == 1 && ref($records[0]) eq 'HASH' ) {
-        @records = $self->deflate( $tableid, $records[0] );
-    }
-    elsif ( grep { ref($_) eq 'HASH' } @records ) {
-        @records = $self->deflate( $tableid, @records );
+
+    if ($should_deflate) {
+        if ( @records == 1 && ref($records[0]) eq 'ARRAY' && @{$records[0]} && ref($records[0]->[0]) eq 'HASH' ) {
+            @records = $self->deflate( $tableid, @{ $records[0] } );
+        }
+        elsif ( @records == 1 && ref($records[0]) eq 'HASH' ) {
+            @records = $self->deflate( $tableid, $records[0] );
+        }
+        elsif ( grep { ref($_) eq 'HASH' } @records ) {
+            @records = $self->deflate( $tableid, @records );
+        }
     }
 
     # Write authority cancelled.
@@ -1883,9 +1925,9 @@ sub inflate {
     my $table_info = $self->table_info($tableid);
     my $blocks = ( $table_info && ref( $table_info->{blocks} ) eq 'ARRAY' ) ? $table_info->{blocks} : undef;
 
-    # Return data as a reference to preserve caller's return signature contract consistency!
+    # Return data as-is if no schema blocks defined
     if ( !$blocks || !@$blocks ) {
-        return ( ref($data) eq 'ARRAY' ) ? $data : [$data];
+        return $data;
     }
 
     # 3. Detect single vs batch records
@@ -1966,7 +2008,19 @@ sub inflate {
     # 5. Inner record transformation
     my $inflate_record = sub {
         my ($rec) = @_;
-        return unless defined $rec && ref($rec) eq 'ARRAY';
+        return unless defined $rec;
+
+        # If record is already a HASH reference (e.g. document store), return as-is
+        if ( ref($rec) eq 'HASH' ) {
+            return $rec;
+        }
+
+        return unless ref($rec) eq 'ARRAY';
+
+        # If record is a document payload [ $id, \%doc_hash ] and schema has > 2 blocks, return the document
+        if ( @$rec == 2 && ref($rec->[1]) eq 'HASH' && @field_keys > 2 ) {
+            return $rec->[1];
+        }
 
         my %hash;
         my $max_i = ( scalar(@field_keys) > scalar(@$rec) ) ? $#field_keys : $#$rec;
@@ -2066,13 +2120,33 @@ sub deflate {
     my $blocks = ( $table_info && ref( $table_info->{blocks} ) eq 'ARRAY' ) ? $table_info->{blocks} : undef;
 
     # If no schema blocks defined, pass through without altering data
-    if ( !$blocks || !@$blocks ) {
+    if ( !$self->has_schema($tableid) ) {
         return wantarray ? @records : ( @records == 1 ? $records[0] : \@records );
+    }
+
+    # If incoming structure does NOT match schema, pass through without altering data
+    my $first_cand = ( ref( $records[0] ) eq 'ARRAY' && @{ $records[0] } && ref( $records[0]->[0] ) eq 'HASH' )
+      ? $records[0]->[0]
+      : ( ref( $records[0] ) eq 'HASH' ? $records[0] : undef );
+
+    if ( $first_cand && !$self->schema_matches_hash( $tableid, $first_cand ) ) {
+        my @vals = values %$first_cand;
+        my $is_hoh = ( @vals && !grep { ref($_) ne 'HASH' } @vals );
+        if ($is_hoh) {
+            my $sample = $vals[0];
+            if ( !$self->schema_matches_hash( $tableid, $sample ) ) {
+                return wantarray ? @records : ( @records == 1 ? $records[0] : \@records );
+            }
+        }
+        else {
+            return wantarray ? @records : ( @records == 1 ? $records[0] : \@records );
+        }
     }
 
     my %block_names;
     for my $b (@$blocks) {
         $block_names{ $b->{name} } = 1 if ref($b) eq 'HASH' && defined $b->{name};
+        $block_names{ $b->{id} }   = 1 if ref($b) eq 'HASH' && defined $b->{id};
     }
 
     # Normalize incoming data container
