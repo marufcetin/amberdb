@@ -574,6 +574,9 @@ while ( $arg_idx < @ARGV ) {
     elsif ( $curr =~ /^--(?:time)$/i ) {
         $opt_time = 1;
     }
+    elsif ( $curr =~ /^--(?:version)$/i || $curr =~ /^-v$/i ) {
+        $opt_action = 'version';
+    }
     else {
         push @raw_tokens, $curr;
     }
@@ -588,7 +591,7 @@ my %known_actions = map { $_ => 1 } qw(
     search search_table fetch field_fetch count table_count
     insert insert_id update update_id delete delete_id
     reindex check vacuum migrate update_table update_storage update_version
-    export tie2csv import csv2tie dump restore rename drop help
+    export tie2csv import csv2tie dump restore rename drop help version
 );
 
 # Step 3: Check if first token is a session token (e.g. 1245 or existing session file)
@@ -927,6 +930,7 @@ Genel Seçenekler:
   --time, time, time=1                        İşlem süresini en altta satır olarak yazar
   --dry-run                                   İşlemi uygulamadan simüle eder
   --force                                     Silme eylemleri için zorunlu onay
+  --version, -v, version                      Sürüm bilgisini yazar
 USAGE
     exit 0;
 }
@@ -934,6 +938,16 @@ USAGE
 if ( $opt_help || ( defined $opt_action && $opt_action eq 'help' ) ) {
     $opt_help = 1;
     show_usage();
+}
+
+if ( defined $opt_action && $opt_action =~ /^(?:version|--version|-v)$/i ) {
+    if ( defined $opt_format && $opt_format eq 'json' ) {
+        output_result( { version => $AmberDB::VERSION, engine => 'AmberDB', platform => $^O }, $opt_format );
+    }
+    else {
+        print "AmberDB v$AmberDB::VERSION (CLI)\n";
+    }
+    exit 0;
 }
 
 # ============================================================================

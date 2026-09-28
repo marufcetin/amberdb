@@ -2,6 +2,9 @@ name: Build AmberDB Executable (Windows)
 
 on:
   push:
+    branches:
+      - main
+      - master
     tags:
       - 'v*'
   workflow_dispatch:
@@ -42,11 +45,12 @@ jobs:
       - name: Compile Standalone Executable (pp)
         run: |
           mkdir dist
-          pp -o dist\amberdb.exe -Ilib -a "lib;lib" -M DB_File -M JSON::PP -M Archive::Tar -M Digest::SHA -M Unicode::Collate -M AmberDB -M AmberDB::Tools bin\amberdb_cli.pl
+          pp -o dist\amberdb.exe -I lib -M DB_File -M JSON::PP -M Archive::Tar -M Digest::SHA -M Unicode::Collate -M AmberDB -M AmberDB::Tools bin\amberdb_cli.pl
 
       - name: Test Compiled Executable (Smoke Test)
         run: |
-          dist\amberdb.exe
+          dist\amberdb.exe --version
+          dist\amberdb.exe help
 
       - name: Bundle Distribution Package
         shell: cmd
