@@ -11,6 +11,10 @@ Revision history for AmberDB
           * Added '--version', '-v', and 'version' commands to bin/amberdb_cli.pl.
           * Emits standard release banner 'AmberDB v<VERSION> (CLI)' or structured JSON schema when combined with 'format=json'.
 
+        - [DOCUMENT-STORE SINGLE HASH / REFERENCE ENCODING FIX]
+          * Fixed AmberDB::recs_put to ensure single reference record payloads (HASH/ARRAY, e.g. 'data={...}') are passed through db_encode rather than stringified to 'HASH(0x...)'.
+          * Verified complete recursive serialization and round-trip fidelity for deeply nested hashes and arrays inside array records (tested in t/amberdb_escape_encode.t).
+
 5.26.1  2026-09-28
         - [32-BIT PERL / CPAN TESTERS QUAD PACKING COMPATIBILITY]
           * Implemented transparent cross-platform 64-bit integer packing in AmberDB::Base::Encoder (_pack_ids, _unpack_ids, _pack_single_id).

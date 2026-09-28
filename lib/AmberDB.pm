@@ -5705,7 +5705,7 @@ sub recs_put {
         next unless defined $rid && $rid ne '';
 
         my $k   = $self->utf_encode("$rid");
-        my $val = @fields == 1 ? $fields[0] : $self->db_encode(@fields);
+        my $val = ( @fields == 1 && !ref( $fields[0] ) ) ? $fields[0] : $self->db_encode(@fields);
         next unless defined $val && $val ne '';
 
         if ( $is_txn && !$self->{_txn}->{logged}->{"$file_path\x1e$rid"}++ ) {
