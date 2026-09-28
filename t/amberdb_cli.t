@@ -37,11 +37,14 @@ sub norm_path {
 
 # ---------------------------------------------------------------------------
 subtest '1. Help screen & default table overview' => sub {
-    plan tests => 3;
+    plan tests => 4;
 
-    my $out_help = `"$perl_bin" -Ilib "$cli_path" help`;
+    my $out_help = `"$perl_bin" -Ilib "$cli_path" usage`;
     like($out_help, qr/AmberDB CLI/, "Help screen shows CLI title");
-    like($out_help, qr/Kullanım:/, "Help screen shows usage section");
+    like($out_help, qr/Usage:/, "Usage screen shows English usage section");
+
+    my $out_tr = `"$perl_bin" -Ilib "$cli_path" usage.tr`;
+    like($out_tr, qr/Kullanım:/, "usage.tr shows Turkish usage section");
 
     my $out_list = `"$perl_bin" -Ilib "$cli_path" path-dbase_dir="$test_dbdir" format=json`;
     my $data = eval { decode_json($out_list) };
@@ -398,7 +401,7 @@ subtest '12. Auto-provisioning ~/.amberdb workspace on first run' => sub {
 
 # ---------------------------------------------------------------------------
 subtest '13. Default table view rendering vs explicit format' => sub {
-    plan tests => 5;
+    plan tests => 6;
 
     my $out_conn = `"$perl_bin" -Ilib "$cli_path" connect path-dbase_dir="$test_dbdir" format=json`;
     my $token = decode_json($out_conn)->{token};
@@ -415,6 +418,11 @@ subtest '13. Default table view rendering vs explicit format' => sub {
     # Read with explicit dumper format: should render Data::Dumper
     my $out_dump = `"$perl_bin" -Ilib "$cli_path" $token read tbl_table_view 1 dumper`;
     like( $out_dump, qr/\$VAR1\s*=/, "Explicit dumper format produces Data::Dumper output" );
+
+    # Read with explicit tsv format: should render tab-separated fields on a single line
+    my $out_tsv = `"$perl_bin" -Ilib "$cli_path" $token read tbl_table_view 1 tsv`;
+    chomp $out_tsv;
+    like( $out_tsv, qr/^1\t\{.*"name":"Ahmet".*\}$/, "Explicit tsv format produces tab-separated line without newline splitting" );
 
     # Read all with default table view
     my $out_all = `"$perl_bin" -Ilib "$cli_path" $token read tbl_table_view all`;

@@ -310,8 +310,10 @@ amberdb drop test_table --force
 
 | Flag | Description | Example |
 | :--- | :--- | :--- |
+| `usage` / `help` | Displays English command and usage reference | `amberdb usage` |
+| `usage.tr` / `help.tr` | Displays Turkish command and usage reference | `amberdb usage.tr` |
 | `--db=<path>` | Explicit database directory for direct execution | `amberdb --db=/var/data read users 10` |
-| `--format=<fmt>` | Output format (`table`, `json`, `pretty`, `tsv`, `dumper`) | `amberdb read users 10 --format=json` |
+| `--format=<fmt>` | Output format (`table`, `json`, `pretty`, `tsv`, `dumper`). Default: `table` (ASCII table box). Format can also be placed at command end (`tsv`, `json`, etc.). | `amberdb read users 10 --format=json` |
 | `--time` / `time` | Appends elapsed execution time at the bottom (`time=1` or `time`) | `amberdb read sales_price all 0 10 json time` |
 | `--token=<tok>` | Explicit session token | `amberdb --token=1245 read users 10` |
 | `--dry-run` | Simulates execution without disk writes | `amberdb delete users 10 --dry-run` |

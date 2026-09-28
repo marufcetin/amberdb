@@ -310,8 +310,10 @@ amberdb drop test_tablosu --force
 
 | Bayrak | Aciklama | Ornek |
 | :--- | :--- | :--- |
+| `usage` / `help` | Ingilizce komut ve kullanim rehberini ekrana yazar | `amberdb usage` |
+| `usage.tr` / `help.tr` | Turkce komut ve kullanim rehberini ekrana yazar | `amberdb usage.tr` |
 | `--db=<path>` | Oturum acmadan dogrudan veritabani yolunu belirtir | `amberdb --db=/var/data read users 10` |
-| `--format=<fmt>` | Cikti bicimi (`table`, `json`, `pretty`, `tsv`, `dumper`) | `amberdb read users 10 --format=json` |
+| `--format=<fmt>` | Cikti bicimi (`table`, `json`, `pretty`, `tsv`, `dumper`). Varsayilan: `table` (ASCII tablo). Komut sonuna format adi da eklenebilir (`tsv`, `json` vb.). | `amberdb read users 10 --format=json` |
 | `--time` / `time` | Islem gecen suresini en altta ayri satir olarak yazar (`time=1` veya `time`) | `amberdb read sales_price all 0 10 json time` |
 | `--token=<tok>` | Oturum token'ini acikca belirtir | `amberdb --token=1245 read users 10` |
 | `--dry-run` | Islemi uygulamadan simule eder | `amberdb delete users 10 --dry-run` |

@@ -411,6 +411,14 @@ sub format_cell {
     return "$val";
 }
 
+sub format_tsv_cell {
+    my ($val) = @_;
+    my $cell = format_cell($val);
+    $cell =~ s/\t/ /g;
+    $cell =~ s/\r?\n/ /g;
+    return $cell;
+}
+
 sub render_table_box {
     my ( $headers, $rows ) = @_;
     return unless @$headers;
@@ -563,29 +571,57 @@ sub output_result {
         return;
     }
     elsif ( $format eq 'tsv' ) {
+        if ( ref $data eq 'HASH' ) {
+            if ( exists $data->{count} && exists $data->{records} && ref $data->{records} eq 'ARRAY' ) {
+                my $recs = $data->{records};
+                if ( @$recs && ref $recs->[0] eq 'HASH' ) {
+                    my @cols = sort keys %{ $recs->[0] };
+                    print join( "\t", @cols ), "\n";
+                    for my $row (@$recs) {
+                        print join( "\t", map { format_tsv_cell( $row->{$_} ) } @cols ), "\n";
+                    }
+                }
+                else {
+                    for my $row (@$recs) {
+                        my @fields = ref $row eq 'ARRAY' ? @$row : ($row);
+                        print join( "\t", map { format_tsv_cell($_) } @fields ), "\n";
+                    }
+                }
+                return;
+            }
+
+            for my $k ( sort keys %$data ) {
+                my $v = $data->{$k};
+                print "$k\t" . format_tsv_cell($v) . "\n";
+            }
+            return;
+        }
+
         if ( ref $data eq 'ARRAY' ) {
-            if ( @$data && ref $data->[0] eq 'HASH' ) {
+            if ( !@$data ) {
+                return;
+            }
+            if ( ref $data->[0] eq 'HASH' ) {
                 my @cols = sort keys %{ $data->[0] };
                 print join( "\t", @cols ), "\n";
                 for my $row (@$data) {
-                    print join( "\t", map { defined $row->{$_} ? ( ref $row->{$_} ? encode_json( $row->{$_} ) : $row->{$_} ) : "" } @cols ), "\n";
+                    print join( "\t", map { format_tsv_cell( $row->{$_} ) } @cols ), "\n";
+                }
+            }
+            elsif ( ref $data->[0] eq 'ARRAY' ) {
+                # List of array records
+                for my $row (@$data) {
+                    print join( "\t", map { format_tsv_cell($_) } @$row ), "\n";
                 }
             }
             else {
-                for my $item (@$data) {
-                    print( ( ref $item ? encode_json($item) : ( $item // "" ) ), "\n" );
-                }
+                # Single record: [ $id, $field_1, $field_2, ... ]
+                print join( "\t", map { format_tsv_cell($_) } @$data ), "\n";
             }
+            return;
         }
-        elsif ( ref $data eq 'HASH' ) {
-            for my $k ( sort keys %$data ) {
-                my $v = $data->{$k};
-                print "$k\t" . ( ref $v ? encode_json($v) : ( $v // "" ) ) . "\n";
-            }
-        }
-        else {
-            print( ( $data // "" ), "\n" );
-        }
+
+        print( ( defined $data ? format_tsv_cell($data) : "" ), "\n" );
         return;
     }
 
@@ -655,7 +691,8 @@ my $opt_format;
 our $opt_time   = 0;
 my $opt_dry_run = 0;
 my $opt_force   = 0;
-our $opt_help   = 0;
+our $opt_help      = 0;
+our $opt_help_lang;
 my $opt_database;
 my $opt_user;
 my $opt_pass;
@@ -734,7 +771,8 @@ my %known_actions = map { $_ => 1 } qw(
     search search_table fetch field_fetch count table_count
     insert insert_id update update_id delete delete_id
     reindex check vacuum migrate update_table update_storage update_version
-    export tie2csv import csv2tie dump restore rename drop help version
+    export tie2csv import csv2tie dump restore rename drop help usage
+    help.tr usage.tr help.en usage.en version
 );
 
 # Step 3: Check if first token is a session token (e.g. 1245 or existing session file)
@@ -862,8 +900,15 @@ for my $raw (@raw_tokens) {
         elsif ( $k eq 'manifest' ) {
             $method_args{manifest} = $v;
         }
-        elsif ( $k =~ /^(?:help|h)$/ ) {
+        elsif ( $k =~ /^(?:help|h|usage)$/i ) {
             $opt_help = 1;
+            if ( defined $v && $v =~ /^(?:tr|en)$/i ) {
+                $opt_help_lang = lc($v);
+            }
+        }
+        elsif ( $k =~ /^(?:help|usage)\.(tr|en)$/i ) {
+            $opt_help = 1;
+            $opt_help_lang = lc($1);
         }
         elsif ( $k =~ /^cfg-(.+)$/ ) {
             $adb->config( $1 => $val );
@@ -917,8 +962,14 @@ for my $raw (@raw_tokens) {
         }
     }
     else {
-        if ( $arg =~ /^(?:help|h)$/i ) {
+        if ( $arg =~ /^(?:help|h|usage)$/i ) {
             $opt_help = 1;
+            $opt_action //= 'help';
+        }
+        elsif ( $arg =~ /^(?:help|usage)\.(tr|en)$/i ) {
+            $opt_help = 1;
+            $opt_help_lang = lc($1);
+            $opt_action //= 'help';
         }
         elsif ( $arg =~ /^(?:dry-run|dry_run)$/i ) {
             $opt_dry_run = 1;
@@ -951,6 +1002,11 @@ for my $raw (@raw_tokens) {
 # Step 6: Action alias normalization
 if ( defined $opt_action ) {
     my $act = lc($opt_action);
+    if ( $act =~ /^(?:help|usage)(?:\.(tr|en))?$/i ) {
+        $opt_help = 1;
+        $opt_help_lang = lc($1) if defined $1;
+        $opt_action = 'help';
+    }
     $opt_action = 'setup'          if $act eq 'setup' || $act eq 'install';
     $opt_action = 'status'         if $act eq 'tables' || $act eq 'list';
     $opt_action = 'user'           if $act eq 'users';
@@ -1023,8 +1079,12 @@ if ( defined $opt_action && $opt_action eq 'read' ) {
 # ============================================================================
 
 sub show_usage {
-    print <<"USAGE";
-AmberDB CLI v$AmberDB::VERSION - Embedded Database Console & Management Tool
+    my ($lang) = @_;
+    $lang = lc( $lang // 'en' );
+
+    if ( $lang eq 'tr' ) {
+        print <<"USAGE_TR";
+AmberDB CLI v$AmberDB::VERSION - Gömülü Veritabanı Konsolu ve Yönetim Aracı
 
 Kullanım:
   amberdb [eylem|token] [tablo] [parametreler...]
@@ -1042,7 +1102,7 @@ Kullanım Biçimleri:
 
 2. İsimlendirilmiş Oturum (Session Management):
   amberdb connect <database>                  # ~/.amberdb/<database> havuzuna bağlanır
-  amberdb connect <database>@<path>           # Özel bir klasöre bağlanır (örn: mydb@./dbstore)
+  amberdb connect <database>\@<path>           # Özel bir klasöre bağlanır (örn: mydb\@./dbstore)
   amberdb 1245 tables                         # 1245 nolu oturumun tablolarını listeler
   amberdb 1245 read products 10               # 1245 nolu oturumda okuma yapar
   amberdb 1245 disconnect                     # Oturumu sonlandırır
@@ -1067,20 +1127,85 @@ Bakım ve Yönetim Eylemleri:
   amberdb drop temp_tbl force=1               # Tabloyu kalıcı olarak sil
 
 Genel Seçenekler:
-  --format=table|json|pretty|tsv|dumper       Çıktı biçimi (veya sonda: json, dumper)
+  --format=table|json|pretty|tsv|dumper       Çıktı biçimi (Varsayılan: table. Veya sonda: json, tsv, dumper)
   --db=/path/to/dbstore                       Oturumsuz doğrudan veritabanı yolu
   --token=TOKEN                               Aktif oturum anahtarı
   --time, time, time=1                        İşlem süresini en altta satır olarak yazar
   --dry-run                                   İşlemi uygulamadan simüle eder
   --force                                     Silme eylemleri için zorunlu onay
   --version, -v, version                      Sürüm bilgisini yazar
-USAGE
+
+İngilizce yardım için: amberdb usage
+USAGE_TR
+        exit 0;
+    }
+
+    # Default: English
+    print <<"USAGE_EN";
+AmberDB CLI v$AmberDB::VERSION - Embedded Database Console & Management Tool
+
+Usage:
+  amberdb [action|token] [table] [parameters...]
+
+Usage Modes:
+
+1. Direct Local Execution (Default - Local ./dbstore):
+  amberdb tables                              # List tables in current directory ./dbstore
+  amberdb read products 10                    # Read single record by ID
+  amberdb read products 10 inflate=1 json     # Read record with schema inflation as JSON
+  amberdb search products "headphone" limit=10# Full-text and phonetic search
+  amberdb insert users 0 data='{"name":"Ali"}'# Insert record (creates ./dbstore if missing)
+  amberdb update users 10 data='{"role":"admin"}'
+  amberdb delete users 10
+
+2. Named Session (Session Management):
+  amberdb connect <database>                  # Connect to ~/.amberdb/<database> pool
+  amberdb connect <database>\@<path>           # Connect to custom folder (e.g. mydb\@./dbstore)
+  amberdb 1245 tables                         # List tables for session 1245
+  amberdb 1245 read products 10               # Read record in session 1245
+  amberdb 1245 disconnect                     # Terminate active session
+
+3. Infrastructure & Setup:
+  amberdb setup                               # Provision ~/.amberdb global workspace
+  amberdb setup [dir]                         # Initialize database skeleton in custom directory
+  amberdb setup ramdisk [start|stop|status]   # RAM-disk drive management
+
+Maintenance & Administrative Actions:
+  amberdb update storage [--check] [--force]  # Directory & ABR v5 format migration
+  amberdb update version [--check]            # MetaCPAN core version check / update
+  amberdb reindex products                    # Rebuild all derived indexes
+  amberdb check products                      # Physical file integrity check
+  amberdb vacuum products                     # Compact and reclaim BDB storage space
+  amberdb migrate products                    # Schema migration
+  amberdb export products file=backup.csv     # Export table to CSV
+  amberdb import products file=new.csv        # Import table from CSV
+  amberdb dump products file=backup.tar.gz    # Create database backup archive
+  amberdb restore file=backup.tar.gz          # Restore database from backup
+  amberdb rename from=old to=new              # Rename table
+  amberdb drop temp_tbl force=1               # Permanently drop table and indexes
+
+General Options:
+  --format=table|json|pretty|tsv|dumper       Output format (Default: table. Or trailing: json, tsv, dumper)
+  --db=/path/to/dbstore                       Direct database directory without session
+  --token=TOKEN                               Active session token
+  --time, time, time=1                        Prints execution time at the bottom
+  --dry-run                                   Simulates execution without writes
+  --force                                     Required confirmation for destructive actions
+  --version, -v, version                      Display version information
+
+For Turkish help: amberdb usage.tr
+USAGE_EN
     exit 0;
 }
 
 if ( $opt_help || ( defined $opt_action && $opt_action eq 'help' ) ) {
+    my $lang = $opt_help_lang;
+    if ( @pos_args && $pos_args[0] =~ /^(?:tr|en)$/i ) {
+        $lang //= lc(shift @pos_args);
+    }
+    $lang //= 'en';
     $opt_help = 1;
-    show_usage();
+    show_usage($lang);
 }
 
 if ( defined $opt_action && $opt_action =~ /^(?:version|--version|-v)$/i ) {
