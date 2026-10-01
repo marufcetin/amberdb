@@ -11,10 +11,10 @@ This wiki is organized as an **encyclopedic reference dictionary**. Each method,
 ## Quick Navigation
 
 - **Getting Started & Guides:** [What is AmberDB?](Guide-What-is-AmberDB) | [How to Install AmberDB](Guide-Installation) | [How to Use AmberDB](Guide-Usage-Quickstart) | [Core CRUD Operations](Guide-CRUD-Operations)
-- **Core Concepts:** [Berkeley DB Engine](Concept-Berkeley-DB) | [Table Schema](Concept-Table-Schema) | [Global Flags](Concept-Global-Flags) | [Table Schema Flags](Concept-Schema-Flags) | [Directory Structure](Concept-Directory-Structure) | [File Structure](Concept-File-Structure) | [Repeat Blocks](Concept-Repeat-Blocks) | [Auto-Increment ID](Concept-Auto-ID) | [String Keys & Simple Mode](Concept-ASCII-ID) | [Relational Records](Concept-Relational-Records) | [Record Anatomy](Concept-Record-Anatomy) | [JOIN-Free Architecture](Concept-JOIN-Free-Architecture) | [Strict 2PL Locking](Concept-Strict-2PL-Locking)
-- **Essential Methods:** [new](Method-new) | [config](Method-config) | [insert_id](Method-insert_id) | [read_id](Method-read_id) | [read_all](Method-read_all) | [modify_id](Method-modify_id) | [delete_id](Method-delete_id) | [field_fetch](Method-field_fetch) | [search_table](Method-search_table) | [facet_menu](Method-facet_menu) | [transact_start](Method-transact_start) | [flock_open](Method-flock_open)
+- **Core Concepts:** [Berkeley DB Engine](Concept-Berkeley-DB) | [Table Schema](Concept-Table-Schema) | [Global Flags](Concept-Global-Flags) | [Table Schema Flags](Concept-Schema-Flags) | [Directory Structure](Concept-Directory-Structure) | [File Structure](Concept-File-Structure) | [Repeat Blocks](Concept-Repeat-Blocks) | [Auto-Increment ID](Concept-Auto-ID) | [String Keys & Simple Mode](Concept-ASCII-ID) | [Relational Records](Concept-Relational-Records) | [Record Anatomy](Concept-Record-Anatomy) | [JOIN-Free Architecture](Concept-JOIN-Free-Architecture) | [Strict 2PL Locking](Concept-Strict-2PL-Locking) | [Ajax Query Suggestion](Concept-Query-Suggestion-Ajax)
+- **Essential Methods:** [new](Method-new) | [config](Method-config) | [insert_id](Method-insert_id) | [read_id](Method-read_id) | [read_all](Method-read_all) | [modify_id](Method-modify_id) | [delete_id](Method-delete_id) | [field_fetch](Method-field_fetch) | [search_table](Method-search_table) | [suggest_table](Method-suggest_table) | [facet_menu](Method-facet_menu) | [transact_start](Method-transact_start) | [flock_open](Method-flock_open)
 - **Top Flags:** [log_owner](Flag-log_owner) | [use_counter](Flag-use_counter) | [use_junk](Flag-use_junk) | [keep_deleted](Flag-keep_deleted) | [auto_id](Flag-auto_id) | [buffer_write](Flag-buffer_write) | [simple](Flag-simple) | [jnktype](Flag-jnktype) | [keys_only](Flag-keys_only)
-- **File Types:** [.db](File-db) | [.table](File-table) | [.inx](File-inx) | [.fld](File-fld) | [.src](File-src) | [.fac](File-fac) | [.slg](File-slg) | [.amberdb](File-amberdb) | [.csv](File-csv)
+- **File Types:** [.db](File-db) | [.table](File-table) | [.inx](File-inx) | [.fld](File-fld) | [.src](File-src) | [.fac](File-fac) | [.slg](File-slg) | [.ajw](File-ajw) | [.ajn](File-ajn) | [.amberdb](File-amberdb) | [.csv](File-csv)
 
 ---
 
@@ -22,7 +22,7 @@ This wiki is organized as an **encyclopedic reference dictionary**. Each method,
 
 | Letter | Entries |
 | :--- | :--- |
-| **A** | [array_compare](Method-array_compare) · [array_filter](Method-array_filter) · [array_pick](Method-array_pick) · [array_punch](Method-array_punch) · [array_shuffle](Method-array_shuffle) · [array_size](Method-array_size) · [array_sort](Method-array_sort) · [array_sublist](Method-array_sublist) · [array_substr](Method-array_substr) · [array_substrno](Method-array_substrno) · [ASCII / String Keys](Concept-ASCII-ID) · [auto_id (Flag)](Flag-auto_id) · [Auto-Increment ID (Concept)](Concept-Auto-ID) |
+| **A** | [Ajax Query Suggestion Engine](Concept-Query-Suggestion-Ajax) · [array_compare](Method-array_compare) · [array_filter](Method-array_filter) · [array_pick](Method-array_pick) · [array_punch](Method-array_punch) · [array_shuffle](Method-array_shuffle) · [array_size](Method-array_size) · [array_sort](Method-array_sort) · [array_sublist](Method-array_sublist) · [array_substr](Method-array_substr) · [array_substrno](Method-array_substrno) · [ASCII / String Keys](Concept-ASCII-ID) · [auto_id (Flag)](Flag-auto_id) · [Auto-Increment ID (Concept)](Concept-Auto-ID) |
 | **B** | [Berkeley DB Engine](Concept-Berkeley-DB) · [buffer_delete](Method-buffer_delete) · [buffer_read](Method-buffer_read) · [buffer_write](Method-buffer_write) · [buffer_write (Flag)](Flag-buffer_write) |
 | **C** | [check_table](Method-check_table) · [CLI Console (amberdb_cli.pl)](Guide-CLI) · [config](Method-config) · [convert_tables](Method-convert_tables) · [CRUD Operations Guide](Guide-CRUD-Operations) |
 | **D** | [Data Model](Concept-Record-Anatomy) · [dbase_dir (Flag)](Flag-dbase_dir) · [deep_copy](Method-deep_copy) · [delete_id](Method-delete_id) · [delete_list](Method-delete_list) · [Directory Structure](Concept-Directory-Structure) · [Disaster Recovery](Concept-2-Pillar-Disaster-Recovery) · [Disjunctive Faceting](Concept-Disjunctive-Faceting) · [dump](Method-dump) |
@@ -37,7 +37,7 @@ This wiki is organized as an **encyclopedic reference dictionary**. Each method,
 | **N** | [new](Method-new) · [no_backup (Flag)](Flag-no_backup) · [no_write (Flag)](Flag-no_write) |
 | **P** | [Packed Binary Index](Concept-8-Byte-Packed-Binary-Index) · [Phonetic Accent Search](Concept-Phonetic-Accent-Search) |
 | **R** | [RAM-Disk Acceleration](Concept-RAM-Disk-Acceleration) · [ramdisk_ttl (Flag)](Flag-ramdisk_ttl) · [read_all](Method-read_all) · [read_id](Method-read_id) · [read_list](Method-read_list) · [recs_del](Method-recs_del) · [recs_get](Method-recs_get) · [recs_put](Method-recs_put) · [recs_scan](Method-recs_scan) · [Relational Records](Concept-Relational-Records) · [Repeat Blocks](Concept-Repeat-Blocks) · [restore](Method-restore) |
-| **S** | [search_table](Method-search_table) · [set_cache](Method-set_cache) · [set_datadir](Method-set_datadir) · [set_fields](Method-set_fields) · [set_filters](Method-set_filters) · [set_index](Method-set_index) · [set_readall](Method-set_readall) · [set_search](Method-set_search) · [set_sort](Method-set_sort) · [simple (Flag)](Flag-simple) · [Simple Mode](Concept-Simple-Mode) · [slug_fetch](Method-slug_fetch) · [slug_read](Method-slug_read) · [Strict 2PL Locking](Concept-Strict-2PL-Locking) |
+| **S** | [search_table](Method-search_table) · [set_cache](Method-set_cache) · [set_datadir](Method-set_datadir) · [set_fields](Method-set_fields) · [set_filters](Method-set_filters) · [set_index](Method-set_index) · [set_readall](Method-set_readall) · [set_search](Method-set_search) · [set_sort](Method-set_sort) · [simple (Flag)](Flag-simple) · [Simple Mode](Concept-Simple-Mode) · [slug_fetch](Method-slug_fetch) · [slug_read](Method-slug_read) · [Strict 2PL Locking](Concept-Strict-2PL-Locking) · [suggest_table](Method-suggest_table) |
 | **T** | [Table Schema](Concept-Table-Schema) · [Table Schema Flags](Concept-Schema-Flags) · [table_attr](Method-table_attr) · [table_close](Method-table_close) · [table_count](Method-table_count) · [table_create](Method-table_create) · [table_dir (Flag)](Flag-table_dir) · [table_keys](Method-table_keys) · [table_lastid](Method-table_lastid) · [table_read](Method-table_read) · [table_write](Method-table_write) · [transact_commit](Method-transact_commit) · [transact_end](Method-transact_end) · [transact_error](Method-transact_error) · [transact_recover](Method-transact_recover) · [transact_rollback](Method-transact_rollback) · [transact_start](Method-transact_start) |
 | **U** | [Undo Journal Rollback](Concept-Undo-Journal-Rollback) · [Usage Quickstart Guide](Guide-Usage-Quickstart) · [use_counter (Flag)](Flag-use_counter) · [use_junk (Flag)](Flag-use_junk) · [use_ramdisk (Flag)](Flag-use_ramdisk) · [use_simple (Flag)](Flag-use_simple) |
 | **V** | [vacuum_table](Method-vacuum_table) |
@@ -51,7 +51,7 @@ This wiki is organized as an **encyclopedic reference dictionary**. Each method,
 AmberDB Architecture
  Storage Engine (Berkeley DB DB_File Hash)
     Master Data: .db, .del, .aut, .cnt
-    Secondary Derived Indexes: .inx, .fld, .src, .fac, .slg
+    Secondary Derived Indexes: .inx, .fld, .src, .fac, .slg, .ajw, .ajn
  Schema Layer (.table, .dbase, in-memory table_attr)
  Concurrency & ACID (Strict 2PL, OS flock, Undo-Journal)
  Indexing Subsystem (8-byte packed Q>*, columnar bitsets, accent normalizer)
@@ -86,6 +86,7 @@ AmberDB Architecture
 - [Tiered Hot/Cold Storage and Junk Indexing](Concept-Tiered-Junk-Indexing)
 - [Columnar Disjunctive Facet Filtering](Concept-Disjunctive-Faceting)
 - [Phonetic Accent Search and Normalization](Concept-Phonetic-Accent-Search)
+- [Ajax Query Suggestion and Autocomplete Engine (.ajw, .ajn)](Concept-Query-Suggestion-Ajax)
 - [2-Pillar Continuous Disaster Recovery & .amberdb Archiving](Concept-2-Pillar-Disaster-Recovery)
 - [RAM-Disk (tmpfs / APFS / ImDisk) Shared Memory Acceleration](Concept-RAM-Disk-Acceleration)
 - [Zero-Migration In-Memory Schema Mutation](Concept-In-Memory-Schema-Mutation)
@@ -117,6 +118,7 @@ AmberDB Architecture
 - [field_fetch](Method-field_fetch) - Exact match lookup via inverted .fld index
 - [field_filter](Method-field_filter) - Compound multi-block AND/OR filtering
 - [search_table](Method-search_table) - Full-text keyword search via .src index
+- [suggest_table](Method-suggest_table) - Instant search suggestions and multi-word autocomplete via .ajw/.ajn
 - [facet_menu](Method-facet_menu) - Dynamic multi-dimensional faceted menu generator
 - [field_fltkeys](Method-field_fltkeys) - Single-block facet key counts
 - [field_allfltkeys](Method-field_allfltkeys) - Multi-block facet aggregation
@@ -195,6 +197,8 @@ AmberDB Architecture
 - [.src](File-src) - Inverted full-text search index
 - [.fac](File-fac) - Columnar facet bitset index
 - [.slg](File-slg) - Bidirectional URL slug mapping file
+- [.ajw](File-ajw) - Ajax word prefix suggestion index
+- [.ajn](File-ajn) - Next-word transition frequency table index
 - [.unq](File-unq) - Bidirectional dictionary & uniqueness index
 - [.del](File-del) - Soft-deleted records archive file
 - [.aut](File-aut) - User chronological audit trail log

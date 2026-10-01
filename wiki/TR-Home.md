@@ -11,10 +11,10 @@ Bu wiki, **ansiklopedik bir kavram ve fonksiyon sozluk yapisinda** duzenlenmisti
 ## Hizli Erisim
 
 - **Baslangic ve Rehberler:** [AmberDB Nedir?](TR-Guide-AmberDB-Nedir) | [AmberDB Nasil Kurulur?](TR-Guide-Kurulum) | [AmberDB Nasil Kullanilir?](TR-Guide-Kullanim) | [Temel CRUD Islemleri](TR-Guide-CRUD-Islemleri)
-- **Temel Kavramlar:** [BerkeleyDB (DB_File) Motoru](TR-Concept-Berkeley-DB) | [AmberDB Tablo Semasi](TR-Concept-Table-Schema) | [Global Bayraklar](TR-Concept-Global-Flags) | [Tablo Sema Bayraklari](TR-Concept-Schema-Flags) | [Dizin Yapilandirmasi](TR-Concept-Directory-Structure) | [Dosya Yapisi (Uzantilar)](TR-Concept-File-Structure) | [Tekrarli Genisleyen Bloklar](TR-Concept-Repeat-Blocks) | [Otomatik ID](TR-Concept-Auto-ID) | [Metin Anahtarlar & Basit Mod](TR-Concept-ASCII-ID) | [Iliskisel Kayitlar](TR-Concept-Relational-Records) | [Kayit Anatomisi](TR-Concept-Record-Anatomy) | [JOIN-Free Mimari](TR-Concept-JOIN-Free-Architecture) | [Strict 2PL Kilitleri](TR-Concept-Strict-2PL-Locking)
-- **Temel Metotlar:** [new](TR-Method-new) | [config](TR-Method-config) | [insert_id](TR-Method-insert_id) | [read_id](TR-Method-read_id) | [read_all](TR-Method-read_all) | [modify_id](TR-Method-modify_id) | [delete_id](TR-Method-delete_id) | [field_fetch](TR-Method-field_fetch) | [search_table](TR-Method-search_table) | [facet_menu](TR-Method-facet_menu) | [transact_start](TR-Method-transact_start) | [flock_open](TR-Method-flock_open)
+- **Temel Kavramlar:** [BerkeleyDB (DB_File) Motoru](TR-Concept-Berkeley-DB) | [AmberDB Tablo Semasi](TR-Concept-Table-Schema) | [Global Bayraklar](TR-Concept-Global-Flags) | [Tablo Sema Bayraklari](TR-Concept-Schema-Flags) | [Dizin Yapilandirmasi](TR-Concept-Directory-Structure) | [Dosya Yapisi (Uzantilar)](TR-Concept-File-Structure) | [Tekrarli Genisleyen Bloklar](TR-Concept-Repeat-Blocks) | [Otomatik ID](TR-Concept-Auto-ID) | [Metin Anahtarlar & Basit Mod](TR-Concept-ASCII-ID) | [Iliskisel Kayitlar](TR-Concept-Relational-Records) | [Kayit Anatomisi](TR-Concept-Record-Anatomy) | [JOIN-Free Mimari](TR-Concept-JOIN-Free-Architecture) | [Strict 2PL Kilitleri](TR-Concept-Strict-2PL-Locking) | [Ajax Oneri & Tamamlama](TR-Concept-Query-Suggestion-Ajax)
+- **Temel Metotlar:** [new](TR-Method-new) | [config](TR-Method-config) | [insert_id](TR-Method-insert_id) | [read_id](TR-Method-read_id) | [read_all](TR-Method-read_all) | [modify_id](TR-Method-modify_id) | [delete_id](TR-Method-delete_id) | [field_fetch](TR-Method-field_fetch) | [search_table](TR-Method-search_table) | [suggest_table](TR-Method-suggest_table) | [facet_menu](TR-Method-facet_menu) | [transact_start](TR-Method-transact_start) | [flock_open](TR-Method-flock_open)
 - **One Cikan Bayraklar:** [log_owner](TR-Flag-log_owner) | [use_counter](TR-Flag-use_counter) | [use_junk](TR-Flag-use_junk) | [keep_deleted](TR-Flag-keep_deleted) | [auto_id](TR-Flag-auto_id) | [buffer_write](TR-Flag-buffer_write) | [simple](TR-Flag-simple) | [jnktype](TR-Flag-jnktype) | [keys_only](TR-Flag-keys_only)
-- **Dosya Turleri:** [.db](TR-File-db) | [.table](TR-File-table) | [.inx](TR-File-inx) | [.fld](TR-File-fld) | [.src](TR-File-src) | [.fac](TR-File-fac) | [.slg](TR-File-slg) | [.amberdb](TR-File-amberdb) | [.csv](TR-File-csv)
+- **Dosya Turleri:** [.db](TR-File-db) | [.table](TR-File-table) | [.inx](TR-File-inx) | [.fld](TR-File-fld) | [.src](TR-File-src) | [.fac](TR-File-fac) | [.slg](TR-File-slg) | [.ajw](TR-File-ajw) | [.ajn](TR-File-ajn) | [.amberdb](TR-File-amberdb) | [.csv](TR-File-csv)
 
 ---
 
@@ -22,7 +22,7 @@ Bu wiki, **ansiklopedik bir kavram ve fonksiyon sozluk yapisinda** duzenlenmisti
 
 | Harf | Maddeler |
 | :--- | :--- |
-| **A** | [AmberDB Nedir? (Rehber)](TR-Guide-AmberDB-Nedir) · [AmberDB Nasil Kurulur? (Rehber)](TR-Guide-Kurulum) · [AmberDB Nasil Kullanilir? (Rehber)](TR-Guide-Kullanim) · [AmberDB Tablo Semasi](TR-Concept-Table-Schema) · [array_compare](TR-Method-array_compare) · [array_filter](TR-Method-array_filter) · [array_pick](TR-Method-array_pick) · [array_punch](TR-Method-array_punch) · [array_shuffle](TR-Method-array_shuffle) · [array_size](TR-Method-array_size) · [array_sort](TR-Method-array_sort) · [array_sublist](TR-Method-array_sublist) · [array_substr](TR-Method-array_substr) · [array_substrno](TR-Method-array_substrno) · [ASCII / Metin Anahtarlar](TR-Concept-ASCII-ID) · [auto_id (Bayrak)](TR-Flag-auto_id) · [Otomatik ID (Kavram)](TR-Concept-Auto-ID) |
+| **A** | [Ajax Arama Onerisi (Kavram)](TR-Concept-Query-Suggestion-Ajax) · [AmberDB Nedir? (Rehber)](TR-Guide-AmberDB-Nedir) · [AmberDB Nasil Kurulur? (Rehber)](TR-Guide-Kurulum) · [AmberDB Nasil Kullanilir? (Rehber)](TR-Guide-Kullanim) · [AmberDB Tablo Semasi](TR-Concept-Table-Schema) · [array_compare](TR-Method-array_compare) · [array_filter](TR-Method-array_filter) · [array_pick](TR-Method-array_pick) · [array_punch](TR-Method-array_punch) · [array_shuffle](TR-Method-array_shuffle) · [array_size](TR-Method-array_size) · [array_sort](TR-Method-array_sort) · [array_sublist](TR-Method-array_sublist) · [array_substr](TR-Method-array_substr) · [array_substrno](TR-Method-array_substrno) · [ASCII / Metin Anahtarlar](TR-Concept-ASCII-ID) · [auto_id (Bayrak)](TR-Flag-auto_id) · [Otomatik ID (Kavram)](TR-Concept-Auto-ID) |
 | **B** | [BerkeleyDB (DB_File) Motoru](TR-Concept-Berkeley-DB) · [buffer_delete](TR-Method-buffer_delete) · [buffer_read](TR-Method-buffer_read) · [buffer_write](TR-Method-buffer_write) · [buffer_write (Bayrak)](TR-Flag-buffer_write) |
 | **C** | [check_table](TR-Method-check_table) · [CLI Yonetim Konsolu (amberdb_cli.pl)](TR-Guide-CLI) · [config](TR-Method-config) · [convert_tables](TR-Method-convert_tables) · [CRUD Islemleri (Rehber)](TR-Guide-CRUD-Islemleri) |
 | **D** | [dbase_dir (Bayrak)](TR-Flag-dbase_dir) · [deep_copy](TR-Method-deep_copy) · [delete_id](TR-Method-delete_id) · [delete_list](TR-Method-delete_list) · [Dizin Yapilandirmasi](TR-Concept-Directory-Structure) · [Disaster Recovery (Kurtarma)](TR-Concept-2-Pillar-Disaster-Recovery) · [Dosya Yapisi (Uzantilar)](TR-Concept-File-Structure) · [dump](TR-Method-dump) |
@@ -37,7 +37,7 @@ Bu wiki, **ansiklopedik bir kavram ve fonksiyon sozluk yapisinda** duzenlenmisti
 | **N** | [new](TR-Method-new) · [no_backup (Bayrak)](TR-Flag-no_backup) · [no_write (Bayrak)](TR-Flag-no_write) |
 | **P** | [Paketli Binary Indeks](TR-Concept-8-Byte-Packed-Binary-Index) |
 | **R** | [RAM-Disk Hizlandirma](TR-Concept-RAM-Disk-Acceleration) · [ramdisk_ttl (Bayrak)](TR-Flag-ramdisk_ttl) · [read_all](TR-Method-read_all) · [read_id](TR-Method-read_id) · [read_list](TR-Method-read_list) · [recs_del](TR-Method-recs_del) · [recs_get](TR-Method-recs_get) · [recs_put](TR-Method-recs_put) · [recs_scan](TR-Method-recs_scan) · [Tekrarli Genisleyen Bloklar (Repeat Blocks)](TR-Concept-Repeat-Blocks) · [restore](TR-Method-restore) |
-| **S** | [search_table](TR-Method-search_table) · [Sema Mutasyonu (Bellek Ici)](TR-Concept-In-Memory-Schema-Mutation) · [set_cache](TR-Method-set_cache) · [set_datadir](TR-Method-set_datadir) · [set_fields](TR-Method-set_fields) · [set_filters](TR-Method-set_filters) · [set_index](TR-Method-set_index) · [set_readall](TR-Method-set_readall) · [set_search](TR-Method-set_search) · [set_sort](TR-Method-set_sort) · [simple (Bayrak)](TR-Flag-simple) · [Simple Mode](TR-Concept-Simple-Mode) · [slug_fetch](TR-Method-slug_fetch) · [slug_read](TR-Method-slug_read) · [Strict 2PL Kilitleri](TR-Concept-Strict-2PL-Locking) |
+| **S** | [search_table](TR-Method-search_table) · [Sema Mutasyonu (Bellek Ici)](TR-Concept-In-Memory-Schema-Mutation) · [set_cache](TR-Method-set_cache) · [set_datadir](TR-Method-set_datadir) · [set_fields](TR-Method-set_fields) · [set_filters](TR-Method-set_filters) · [set_index](TR-Method-set_index) · [set_readall](TR-Method-set_readall) · [set_search](TR-Method-set_search) · [set_sort](TR-Method-set_sort) · [simple (Bayrak)](TR-Flag-simple) · [Simple Mode](TR-Concept-Simple-Mode) · [slug_fetch](TR-Method-slug_fetch) · [slug_read](TR-Method-slug_read) · [Strict 2PL Kilitleri](TR-Concept-Strict-2PL-Locking) · [suggest_table](TR-Method-suggest_table) |
 | **T** | [AmberDB Tablo Semasi](TR-Concept-Table-Schema) · [Tablo Sema Bayraklari](TR-Concept-Schema-Flags) · [table_attr](TR-Method-table_attr) · [table_close](TR-Method-table_close) · [table_count](TR-Method-table_count) · [table_create](TR-Method-table_create) · [table_dir (Bayrak)](TR-Flag-table_dir) · [table_keys](TR-Method-table_keys) · [table_lastid](TR-Method-table_lastid) · [table_read](TR-Method-table_read) · [table_write](TR-Method-table_write) · [transact_commit](TR-Method-transact_commit) · [transact_end](TR-Method-transact_end) · [transact_error](TR-Method-transact_error) · [transact_recover](TR-Method-transact_recover) · [transact_rollback](TR-Method-transact_rollback) · [transact_start](TR-Method-transact_start) |
 | **U** | [Undo Journal ve Rollback](TR-Concept-Undo-Journal-Rollback) · [use_counter (Bayrak)](TR-Flag-use_counter) · [use_junk](TR-Flag-use_junk) · [use_ramdisk (Bayrak)](TR-Flag-use_ramdisk) · [use_simple (Bayrak)](TR-Flag-use_simple) |
 | **V** | [vacuum_table](TR-Method-vacuum_table) |
@@ -50,7 +50,7 @@ Bu wiki, **ansiklopedik bir kavram ve fonksiyon sozluk yapisinda** duzenlenmisti
 AmberDB Mimari Yapisi
  Depolama Motoru (Berkeley DB DB_File Hash)
     Yetkili Ana Veri: .db, .del, .aut, .cnt
-    Turetilmis Ikincil Indeksler: .inx, .fld, .src, .fac, .slg
+    Turetilmis Ikincil Indeksler: .inx, .fld, .src, .fac, .slg, .ajw, .ajn
  Sema Katmani (.table, .dbase, bellek ici table_attr)
  Eszamanlilik ve ACID (Strict 2PL, OS flock, Undo-Journal)
  Indeksleme Alt Sistemi (8-byte paketli Q>*, kolon bitsetleri, dil motoru)
@@ -85,6 +85,7 @@ AmberDB Mimari Yapisi
 - [Katmanli Sicak/Soguk Depolama ve Junk Indeksleme](TR-Concept-Tiered-Junk-Indexing)
 - [Kolon Tabanli Ayrık Facet Filtreleme](TR-Concept-Disjunctive-Faceting)
 - [Fonetik Aksan Arama ve Dil Normalizasyonu](TR-Concept-Phonetic-Accent-Search)
+- [Ajax Arama Onerisi ve Otomatik Tamamlama Motoru (.ajw, .ajn)](TR-Concept-Query-Suggestion-Ajax)
 - [2-Sutunlu Surekli Kurtarma ve .amberdb Arsivleme](TR-Concept-2-Pillar-Disaster-Recovery)
 - [RAM-Disk (tmpfs / APFS / ImDisk) Paylasimli Bellek Hizlandirmasi](TR-Concept-RAM-Disk-Acceleration)
 - [Gocsuz Bellek Ici Dinamik Sema Mutasyonu](TR-Concept-In-Memory-Schema-Mutation)
@@ -116,6 +117,7 @@ AmberDB Mimari Yapisi
 - [field_fetch](TR-Method-field_fetch) - .fld ters indeksi uzerinden birebir esleme
 - [field_filter](TR-Method-field_filter) - Cok bloklu AND/OR filtreleme
 - [search_table](TR-Method-search_table) - .src indeksi ile tam metin arama
+- [suggest_table](TR-Method-suggest_table) - .ajw/.ajn ile Ajax anlik arama cubugu ve cok kelimeli tamamlama onerileri
 - [facet_menu](TR-Method-facet_menu) - Cok boyutlu dinamik filtre menusu uretimi
 - [field_fltkeys](TR-Method-field_fltkeys) - Tek blok icin facet sayimlari
 - [field_allfltkeys](TR-Method-field_allfltkeys) - Coklu blok facet toplama
@@ -194,6 +196,8 @@ AmberDB Mimari Yapisi
 - [.src](TR-File-src) - Kelime duzeyinde tam metin arama indeksi
 - [.fac](TR-File-fac) - Kolon tabanli facet bitset indeksi
 - [.slg](TR-File-slg) - Cift yonlu URL slug haritalama dosyasi
+- [.ajw](TR-File-ajw) - Ajax kelime onek (prefix) frekans arama onerisi indeksi
+- [.ajn](TR-File-ajn) - N-gram ardisik kelime gecis frekans tablosu indeksi
 - [.unq](TR-File-unq) - Cift yonlu sozluk ve tekillik indeksi dosyasi
 - [.del](TR-File-del) - Yumusak silinmis kayitlar arşivi
 - [.aut](TR-File-aut) - Kullanici kronolojik denetim izi gunlugu

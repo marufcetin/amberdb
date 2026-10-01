@@ -32,6 +32,8 @@ AmberDB, fiziksel depolama katmaninda deterministik ve amaca yonelik ozel dosya 
 | **`.src`** | **Turetilmis Indeks** |  **EVET** | Kelime tokenlari $\rightarrow$ ID listesi fonetik tam metin arama indeksi (`search_block`). |
 | **`.fac`** | **Turetilmis Indeks** |  **EVET** | Kolon tabanli cok boyutlu kategori ve filtreleme bitset indeksi (`facet_block`). |
 | **`.slg`** | **Turetilmis Indeks** |  **EVET** | Cift yonlu SEO URL Slug haritasi (`_0.slg` ID $\rightarrow$ Slug, `_1.slg` Slug $\rightarrow$ ID). |
+| **`.ajw`** | **Turetilmis Indeks** |  **EVET** | Ajax kelime onek (prefix) frekans arama onerisi indeksi (`suggest_block`). |
+| **`.ajn`** | **Turetilmis Indeks** |  **EVET** | Ardisik kelime gecis frekans tablosu indeksi (`suggest_join`). |
 | **`.table`**| **Sema Dosyasi** | **HAYIR** | Tablo sema tanim dosyasi (`schema/*.table`). |
 | **`.dbase`**| **Sema Dosyasi** | **HAYIR** | Veritabani grup yapilandirma dosyasi (`schema/*.dbase`). |
 | **`.amberdb`**| **Yedekleme Arsivi** | - | Sikistirilmis, SHA-256 dogrulamali tasinabilir native veritabani arşivi. |
@@ -43,7 +45,7 @@ AmberDB, fiziksel depolama katmaninda deterministik ve amaca yonelik ozel dosya 
 
 ## 3. Depolama Verimliligi ve Yedekleme Stratejisi
 
-AmberDB'nin `.amberdb` yedekleme araci (`AmberDB::Tools->dump`), turetilmis indeksleri (`.inx`, `.fld`, `.src`, `.fac`, `.slg`) bilerek arşive dahil etmez. 
+AmberDB'nin `.amberdb` yedekleme araci (`AmberDB::Tools->dump`), turetilmis indeksleri (`.inx`, `.fld`, `.src`, `.fac`, `.slg`, `.ajw`, `.ajn`) bilerek arşive dahil etmez. 
 
 Bu sayede 10 GB'lik bir veritabani, yalnizca saf yetkili veriler (`.db`, `.del`, `.aut`, `.cnt`, `.unq`) ve semalar (`.table`) paketlendigi icin yaklasik **500 MB - 1 GB** boyutunda sikistirilmis bir arşive donusur. Yedek geri yuklendiginde (`restore`), motor tum indeksleri sifir veri kaybiyla aninda yeniden insa eder.
 

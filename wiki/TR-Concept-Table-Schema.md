@@ -59,8 +59,10 @@ AmberDB Tablo Sema Anatomisi (.table)
     match_block  => [ 2, 5 ],       # .fld Birebir eslesme indeksleri
     search_block => [ 1 ],          # .src Tam metin arama indeksi
     facet_block  => [ 2 ],          # .fac Cok boyutlu facet filtreleme indeksi
-    sort_block   => [ 3 ],          # .inx Onceden siralanmis binary indeksler (Fiyat: Blok 3)
-    slug_block   => [ 1, 4, 2 ],    # .slg URL slug haritasi: Bloklar sirasiyla cozumlenip birlestirilir (1/4/2)
+    sort_block    => [ 3 ],          # .inx Onceden siralanmis binary indeksler (Fiyat: Blok 3)
+    slug_block    => [ 1, 4, 2 ],    # .slg URL slug haritasi: Bloklar sirasiyla cozumlenip birlestirilir (1/4/2)
+    suggest_block => [ 1, 2 ],       # .ajw Ajax kelime onek (prefix) ve oneri indeksi
+    suggest_join  => [ [ 1, 2 ] ],   # .ajn Bloklar arasi otomatik bilesik cumle tamamlama
     
     # Alan Tanimlari:
     fields => [

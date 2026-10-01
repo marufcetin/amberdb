@@ -32,6 +32,8 @@ AmberDB employs deterministic and purpose-driven file extensions across its phys
 | **`.src`** | **Derived Secondary Index** |  **YES** | Word tokens $\rightarrow$ IDs phonetic full-text search index (`search_block`). |
 | **`.fac`** | **Derived Secondary Index** |  **YES** | Columnar bitset index for multi-dimensional facet filtering (`facet_block`). |
 | **`.slg`** | **Derived Secondary Index** |  **YES** | Bidirectional URL slug map (`_0.slg` ID $\rightarrow$ Slug, `_1.slg` Slug $\rightarrow$ ID). |
+| **`.ajw`** | **Derived Secondary Index** |  **YES** | Ajax word prefix frequency autocomplete index (`suggest_block`). |
+| **`.ajn`** | **Derived Secondary Index** |  **YES** | Next-word transition frequency table index (`suggest_join`). |
 | **`.table`**| **Schema Definition** | **NO** | Table schema configuration file (`schema/*.table`). |
 | **`.dbase`**| **Schema Definition** | **NO** | Database group configuration file (`schema/*.dbase`). |
 | **`.amberdb`**| **Backup Archive** | - | Compressed, SHA-256 verified portable database archive. |
@@ -43,7 +45,7 @@ AmberDB employs deterministic and purpose-driven file extensions across its phys
 
 ## 3. Storage Efficiency and Backup Optimization
 
-AmberDB's native `.amberdb` archiving utility (`AmberDB::Tools->dump`) deliberately excludes derived secondary indexes (`.inx`, `.fld`, `.src`, `.fac`, `.slg`) from backup archives.
+AmberDB's native `.amberdb` archiving utility (`AmberDB::Tools->dump`) deliberately excludes derived secondary indexes (`.inx`, `.fld`, `.src`, `.fac`, `.slg`, `.ajw`, `.ajn`) from backup archives.
 
 Consequently, a 10 GB database compresses down to **500 MB - 1 GB**, containing only authoritative tables (`.db`, `.del`, `.aut`, `.cnt`, `.unq`) and schemas (`.table`). Upon restoring (`restore`), the engine reconstructs all secondary indexes automatically with zero data loss.
 
