@@ -435,9 +435,6 @@ sub dump {
     require Digest::SHA;
     require JSON::PP;
     require MIME::Base64;
-    require Fcntl;
-    require DB_File;
-    require File::Spec;
     require File::Path;
 
     my %opts;
@@ -584,19 +581,21 @@ sub dump {
         foreach my $sfx ( keys %sfx_map ) {
             my $fpath = "$tpath.$sfx";
             if ( -e $fpath ) {
-                my %db;
-                my $tie = tie %db, "DB_File", $fpath, Fcntl::O_RDONLY(), 0644, $AmberDB::hash_info;
-                next unless $tie;
+                next unless $adb->table_read($fpath);
 
                 my $dcontent   = "";
                 my $valid_keys = 0;
-                while ( my ( $k, $v ) = each %db ) {
-                    next unless $key_validator->( $k, $sfx );
-                    my $b64 = MIME::Base64::encode_base64( $v, "" );
-                    $dcontent .= "$k\t$b64\n";
-                    $valid_keys++;
-                }
-                untie %db;
+                $adb->recs_scan(
+                    $fpath,
+                    sub {
+                        my ( $k, $v ) = @_;
+                        return unless $key_validator->( $k, $sfx );
+                        my $b64 = MIME::Base64::encode_base64( $v, "" );
+                        $dcontent .= "$k\t$b64\n";
+                        $valid_keys++;
+                    }
+                );
+                $adb->table_close($fpath);
 
                 my $dump_sfx = $sfx_map{$sfx};
                 my $norm_fpath = $fpath;
@@ -669,9 +668,6 @@ sub restore {
     require Digest::SHA;
     require JSON::PP;
     require MIME::Base64;
-    require Fcntl;
-    require DB_File;
-    require File::Spec;
     require File::Path;
 
     my $tar = Archive::Tar->new();
@@ -816,11 +812,9 @@ sub restore {
                     unlink $target_file;
                 }
 
-                # Write data using native DB_File of the target system
-                my %db;
-                my $tie = tie %db, "DB_File", $target_file, Fcntl::O_RDWR() | Fcntl::O_CREAT(), 0644, $AmberDB::hash_info;
-                unless ($tie) {
-                    cluck "[DB_RESTORE] Cannot create target DB_File $target_file: $!\n";
+                my $db_handle = $adb->table_write($target_file);
+                unless ($db_handle) {
+                    cluck "[DB_RESTORE] Cannot open target table $target_file for writing: $!\n";
                     return;
                 }
 
@@ -830,9 +824,10 @@ sub restore {
                     next unless defined $k;
                     next unless $key_validator->( $k, $target_sfx );
                     my $v = defined $b64 ? MIME::Base64::decode_base64($b64) : '';
-                    $db{$k} = $v;
+                    my $k_enc = $adb->utf_encode("$k");
+                    $db_handle->put( $k_enc, $v );
                 }
-                untie %db;
+                $adb->table_close($target_file);
             }
             else {
                 # Legacy raw binary fallback
