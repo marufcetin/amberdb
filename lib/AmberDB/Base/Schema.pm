@@ -6,7 +6,7 @@ use Carp qw(croak cluck);
 use File::Spec;
 use parent 'AmberDB::Base';
 
-our $VERSION = '5.26.5';
+our $VERSION = '5.26.6';
 my $CREATED  = '2026-09-06';
 
 # Whitelist of inheritable group-level configuration keys from .dbase to member tables
