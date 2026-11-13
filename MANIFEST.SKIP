@@ -54,7 +54,7 @@
 \.tgz$
 \.zip$
 \bINDEX_KEY_MAP\.md$
-\bdocs/General_Rules\.md$
+(?:^|/)General_Rules\.md$
 
 # Database runtime stores and temp files
 ^\.amberdb\b
