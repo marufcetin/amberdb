@@ -28,8 +28,9 @@ my $adb = AmberDB->new(\%secenekler);
 
 | Parametre | Tipi | Zorunlu | Varsayilan | Aciklama |
 |:---|:---|:---|:---|:---|
-| `cfg` | HASH-ref | Opsiyonel | `{}` | Calisma zamani yapilandirma bayraklari (`language`, `simple`, `no_backup`, `buffer_write` vb.). |
+| `cfg` | HASH-ref | Opsiyonel | `{}` | Calisma zamani yapilandirma bayraklari (`language`, `use_simple`, `no_backup`, `buffer_write` vb.). |
 | `path` | HASH-ref | Opsiyonel | `{}` | Dizin yollari haritasi (`dbase_dir => "./dbstore"`). |
+| `srv` | `AmberDB` | Opsiyonel | `undef` | Istek bazli (request-scoped) hafif oturumlar icin paylasimli ana `AmberDB` motor nesnesi (sema, normalizasyon ve locale onbelleklerini paylasir). |
 
 ---
 
@@ -52,9 +53,12 @@ my $adb = AmberDB->new(
 
 # 2. RAM-Disk / Gecici Prototip Baslatma
 my $ram_adb = AmberDB->new(
-    cfg  => { simple => 1, no_backup => 1 },
+    cfg  => { use_simple => 1, no_backup => 1 },
     path => { dbase_dir => "/dev/shm/amberdb_cache" }
 );
+
+# 3. Paylasimli Ana Motor (srv) ile Istek Bazli Oturum
+my $req_adb = AmberDB->new( srv => $adb );
 ```
 
 ---

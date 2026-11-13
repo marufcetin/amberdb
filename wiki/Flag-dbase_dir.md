@@ -22,7 +22,7 @@ In standard mode, AmberDB organizes database files under structured subfolders b
 - `log/` — User audit logs (`.aut`) and operation logs.
 - `ramdisk/` — Default mount target for transparent physical RAM-disk storage.
 
-In Simple Mode (`simple => 1`), all tables reside directly in `dbase_dir` without subdirectories.
+In Simple Mode (`use_simple => 1`), all tables reside directly in `dbase_dir` without subdirectories.
 
 ---
 

@@ -124,7 +124,7 @@ $adb->delete_id("user_sessions", $session_token);
 
 > [!WARNING]
 > - **RDBM Isolation:** Standard relational tables cannot declare foreign key constraints (`RDBM`) pointing to `use_simple` tables, because relational indexes rely on 64-bit numeric integers.
-> - **Global Simple Mode vs Per-Table:** You can run the entire database in simple mode via `AmberDB->new(simple => 1)`, or configure individual tables via `use_simple => 1` for a hybrid setup.
+> - **Global Simple Mode vs Per-Table:** You can run the entire database in simple mode via `AmberDB->new(use_simple => 1)`, or configure individual tables via `use_simple => 1` for a hybrid setup.
 
 ---
 

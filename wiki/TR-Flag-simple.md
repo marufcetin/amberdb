@@ -18,7 +18,7 @@
 ## 2. Kullanim
 
 ```perl
-my $adb = AmberDB->new(cfg => { simple => 1 });
+my $adb = AmberDB->new(cfg => { use_simple => 1 });
 ```
 
 ---

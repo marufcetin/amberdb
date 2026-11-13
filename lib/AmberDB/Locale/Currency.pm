@@ -58,8 +58,4 @@ sub cur_all {
     return map { [ $_, $CURRENCIES{$_}->{name} ] } @CURRENCY_ORDER;
 }
 
-# Aliases
-*by_code = \&cur_code;
-*all     = \&cur_all;
-
 1;

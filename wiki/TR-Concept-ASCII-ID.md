@@ -124,7 +124,7 @@ $adb->delete_id("user_sessions", $session_token);
 
 > [!WARNING]
 > - **RDBM Iliski Kisitlamasi:** Standart iliskisel tablolar `use_simple => 1` tablolarina `RDBM` yabanci anahtari baglayamaz; cunku iliskisel indeksler 64-bit tam sayi araligi bekler.
-> - **Global Basit Mod ile Tablo Bazli Basit Mod:** Tum veritabanini `AmberDB->new(simple => 1)` ile basit modda calistirabileceginiz gibi, yalnizca belirli tablolar icin `use_simple => 1` vererek hibrit duzeni tercih edebilirsiniz.
+> - **Global Basit Mod ile Tablo Bazli Basit Mod:** Tum veritabanini `AmberDB->new(use_simple => 1)` ile basit modda calistirabileceginiz gibi, yalnizca belirli tablolar icin `use_simple => 1` vererek hibrit duzeni tercih edebilirsiniz.
 
 ---
 

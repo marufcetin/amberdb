@@ -12,7 +12,7 @@
 
 **Basit Mod (Simple Mode)**, AmberDB'nin disk uzerinde herhangi bir sema dosyasi (`.table`) tanimlamaksizin tablolari hafif bir anahtar-deger (key-value) ve duz dokuman deposu olarak kullanabilme modudur.
 
-`simple => 1` bayragi acildiginda veya semasi olmayan bir tabloya erisildiginde, AmberDB sema dogrulama kontrollerini ve ikincil ters indeksleri (`.fld`, `.src`, `.fac`, `.slg`) atlayarak veriyi dogrudan Berkeley DB (`DB_File`) hash tablosuna (`.db`) yazar.
+`use_simple => 1` bayragi acildiginda veya semasi olmayan bir tabloya erisildiginde, AmberDB sema dogrulama kontrollerini ve ikincil ters indeksleri (`.fld`, `.src`, `.fac`, `.slg`) atlayarak veriyi dogrudan Berkeley DB (`DB_File`) hash tablosuna (`.db`) yazar.
 
 Bu mod su senaryolar icin idealdir:
 - Web oturumlari (Sessions) ve gecici dogrulama jetonlari (Tokens).
@@ -26,7 +26,7 @@ Standart Sema Modu vs Basit Mod
 Standart Mod:
 insert_id() > Semayi Dogrular > .db Yazar > .inx, .fld, .src, .fac, .slg Gunceller
 
-Basit Mod (simple => 1):
+Basit Mod (use_simple => 1):
 insert_id() > Dogrudan .db Tablosuna Yazar (Sifir Indeks Yuku, Maksimum Yazma Hizi)
 ```
 
@@ -45,7 +45,7 @@ Basit Modda:
 ```perl
 # Basit Modda AmberDB nesnesi olusturma
 my $adb = AmberDB->new(
-    cfg  => { simple => 1, no_backup => 1 },
+    cfg  => { use_simple => 1, no_backup => 1 },
     path => { dbase_dir => "./dbstore" }
 );
 

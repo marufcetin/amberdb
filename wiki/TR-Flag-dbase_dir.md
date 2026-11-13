@@ -22,7 +22,7 @@ Standart modda AmberDB, veritabanı dosyalarını `dbase_dir` altında yapıland
 - `log/` — Kullanıcı denetim kayıtları (`.aut`) ve işlem günlükleri.
 - `ramdisk/` — Şeffaf fiziksel RAM-disk depolaması için varsayılan bağlama noktası.
 
-Basit Modda (`simple => 1`), tüm tablolar alt dizinler olmaksızın doğrudan `dbase_dir` altında saklanır.
+Basit Modda (`use_simple => 1`), tüm tablolar alt dizinler olmaksızın doğrudan `dbase_dir` altında saklanır.
 
 ---
 

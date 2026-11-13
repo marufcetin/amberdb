@@ -12,7 +12,7 @@
 
 **Simple Mode** is AmberDB's lightweight operational mode for using tables without creating or defining schema files (`.table`).
 
-When `simple => 1` is configured (or when accessing unmapped tables), AmberDB bypasses schema validation, secondary inverted index maintenance (`.fld`, `.src`, `.fac`), and metadata lookups. Records are stored directly into the master Berkeley DB (`DB_File`) hash table (`.db`) as native key-value pairs.
+When `use_simple => 1` is configured (or when accessing unmapped tables), AmberDB bypasses schema validation, secondary inverted index maintenance (`.fld`, `.src`, `.fac`), and metadata lookups. Records are stored directly into the master Berkeley DB (`DB_File`) hash table (`.db`) as native key-value pairs.
 
 This mode is ideal for:
 - Session stores and temporary tokens.
@@ -26,7 +26,7 @@ Simple Mode vs Standard Mode
 Standard Schema Mode:
 insert_id() > Validates Schema > Writes .db > Updates .inx, .fld, .src, .fac
 
-Simple Mode (simple => 1):
+Simple Mode (use_simple => 1):
 insert_id() > Writes directly to .db (Zero Index Overhead, Maximum Ingestion Speed)
 ```
 
@@ -45,7 +45,7 @@ In Simple Mode:
 ```perl
 # Initialize AmberDB instance in Simple Mode
 my $adb = AmberDB->new(
-    cfg  => { simple => 1, no_backup => 1 },
+    cfg  => { use_simple => 1, no_backup => 1 },
     path => { dbase_dir => "./dbstore" }
 );
 

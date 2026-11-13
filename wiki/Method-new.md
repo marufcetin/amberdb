@@ -28,8 +28,9 @@ my $adb = AmberDB->new(\%options);
 
 | Parameter | Type | Required | Default | Description |
 |:---|:---|:---|:---|:---|
-| `cfg` | HASH-ref | Optional | `{}` | Runtime configuration flags (e.g. `language`, `simple`, `no_backup`, `buffer_write`). |
+| `cfg` | HASH-ref | Optional | `{}` | Runtime configuration flags (e.g. `language`, `use_simple`, `no_backup`, `buffer_write`). |
 | `path` | HASH-ref | Optional | `{}` | Directory paths mapping (e.g. `dbase_dir => "./dbstore"`). |
+| `srv` | `AmberDB` | Optional | `undef` | Shared master `AmberDB` engine instance for lightweight request-scoped sessions (reuses schema, normalizer, and locale caches). |
 
 ---
 
@@ -52,9 +53,12 @@ my $adb = AmberDB->new(
 
 # 2. In-Memory Prototyping / RAM-Disk Setup
 my $ram_adb = AmberDB->new(
-    cfg  => { simple => 1, no_backup => 1 },
+    cfg  => { use_simple => 1, no_backup => 1 },
     path => { dbase_dir => "/dev/shm/amberdb_cache" }
 );
+
+# 3. Request-Scoped Session with Shared Master Engine
+my $req_adb = AmberDB->new( srv => $adb );
 ```
 
 ---

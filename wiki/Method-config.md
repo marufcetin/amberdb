@@ -27,7 +27,7 @@ my $cfg = $adb->config();
 $adb->config( language => 'de', no_write => 1 );
 
 # 4. Hashref setter
-$adb->config({ simple => 1, use_ramdisk => 1 });
+$adb->config({ use_simple => 1, use_ramdisk => 1 });
 ```
 
 ---
